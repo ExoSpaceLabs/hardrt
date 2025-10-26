@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 #include "heartos.h"
 #include "heartos_cfg.h"
 #include "heartos_time.h"
@@ -35,6 +36,10 @@ static prio_q_t g_rq[HEARTOS_MAX_PRIO];
 /* Forward decls used by other core files */
 int  hrt__pick_next_ready(void);
 void hrt__make_ready(int id);
+
+/* Provided by the port */
+void hrt_port_enter_scheduler(void);
+void hrt_port_yield_to_scheduler(void);
 
 /* ------------- Queue helpers ------------- */
 static void rq_push(uint8_t p, uint8_t id){
@@ -96,6 +101,7 @@ int hrt_create_task(hrt_task_fn fn, void* arg,
     t->stack_base = stack_words;
     t->stack_words= n_words;
 
+    extern void hrt__task_trampoline(void);
     hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
 
     t->state = HRT_READY;
@@ -105,9 +111,8 @@ int hrt_create_task(hrt_task_fn fn, void* arg,
 }
 
 void hrt_start(void){
-    /* In real ports, you’d switch to first task here by triggering a context switch.
-       Null port does nothing. Cortex-M/Posix ports will implement the actual jump. */
-    /* intentionally empty for null port */
+    /* Let the port take over and run the scheduler loop */
+    hrt_port_enter_scheduler();
 }
 
 void hrt_sleep(uint32_t ms){
@@ -115,7 +120,8 @@ void hrt_sleep(uint32_t ms){
     hrt_tcb_t* t = &g_tcbs[g_current];
     t->wake_tick = g_tick + ms;
     t->state = HRT_SLEEP;
-    hrt__pend_context_switch();
+    hrt__pend_context_switch();      /* request reschedule (ISR-safe) */
+    hrt_port_yield_to_scheduler();   /* voluntary hop to scheduler from task ctx */
 }
 
 void hrt_yield(void){
@@ -124,7 +130,8 @@ void hrt_yield(void){
     if (t->state == HRT_READY){
         rq_push(t->prio, (uint8_t)g_current);
     }
-    hrt__pend_context_switch();
+    hrt__pend_context_switch();      /* request reschedule */
+    hrt_port_yield_to_scheduler();   /* hop to scheduler */
 }
 
 uint32_t hrt_tick_now(void){ return g_tick; }

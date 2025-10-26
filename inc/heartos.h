@@ -16,9 +16,14 @@ extern "C" {
 #define HEARTOS_MAX_PRIO  4  /* 0..3 (0 is highest) */
 #endif
 
+    /* Version */
     const char* hrt_version_string(void);
-
     unsigned    hrt_version_u32(void);
+
+    /* Port identity */
+    const char* hrt_port_name(void);
+    int         hrt_port_id(void);
+
 
     typedef void (*hrt_task_fn)(void*);
 
