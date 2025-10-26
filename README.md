@@ -134,9 +134,16 @@ cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
 
 ---
 
+## 🧪 Tests (POSIX)
+
+HeaRTOS is validated on the POSIX host port with a deterministic, dependency‑free test suite that runs as a single executable (`heartos_tests`). It checks identity, sleep/wake timing, round‑robin and priority scheduling semantics, runtime tuning, FIFO ready‑queue order, tick‑rate independence, and more.
+
+- The tests require `HEARTOS_TEST_HOOKS` and CMake enables it automatically for POSIX when `HEARTOS_BUILD_TESTS=ON`.
+- How to build/run and full coverage are described here: [Posix tests](docs/TESTS_POSIX.md)
+
 ## 🧠 API Overview
 
-See docs/API_C.md for a detailed C API reference, including configuration, task creation, scheduling policies, sleep/yield, runtime tuning, and version/port identity.
+See [C API](docs/API_C.md) for a detailed C API reference, including configuration, task creation, scheduling policies, sleep/yield, runtime tuning, and version/port identity.
 
 ---
 
@@ -187,11 +194,11 @@ Current version: `0.2.0` (see `hrt_version_string()` and `hrt_version_u32()`).
 
 ## 🚀 Roadmap
 
-- [ ] POSIX port for Linux simulation
+- [x] POSIX port for Linux simulation
 - [ ] Cortex-M port (STM32H7 target)
 - [ ] Binary semaphores and queues
 - [ ] Dual-core support (AMP message passing)
-- [ ] Unit test harness
+- [x] Unit test harness
 - [ ] Docs and diagrams
 
 ---

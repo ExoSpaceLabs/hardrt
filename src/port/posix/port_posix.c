@@ -46,6 +46,31 @@ static ucontext_t  g_sched_ctx;
 static volatile sig_atomic_t g_switch_pending = 0;
 static sigset_t g_sigalrm_set;
 
+#ifdef HEARTOS_TEST_HOOKS
+static volatile sig_atomic_t g_test_stop = 0;
+static volatile unsigned long long g_idle_counter = 0;
+void hrt__test_stop_scheduler(void){ g_test_stop = 1; }
+/* Test helper: reset scheduler test state between test cases */
+void hrt__test_reset_scheduler_state(void){ g_test_stop = 0; g_switch_pending = 1; }
+
+/* Idle counter helpers (tests may inspect liveness) */
+void hrt__test_idle_counter_reset(void){ g_idle_counter = 0; }
+unsigned long long hrt__test_idle_counter_value(void){ return g_idle_counter; }
+
+/* Fast-forward ticks for wraparound tests: mask SIGALRM and call core tick. */
+void hrt__test_fast_forward_ticks(uint32_t delta){
+    sigset_t old;
+    /* block SIGALRM directly to avoid re-entrancy during synthetic ticks */
+    sigprocmask(SIG_BLOCK, &g_sigalrm_set, &old);
+    for (uint32_t i=0;i<delta;++i){ hrt__tick_isr(); }
+    sigprocmask(SIG_SETMASK, &old, NULL);
+}
+
+/* Access to tick for tests (delegates to core helpers) */
+void hrt__test_set_tick(uint32_t v);
+uint32_t hrt__test_get_tick(void);
+#endif
+
 /* ---- Helpers to mask/unmask SIGALRM around critical regions ---- */
 static inline void block_sigalrm(sigset_t* old){
     sigprocmask(SIG_BLOCK, &g_sigalrm_set, old);
@@ -111,6 +136,9 @@ void hrt_port_start_systick(uint32_t hz) {
 
 /* Idle hook: tiny nap to avoid 100% CPU */
 void hrt_port_idle_wait(void) {
+#ifdef HEARTOS_TEST_HOOKS
+    g_idle_counter++;
+#endif
     struct timespec ts = {0, 1*1000*1000}; /* 1 ms */
     nanosleep(&ts, NULL);
 }
@@ -133,6 +161,14 @@ void hrt_port_yield_to_scheduler(void){
 /* Scheduler loop: pick and switch, with SIGALRM masked during critical sections */
 void hrt_port_enter_scheduler(void) {
     for(;;){
+#ifdef HEARTOS_TEST_HOOKS
+        if (g_test_stop) {
+            /* Disable timer and exit scheduler loop for tests */
+            struct itimerval it = {0};
+            setitimer(ITIMER_REAL, &it, NULL);
+            return;
+        }
+#endif
         if (!g_switch_pending) {
             hrt_port_idle_wait();
             continue;

@@ -204,3 +204,12 @@ void       hrt__on_scheduler_entry(void){
         }
     }
 }
+
+#ifdef HEARTOS_TEST_HOOKS
+/* Test-only helpers for POSIX tests: set/get the current tick safely. */
+void hrt__test_set_tick(uint32_t v){
+    /* Directly set the tick counter. Ports should ensure no concurrent tick when calling this. */
+    g_tick = v;
+}
+uint32_t hrt__test_get_tick(void){ return g_tick; }
+#endif

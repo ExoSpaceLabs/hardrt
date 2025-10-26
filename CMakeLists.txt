@@ -10,6 +10,7 @@ project(${LIB_NAME} VERSION 0.2.0 LANGUAGES C CXX)
 set(HEARTOS_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HEARTOS_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
 option(HEARTOS_BUILD_EXAMPLES "Build examples" ON)
+option(HEARTOS_BUILD_TESTS "Build test suite (POSIX port)" ON)
 
 # ---- Paths ----
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/inc")
@@ -141,4 +142,36 @@ install(EXPORT HeaRTOSTargets
 # ---- Examples ----
 if(HEARTOS_BUILD_EXAMPLES)
   add_subdirectory(examples/two_tasks)
+endif()
+
+# ---- Tests (POSIX only) ----
+if(HEARTOS_BUILD_TESTS)
+  enable_testing()
+  if(HEARTOS_PORT STREQUAL "posix")
+    # Expose test hooks inside the library for POSIX scheduler to stop cleanly
+    target_compile_definitions(${LIB_NAME} PRIVATE HEARTOS_TEST_HOOKS)
+    add_executable(heartos_tests
+            tests/test_main.c
+            tests/test_identity.c
+            tests/test_sleep_stop.c
+            tests/test_rr_yield.c
+            tests/test_rr_sleep.c
+            tests/test_priority.c
+            tests/test_coop_vs_rr.c
+            tests/test_tick_rate.c
+            tests/test_create_limits.c
+            tests/test_runtime_tuning.c
+            tests/test_fifo_order.c
+            tests/test_wraparound.c
+            tests/test_sleep_zero.c
+            tests/test_task_return.c
+    )
+    target_link_libraries(heartos_tests PRIVATE ${LIB_NAME})
+    target_compile_features(heartos_tests PRIVATE c_std_11)
+    # Ensure test sources also see HEARTOS_TEST_HOOKS to enable hook-dependent cases
+    target_compile_definitions(heartos_tests PRIVATE HEARTOS_TEST_HOOKS)
+    add_test(NAME heartos_tests COMMAND heartos_tests)
+  else()
+    message(STATUS "Tests are enabled but HEARTOS_PORT=${HEARTOS_PORT} has no runtime scheduler; skipping test target")
+  endif()
 endif()
