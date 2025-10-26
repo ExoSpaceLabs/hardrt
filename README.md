@@ -50,6 +50,7 @@ heartos/
 
 ### Build from terminal
 ```bash
+
 git clone https://github.com/<your-username>/heartos.git
 cd heartos
 mkdir build && cd build
@@ -63,6 +64,7 @@ This will:
 
 Run it:
 ```bash
+
 ./examples/two_tasks/two_tasks
 ```
 
@@ -77,7 +79,11 @@ HeaRTOS example compiled. With null port there is no live scheduling yet.
 ### Install (optional)
 You can install the library and headers to a prefix to consume from other projects:
 ```bash
+
+# locally
 cmake --install . --prefix "$PWD/install"
+# system wide
+sudo cmake --install .
 ```
 This installs:
 - archive `libheartos.a`
@@ -87,6 +93,7 @@ This installs:
 
 Consume from another CMake project:
 ```cmake
+
 find_package(HeaRTOS REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HeaRTOS::heartos)
@@ -96,14 +103,15 @@ target_link_libraries(app PRIVATE HeaRTOS::heartos)
 
 ## 🧩 CMake Options
 
-| Option | Default | Description |
-|:-------|:---------|:------------|
-| `HEARTOS_PORT` | `null` | Select build port: `null`, `posix`, or `cortex_m` |
-| `HEARTOS_ENABLE_CPP` | `OFF` | Build C++17 header-only wrapper (`heartospp`) |
-| `HEARTOS_BUILD_EXAMPLES` | `ON` | Build bundled demo projects |
+| Option                   | Default | Description                                       |
+|:-------------------------|:--------|:--------------------------------------------------|
+| `HEARTOS_PORT`           | `null`  | Select build port: `null`, `posix`, or `cortex_m` |
+| `HEARTOS_ENABLE_CPP`     | `OFF`   | Build C++17 header-only wrapper (`heartospp`)     |
+| `HEARTOS_BUILD_EXAMPLES` | `ON`    | Build bundled demo projects                       |
 
 Example:
 ```bash
+
 cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
 ```
 
@@ -112,6 +120,7 @@ cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
 ## 🧠 API Overview (C)
 
 ```c
+
 /* Version */
 const char* hrt_version_string(void);
 unsigned    hrt_version_u32(void);
@@ -135,6 +144,7 @@ void hrt_set_default_timeslice(uint16_t t);
 
 Scheduler policies:
 ```c
+
 typedef enum {
     HRT_SCHED_PRIORITY,     // strict priority
     HRT_SCHED_RR,           // equal-time round robin
@@ -147,6 +157,7 @@ typedef enum {
 ### C++ wrapper (optional)
 Enable with CMake option `-DHEARTOS_ENABLE_CPP=ON` and include the header-only wrapper `cpp/heartospp.hpp`:
 ```cpp
+
 #include <heartospp.hpp>
 
 void my_task(void*){}
@@ -163,6 +174,7 @@ The C++ target is `HeaRTOS::heartospp` and links the C core automatically.
 ## 🧪 Example
 
 ```c
+
 #include "heartos.h"
 
 static uint32_t stackA[256];
@@ -198,6 +210,7 @@ All hardware-specific logic lives in `/src/port/`.
 
 Each port must implement:
 ```c
+
 void hrt_port_start_systick(uint32_t hz);
 void hrt_port_idle_wait(void);
 void hrt__pend_context_switch(void);
@@ -207,6 +220,7 @@ void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
 
 Additionally, the port must call the kernel tick hook on every system tick (ISR or timer thread):
 ```c
+
 void hrt__tick_isr(void); // defined by the core (see inc/heartos_time.h)
 ```
 
