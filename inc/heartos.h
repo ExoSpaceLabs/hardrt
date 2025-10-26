@@ -16,6 +16,10 @@ extern "C" {
 #define HEARTOS_MAX_PRIO  4  /* 0..3 (0 is highest) */
 #endif
 
+    const char* hrt_version_string(void);
+
+    unsigned    hrt_version_u32(void);
+
     typedef void (*hrt_task_fn)(void*);
 
     typedef enum { HRT_READY=0, HRT_SLEEP, HRT_BLOCKED, HRT_UNUSED } hrt_state_t;

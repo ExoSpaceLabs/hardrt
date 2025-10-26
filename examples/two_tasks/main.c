@@ -11,8 +11,6 @@ static uint32_t stack_b[256];
 static void taskA(void* arg){
     (void)arg;
     for(;;){
-        // Placeholder work
-        // In a real port, you’d do UART TX or blink
         hrt_sleep(500);
     }
 }
@@ -25,6 +23,9 @@ static void taskB(void* arg){
 }
 
 int main(void){
+    printf("HeaRTOS version: %s (0x%06X)\n",
+           hrt_version_string(), hrt_version_u32());
+
     hrt_config_t cfg = {
         .tick_hz = 1000,
         .policy  = HRT_SCHED_PRIORITY_RR,
