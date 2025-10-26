@@ -119,7 +119,12 @@ void hrt_start(void){
 void hrt_sleep(uint32_t ms){
     if (g_current < 0) return;
     hrt_tcb_t* t = &g_tcbs[g_current];
-    t->wake_tick = g_tick + ms;
+    /* Convert milliseconds to scheduler ticks using current tick rate. */
+    uint64_t ticks = (uint64_t)ms * (uint64_t)g_tick_hz;
+    /* Ceil divide by 1000 to ensure we sleep at least the requested duration. */
+    ticks = (ticks + 999ULL) / 1000ULL;
+    if (ticks == 0) ticks = 1; /* minimum 1 tick sleep if ms > 0 and hz > 0 */
+    t->wake_tick = g_tick + (uint32_t)ticks;
     t->state = HRT_SLEEP;
     hrt__pend_context_switch();      /* request reschedule (ISR-safe) */
     hrt_port_yield_to_scheduler();   /* voluntary hop to scheduler from task ctx */
