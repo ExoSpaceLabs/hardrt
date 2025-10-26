@@ -14,6 +14,7 @@
 /* ---- Core-private hooks ---- */
 int         hrt__pick_next_ready(void);
 void        hrt__make_ready(int id);
+void        hrt__on_scheduler_entry(void);
 int         hrt__get_current(void);
 void        hrt__set_current(int id);
 
@@ -151,6 +152,9 @@ void hrt_port_enter_scheduler(void) {
         hrt__set_current(next);
         /* Jump from scheduler to task; task will swap back when it yields/sleeps */
         swapcontext(&g_sched_ctx, &g_ctxs[next].ctx);
+
+        /* We are back in scheduler context with SIGALRM still masked. */
+        hrt__on_scheduler_entry();
 
         unblock_sigalrm(&old);
         /* when we return here, a yield/sleep/time-slice triggered it */

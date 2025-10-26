@@ -1,11 +1,24 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "heartos.h"
+#include "heartos_time.h"
 
-/* The null port just stubs required hooks so the library links.
-   There’s no real tick or switching. It’s a compiler target, not a simulator. */
+/* Null port: provides stub hooks so the library links.
+   - No tick source is started.
+   - No context switching happens.
+   - Useful only to compile and link the core on bare toolchains.
+
+   Notes reflecting current core/port contract:
+   - Ports should call `hrt__tick_isr()` from their timer ISR/thread to advance time
+     and wake sleepers. Do NOT attempt to context-switch from inside the ISR.
+   - Ports should implement `hrt__pend_context_switch()` as an ISR-safe request
+     (e.g., set a flag or trigger a PendSV). Null port just ignores it.
+   - If a port has a scheduler loop, it should call `hrt__on_scheduler_entry()`
+     right after returning from a task back to the scheduler context, where it is
+     safe to rotate a time-sliced task to the tail of its ready queue.
+*/
 
 void hrt_port_enter_scheduler(void) {
-    /* no-op in null port; hrt_start() returns immediately */
+    /* No scheduler in null port; hrt_start() returns immediately. */
 }
 
 void hrt_port_start_systick(uint32_t tick_hz){

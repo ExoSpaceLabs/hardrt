@@ -1,36 +1,60 @@
 
-## 🧪 Examples C
+## 🧪 Examples (C)
 
+This guide shows how to build and run the bundled `two_tasks` example with both the `null` and `posix` ports, and how to observe round-robin behavior.
 
-*** describe the example here ***
+### Build with the null port
+
+```bash
+cmake -DHEARTOS_PORT=null -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake --build . --target two_tasks -j
+./examples/two_tasks/two_tasks
+```
+Expected output (program exits immediately; no live scheduling):
+```
+HeaRTOS version: 0.2.0 (0x000200), port: null (id=0)
+```
+Notes:
+- The null port doesn’t start a tick or switch contexts; `hrt_start()` returns.
+
+### Build with the POSIX port
+
+```bash
+cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake --build . --target two_tasks -j
+./examples/two_tasks/two_tasks
+```
+Expected output (excerpt; continues indefinitely):
+```
+HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
+[A] tick count [0]
+[B] tock -----
+[A] tick count [1]
+[A] tick count [2]
+[B] tock -----
+...
+```
+- Task A sleeps 500 ms; Task B sleeps 1000 ms. With `HRT_SCHED_PRIORITY_RR`, Task A has priority 0 (higher), Task B priority 1; thus Task A runs whenever READY.
+
+### Seeing round-robin within a priority class
+
+To observe time-slice rotation, create two tasks with the same priority and non-zero `timeslice`:
 
 ```c
-
 #include "heartos.h"
+#include <stdio.h>
 
-static uint32_t stackA[256];
-static uint32_t stackB[256];
+static uint32_t sa[2048], sb[2048];
+static void t1(void*){ for(;;){ puts("T1"); hrt_sleep(10); } }
+static void t2(void*){ for(;;){ puts("T2"); hrt_sleep(10); } }
 
-void TaskA(void* arg) {
-    for (;;) { hrt_sleep(500); }
-}
-
-void TaskB(void* arg) {
-    for (;;) { hrt_sleep(1000); }
-}
-
-int main(void) {
+int main(void){
     hrt_config_t cfg = { .tick_hz=1000, .policy=HRT_SCHED_PRIORITY_RR, .default_slice=5 };
     hrt_init(&cfg);
-
-    hrt_task_attr_t fast = { .priority=HRT_PRIO0, .timeslice=0 };
-    hrt_task_attr_t slow = { .priority=HRT_PRIO1, .timeslice=5 };
-
-    hrt_create_task(TaskA, NULL, stackA, 256, &fast);
-    hrt_create_task(TaskB, NULL, stackB, 256, &slow);
-
-    hrt_start(); // jump into scheduler (no effect with null port)
+    hrt_task_attr_t a = { .priority=HRT_PRIO1, .timeslice=5 };
+    hrt_create_task(t1, 0, sa, 2048, &a);
+    hrt_create_task(t2, 0, sb, 2048, &a);
+    hrt_start();
 }
 ```
-
-*** add other examples here ***
+You should see `T1` and `T2` alternate over time as their slices expire.

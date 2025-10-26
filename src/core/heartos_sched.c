@@ -5,10 +5,12 @@
 /* Core-private accessors from heartos_core.c */
 int   hrt__pick_next_ready(void);
 void  hrt__make_ready(int id);
+void  hrt__requeue_noreset(int id);
 int   hrt__get_current(void);
 void  hrt__set_current(int id);
 void  hrt__inc_tick(void);
 void  hrt__pend_context_switch(void);
+hrt_policy_t hrt__policy(void);
 
 /* Mirror of TCB; must match heartos_core.c */
 typedef struct {
@@ -42,6 +44,26 @@ void hrt__tick_isr(void){
         }
     }
 
-    /* Safe to request a rescheduling; ports decide when to actually switch */
+    /* RR time-slice accounting for the currently running task.
+       Note: Ports must not context-switch from ISR; we only pend a switch. */
+    int cur = hrt__get_current();
+    if (cur >= 0) {
+        hrt_tcb_t* ct = hrt__tcb(cur);
+        if (ct && ct->state == HRT_READY) {
+            hrt_policy_t pol = hrt__policy();
+            if ((pol == HRT_SCHED_RR || pol == HRT_SCHED_PRIORITY_RR) && ct->timeslice_cfg > 0) {
+                if (ct->slice_left > 0) {
+                    ct->slice_left--;
+                    if (ct->slice_left == 0) {
+                        /* Time slice expired: request reschedule. The actual
+                           requeue happens when the task yields/sleeps (safe ctx). */
+                        hrt__pend_context_switch();
+                    }
+                }
+            }
+        }
+    }
+
+    /* Also wake-driven changes may require a reschedule; ports decide when to switch */
     hrt__pend_context_switch();
 }

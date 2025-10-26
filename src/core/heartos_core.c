@@ -105,7 +105,8 @@ int hrt_create_task(hrt_task_fn fn, void* arg,
     hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
 
     t->state = HRT_READY;
-    t->slice_left = t->timeslice_cfg ? t->timeslice_cfg : g_default_slice;
+    /* timeslice_cfg already holds the effective slice (default applied if attr==NULL) */
+    t->slice_left = t->timeslice_cfg;
     rq_push(t->prio, (uint8_t)id);
     return id;
 }
@@ -128,6 +129,8 @@ void hrt_yield(void){
     if (g_current < 0) return;
     hrt_tcb_t* t = &g_tcbs[g_current];
     if (t->state == HRT_READY){
+        /* On yield, move to tail and refresh quantum (RR semantics). */
+        t->slice_left = t->timeslice_cfg;
         rq_push(t->prio, (uint8_t)g_current);
     }
     hrt__pend_context_switch();      /* request reschedule */
@@ -144,7 +147,16 @@ void hrt__make_ready(int id){
     hrt_tcb_t* t = &g_tcbs[id];
     if (t->state != HRT_READY){
         t->state = HRT_READY;
-        t->slice_left = t->timeslice_cfg ? t->timeslice_cfg : g_default_slice;
+        /* Reset slice strictly to task's configured value; 0 means cooperative */
+        t->slice_left = t->timeslice_cfg;
+        rq_push(t->prio, (uint8_t)id);
+    }
+}
+
+/* Requeue a READY task to the tail without modifying its slice/state. */
+void hrt__requeue_noreset(int id){
+    hrt_tcb_t* t = &g_tcbs[id];
+    if (t->state == HRT_READY){
         rq_push(t->prio, (uint8_t)id);
     }
 }
@@ -171,3 +183,19 @@ int        hrt__get_current(void){ return g_current; }
 void       hrt__set_current(int id){ g_current = id; }
 hrt_tcb_t* hrt__tcb(int id){ return &g_tcbs[id]; }
 void       hrt__inc_tick(void){ g_tick++; }
+hrt_policy_t hrt__policy(void){ return g_policy; }
+
+/* Called by the port when re-entering the scheduler from a task context. */
+void       hrt__on_scheduler_entry(void){
+    if (g_current < 0) return;
+    hrt_tcb_t* t = &g_tcbs[g_current];
+    if (t->state != HRT_READY) return;
+    hrt_policy_t pol = g_policy;
+    if ((pol == HRT_SCHED_RR || pol == HRT_SCHED_PRIORITY_RR) && t->timeslice_cfg > 0) {
+        if (t->slice_left == 0) {
+            /* Time slice expired: move running task to tail and refresh its quantum */
+            t->slice_left = t->timeslice_cfg;
+            rq_push(t->prio, (uint8_t)g_current);
+        }
+    }
+}

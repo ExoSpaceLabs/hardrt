@@ -16,22 +16,33 @@ extern "C" {
 #define HEARTOS_MAX_PRIO  4  /* 0..3 (0 is highest) */
 #endif
 
-    /* Version */
-    const char* hrt_version_string(void);
-    unsigned    hrt_version_u32(void);
-
-    /* Port identity */
-    const char* hrt_port_name(void);
-    int         hrt_port_id(void);
-
-
     typedef void (*hrt_task_fn)(void*);
 
-    typedef enum { HRT_READY=0, HRT_SLEEP, HRT_BLOCKED, HRT_UNUSED } hrt_state_t;
+    typedef enum { HRT_READY=0,
+        HRT_SLEEP,
+        HRT_BLOCKED,
+        HRT_UNUSED
+    } hrt_state_t;
 
-    typedef enum { HRT_SCHED_PRIORITY=0, HRT_SCHED_RR, HRT_SCHED_PRIORITY_RR } hrt_policy_t;
+    typedef enum { HRT_SCHED_PRIORITY=0,
+        HRT_SCHED_RR,
+        HRT_SCHED_PRIORITY_RR
+    } hrt_policy_t;
 
-    typedef enum { HRT_PRIO0=0, HRT_PRIO1, HRT_PRIO2, HRT_PRIO3 } hrt_prio_t;
+    typedef enum { HRT_PRIO0=0,
+        HRT_PRIO1,
+        HRT_PRIO2,
+        HRT_PRIO3,
+        HRT_PRIO4,
+        HRT_PRIO5,
+        HRT_PRIO6,
+        HRT_PRIO7,
+        HRT_PRIO8,
+        HRT_PRIO9,
+        HRT_PRIO10,
+        HRT_PRIO11,
+        HRT_PRIO12
+    } hrt_prio_t;
 
     typedef struct {
         uint32_t       tick_hz;        /* default: 1000 */
@@ -43,6 +54,14 @@ extern "C" {
         hrt_prio_t     priority;
         uint16_t       timeslice;      /* 0 = cooperative in class */
     } hrt_task_attr_t;
+
+    /* Version */
+    const char* hrt_version_string(void);
+    unsigned    hrt_version_u32(void);
+
+    /* Port identity */
+    const char* hrt_port_name(void);
+    int         hrt_port_id(void);
 
     /* Core API */
     int  hrt_init(const hrt_config_t* cfg);
