@@ -117,40 +117,9 @@ cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
 
 ---
 
-## 🧠 API Overview (C)
+## 🧠 API Overview
 
-```c
-
-/* Version */
-const char* hrt_version_string(void);
-unsigned    hrt_version_u32(void);
-
-/* Core */
-int  hrt_init(const hrt_config_t* cfg);
-int  hrt_create_task(hrt_task_fn fn, void* arg,
-                     uint32_t* stack_words, size_t n_words,
-                     const hrt_task_attr_t* attr);
-void hrt_start(void);
-
-/* Control */
-void     hrt_sleep(uint32_t ms);
-void     hrt_yield(void);
-uint32_t hrt_tick_now(void);
-
-/* Runtime tuning */
-void hrt_set_policy(hrt_policy_t p);
-void hrt_set_default_timeslice(uint16_t t);
-```
-
-Scheduler policies:
-```c
-
-typedef enum {
-    HRT_SCHED_PRIORITY,     // strict priority
-    HRT_SCHED_RR,           // equal-time round robin
-    HRT_SCHED_PRIORITY_RR   // priority + RR within same class
-} hrt_policy_t;
-```
+*** NOTE: Link to API_C.md for a more detailed overview for C and CPP when implemented. ***
 
 ---
 
@@ -173,38 +142,13 @@ The C++ target is `HeaRTOS::heartospp` and links the C core automatically.
 
 ## 🧪 Example
 
-```c
-
-#include "heartos.h"
-
-static uint32_t stackA[256];
-static uint32_t stackB[256];
-
-void TaskA(void* arg) {
-    for (;;) { hrt_sleep(500); }
-}
-
-void TaskB(void* arg) {
-    for (;;) { hrt_sleep(1000); }
-}
-
-int main(void) {
-    hrt_config_t cfg = { .tick_hz=1000, .policy=HRT_SCHED_PRIORITY_RR, .default_slice=5 };
-    hrt_init(&cfg);
-
-    hrt_task_attr_t fast = { .priority=HRT_PRIO0, .timeslice=0 };
-    hrt_task_attr_t slow = { .priority=HRT_PRIO1, .timeslice=5 };
-
-    hrt_create_task(TaskA, NULL, stackA, 256, &fast);
-    hrt_create_task(TaskB, NULL, stackB, 256, &slow);
-
-    hrt_start(); // jump into scheduler (no effect with null port)
-}
-```
+*** NOTE: Link to EXAMPLES_C.md for a more detailed overview for C and CPP when implemented. ***
 
 ---
 
 ## 🧱 Porting
+
+*** Move to PORTING.md main README should not have code, but should have diagrams and such describing the library? ***
 
 All hardware-specific logic lives in `/src/port/`.
 
