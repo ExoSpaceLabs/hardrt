@@ -1,3 +1,4 @@
+/* Test runner: registers all test groups and prints a PASS/FAIL summary. */
 #include "test_common.h"
 
 /* Global failure counter used by assertion macros */

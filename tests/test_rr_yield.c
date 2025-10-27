@@ -1,3 +1,4 @@
+/* Validates round-robin rotation fairness when tasks yield at the same priority. */
 #include "test_common.h"
 
 static volatile int g_yield_a = 0, g_yield_b = 0;

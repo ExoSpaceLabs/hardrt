@@ -1,3 +1,5 @@
+/* Verifies FIFO wake order within the same priority class when sleepers
+ * have different sleep durations. */
 #include "test_common.h"
 
 static volatile int g_order[4];

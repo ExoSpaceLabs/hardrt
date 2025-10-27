@@ -11,6 +11,70 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 [![CMake](https://img.shields.io/badge/CMake-≥3.16-orange)](#)
 [![Language](https://img.shields.io/badge/lang-C/C++17-lightgrey)](#)
 
+## 🤔 What is an RTOS? Why HeaRTOS?
+
+An RTOS (Real-Time Operating System) is a tiny scheduler and time base that lets you run multiple independent tasks while meeting timing constraints. Unlike a general-purpose OS, an RTOS prioritizes predictability over throughput: tasks run in well-defined order based on priority and time-slicing, with millisecond (or sub-millisecond) timing derived from a periodic system tick.
+
+When you need one
+- You have concurrent activities: sampling sensors, talking to peripherals, blinking status LEDs, serving a control loop.
+- Some activities must react within bounded time (tens of microseconds to a few milliseconds).
+- You want simple, composable tasks instead of a single giant loop with complex state.
+
+How HeaRTOS is different
+- Minimal core by design: static tasks, static stacks, no heap, no drivers — just scheduling, time, and a few knobs.
+- Deterministic behavior: fixed-priority and round-robin policies with clear rules; FIFO within a class.
+- Portable without baggage: the core is architecture-agnostic; small “ports” adapt ticks and context switch mechanics.
+- Transparent and teachable: compact code base intended to be read, understood, and verified with a host-side test suite.
+
+What HeaRTOS is not
+- Not a monolithic platform: it ships no HAL, filesystem, networking, or drivers.
+- Not preempt-everywhere: preemption depends on the selected port/policy; cooperative within a class remains a first-class mode.
+- Not a kitchen sink kernel: queues/semaphores/mailboxes are added only when they help the core remain minimal and predictable.
+
+At a glance vs typical RTOSes
+- Many RTOSes: rich feature sets, multiple allocators, dynamic objects, integrated middleware.
+- HeaRTOS: keep the heartbeat small — predictable scheduler, static tasks, portable ports, and tests. Pair it with exactly the libraries your product needs.
+
+Architecture (conceptual)
+```
++----------------------------+        Optional
+|        Your App            |<----+  C++ wrapper (heartospp)
+|  tasks()/drivers()/logic   |     |
++----------------------------+     |
+|        HeaRTOS Core        |     |
+|  scheduler + timebase      |     |
++----------------------------+     |
+|         Port Layer         |-----+  (posix, null, cortex_m)
+|  tick + context switching  |
++----------------------------+
+|     Hardware / Host OS     |
++----------------------------+
+```
+
+Scheduling flow (priority + RR)
+```
+Tick ISR -> hrt__tick_isr()
+  - advance tick
+  - wake sleepers whose wake_tick <= now
+  - decrement running task's slice (if RR)
+  - pend reschedule (do not switch here)
+
+Scheduler loop (safe context)
+  - if running task's slice expired: move it to tail of its ready queue and refresh slice
+  - pick next READY task by priority, FIFO within class
+  - context switch to selected task
+```
+
+Time & sleep flow
+```
+App calls hrt_sleep(ms)
+  -> core computes wake_tick = now + ceil(ms * tick_hz / 1000)
+  -> task state = SLEEP, removed from ready queue
+Tick source (port) periodically calls hrt__tick_isr()
+  -> sleepers reaching wake_tick become READY and rejoin their priority queue
+  -> scheduler is pended to run at a safe point
+```
+
 ## ✨ Features
 
 - **Pure C Core** — no dynamic allocation, no HAL dependencies.
@@ -41,126 +105,37 @@ heartos/
 
 ---
 
-## ⚙️ Build Instructions
+## 🚀 Quick Start
 
-### Prerequisites
-- A C compiler (GCC/Clang)
-- [CMake ≥ 3.16](https://cmake.org/)
-- (Optional) CLion or any IDE that supports CMake
-
-### Build from terminal
 ```bash
-
+# clone and configure (POSIX port)
 git clone https://github.com/<your-username>/heartos.git
-cd heartos
-mkdir build && cd build
-cmake -DHEARTOS_PORT=null -DHEARTOS_BUILD_EXAMPLES=ON ..
-cmake --build . -j$(nproc)
-```
-
-This will:
-- build the static library `libheartos.a`
-- compile the example program `examples/two_tasks/two_tasks`
-
-Run it:
-```bash
-
-./examples/two_tasks/two_tasks
-```
-
-Expected output (null port):
-```
-HeaRTOS version: 0.2.0 (0x000200), port: null (id=0)
-```
-
-> 💡 The `null` port is a stub — it doesn’t start a tick or switch contexts. `hrt_start()` returns immediately, so tasks do not run here. Use the `posix` port to see live scheduling on a desktop.
-
-### Run with POSIX port (desktop)
-Build the library and example with the POSIX port to see live scheduling:
-```bash
-# from a build directory
+cd heartos && mkdir build && cd build
 cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
 cmake --build . --target two_tasks -j
 ./examples/two_tasks/two_tasks
 ```
-Expected output (excerpt, continues indefinitely):
-```
-HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
-[A] tick count [0]
-[B] tock -----
-[A] tick count [1]
-[A] tick count [2]
-[B] tock -----
-...
-```
 
-### Install (optional)
-You can install the library and headers to a prefix to consume from other projects:
-```bash
-# locally
-cmake --install . --prefix "$PWD/install"
-# system wide
-sudo cmake --install .
-```
-This installs:
-- archive `libheartos.a`
-- public headers from `inc/`
-- generated header `heartos_version.h`
-- CMake package files under `lib/cmake/HeaRTOS`
-
-Consume from another CMake project:
-```cmake
-
-find_package(HeaRTOS REQUIRED)
-add_executable(app main.c)
-target_link_libraries(app PRIVATE HeaRTOS::heartos)
-```
-
----
-
-## 🧩 CMake Options
-
-| Option                   | Default | Description                                       |
-|:-------------------------|:--------|:--------------------------------------------------|
-| `HEARTOS_PORT`           | `null`  | Select build port: `null`, `posix`, or `cortex_m` |
-| `HEARTOS_ENABLE_CPP`     | `OFF`   | Build C++17 header-only wrapper (`heartospp`)     |
-| `HEARTOS_BUILD_EXAMPLES` | `ON`    | Build bundled demo projects                       |
-
-Example:
-```bash
-
-cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
-```
+- For full build/install options and using `find_package(HeaRTOS)`, see docs/BUILD.md.
+- For the POSIX test suite, see docs/TESTS_POSIX.md.
 
 ---
 
 ## 🧪 Tests (POSIX)
 
-HeaRTOS is validated on the POSIX host port with a deterministic, dependency‑free test suite that runs as a single executable (`heartos_tests`). It checks identity, sleep/wake timing, round‑robin and priority scheduling semantics, runtime tuning, FIFO ready‑queue order, tick‑rate independence, and more.
+Deterministic host-side suite in a single executable `heartos_tests` validating identity, sleep/wake timing, RR/priority semantics, runtime tuning, FIFO order, tick‑rate independence, wraparound, and more.
 
-- The tests require `HEARTOS_TEST_HOOKS` and CMake enables it automatically for POSIX when `HEARTOS_BUILD_TESTS=ON`.
-- How to build/run and full coverage are described here: [Posix tests](docs/TESTS_POSIX.md)
+See docs/TESTS_POSIX.md for setup and full coverage.
 
-## 🧠 API Overview
+## 🧠 API docs
 
-See [C API](docs/API_C.md) for a detailed C API reference, including configuration, task creation, scheduling policies, sleep/yield, runtime tuning, and version/port identity.
+- C API overview: docs/API_C.md
+- Doxygen/comment style and generating HTML docs: docs/DOCUMENTATION.md
 
 ---
 
 ### C++ wrapper (optional)
-Enable with CMake option `-DHEARTOS_ENABLE_CPP=ON` and include the header-only wrapper `cpp/heartospp.hpp`:
-```cpp
-
-#include <heartospp.hpp>
-
-void my_task(void*){}
-
-int create_task_cpp(){
-    static uint32_t stack[256];
-    return heartos::Task::create(my_task, nullptr, stack, 256, HRT_PRIO1, /*slice*/5);
-}
-```
-The C++ target is `HeaRTOS::heartospp` and links the C core automatically.
+See docs/CPP.md for enabling the C++ target and a short usage example.
 
 ---
 
@@ -172,34 +147,20 @@ See docs/EXAMPLES_C.md for a walkthrough of the bundled C example, build/run ins
 
 ## 🧱 Porting
 
-All hardware-specific logic lives in `/src/port/`. A port provides tick, context setup/switching, and integrates with the core scheduler. See docs/PORTING.md for the full contract, required hooks, and important rules (no switching from ISR, mask ticks during swaps, and apply RR rotation at scheduler re-entry).
-
-Current ports:
-- `port/null/` → stub for build-time validation; no tick, no scheduling.
-- `port/posix/` → Linux hosted simulation using `setitimer` + `SIGALRM` and `ucontext` (available).
-- `port/cortex_m/` → planned.
+Ports live under `/src/port/` and integrate tick, context setup/switch, and the core scheduler.
+See docs/PORTING.md for the full contract, required hooks, and integration rules.
 
 ---
 
 ## 📦 Module status
 
-- `inc/heartos_sem.h` — placeholder for binary semaphores (API not implemented yet)
-- `inc/heartos_queue.h` — placeholder for simple SPSC queues (API not implemented yet)
-- `inc/heartos_time.h` — exposes `hrt__tick_isr()` for ports to call on every tick
-- `inc/heartos_version.h` — generated by CMake into `build/generated/heartos_version.h` and installed alongside public headers
-
-Current version: `0.2.0` (see `hrt_version_string()` and `hrt_version_u32()`).
+See docs/MODULE_STATUS.md for current components and generated headers.
 
 ---
 
 ## 🚀 Roadmap
 
-- [x] POSIX port for Linux simulation
-- [ ] Cortex-M port (STM32H7 target)
-- [ ] Binary semaphores and queues
-- [ ] Dual-core support (AMP message passing)
-- [x] Unit test harness
-- [ ] Docs and diagrams
+See docs/ROADMAP.md for planned features and progress.
 
 ---
 

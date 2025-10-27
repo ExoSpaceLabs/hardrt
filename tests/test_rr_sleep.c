@@ -1,3 +1,4 @@
+/* Validates round-robin fairness when tasks perform short sleeps at same priority. */
 #include "test_common.h"
 
 static volatile int g_runs_a = 0, g_runs_b = 0;

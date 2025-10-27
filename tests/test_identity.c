@@ -1,3 +1,4 @@
+/* Verifies version and port identity APIs report expected values on POSIX. */
 #include "test_common.h"
 
 static void test_version_and_port_identity(void){

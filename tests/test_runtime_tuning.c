@@ -1,3 +1,4 @@
+/* Validates runtime tuning: policy switch RR->PRIORITY and default slice changes. */
 #include "test_common.h"
 
 /* Control task to switch policy at runtime */

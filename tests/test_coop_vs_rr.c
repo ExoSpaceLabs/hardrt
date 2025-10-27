@@ -1,3 +1,5 @@
+/* Ensures a cooperative task (no yield) starves an RR peer at the same priority
+ * until it voluntarily sleeps; after a sleep, RR peer must make progress. */
 #include "test_common.h"
 
 static volatile int g_coopA_iters = 0;

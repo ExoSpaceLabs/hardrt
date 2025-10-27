@@ -1,3 +1,5 @@
+/* Verifies creation limits: max tasks enforced, min stack size rejected,
+ * and default attributes inherited when attr==NULL. */
 #include "test_common.h"
 
 /* Helpers */

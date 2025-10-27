@@ -1,3 +1,4 @@
+/* Validates tick-rate configurability (e.g., 200 Hz) and ms→tick conversion accuracy. */
 #include "test_common.h"
 
 static volatile int g_200hz_wakes = 0;

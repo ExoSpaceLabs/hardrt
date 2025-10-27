@@ -1,3 +1,6 @@
+/* Legacy monolithic test suite used during early development; kept for reference.
+ * Current tests are split into focused groups under tests/test_*.c and executed
+ * by test_main.c. */
 #include "heartos.h"
 #include <stdio.h>
 #include <string.h>

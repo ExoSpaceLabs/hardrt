@@ -1,3 +1,4 @@
+/* Exercises sleep/wake timing and deterministic scheduler stop via test hook. */
 #include "test_common.h"
 
 static volatile int g_wake_count = 0;

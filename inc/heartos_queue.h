@@ -5,7 +5,12 @@
 extern "C" {
 #endif
 
-    /* Placeholder for future SPSC ring API */
+    /**
+     * @brief Placeholder header for future queue primitives.
+     * @note API is not yet available. Planned: lightweight SPSC ring buffer and
+     *       simple mailboxes. This header exists to reserve the namespace and
+     *       group future declarations in one place.
+     */
 
 #ifdef __cplusplus
 }

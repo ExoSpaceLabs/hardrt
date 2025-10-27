@@ -1,3 +1,5 @@
+/* Tests strict priority dominance: with PRIORITY policy, lower-priority tasks
+ * must not run while a higher-priority READY task keeps yielding. */
 #include "test_common.h"
 
 static volatile int g_prio_high_iters = 0;
