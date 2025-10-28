@@ -51,7 +51,7 @@ flowchart TB
   end
 
   subgraph "Application"
-    A1[tasks()/drivers()/logic]
+    A1["tasks()/drivers()/logic"]
   end
 
   A1 --> C1
@@ -73,14 +73,14 @@ flowchart LR
     T6 --> T7{slice==0?}
     T7 -- yes --> T8[pend reschedule]
     T7 -- no --> T9[no-op]
-    T8 --> T10[pend reschedule (also for wakes)]
+    T8 --> T10["pend reschedule (also for wakes)"]
     T9 --> T10
   end
 
   subgraph "Scheduler loop (safe context)"
     S1{slice expired?}
     S1 -- yes --> S2[move running to tail of its ready queue\n                     + refresh slice]
-    S1 -- no  --> S3[pick highest-prio READY (FIFO in class)]
+    S1 -- no  --> S3["pick highest-prio READY (FIFO in class)"]
     S2 --> S3 --> S4[context switch]
   end
 
@@ -93,14 +93,14 @@ sequenceDiagram
   autonumber
   participant App as App Task
   participant Core as HeaRTOS Core
-  participant Port as Port (Tick)
+  participant Port as "Port (Tick)"
 
-  App->>Core: hrt_sleep(ms)
+  App->>Core: "hrt_sleep(ms)"
   Core-->>App: state = SLEEP, remove from READY
-  Note right of Core: wake_tick = now + ceil(ms * hz / 1000)
+  Note right of Core: "wake_tick = now + ceil(ms * hz / 1000)"
   Port-->>Core: periodic hrt__tick_isr()
   Core-->>Core: advance tick; if wake_tick <= now -> make READY
-  Core-->>App: READY re-enters priority queue (FIFO within prio)
+  Core-->>App: "READY re-enters priority queue (FIFO within prio)"
   Core-->>App: scheduled when selected by scheduler
 ```
 
@@ -129,7 +129,7 @@ flowchart TB
 ### Round‑robin timeline (decision: use Gantt)
 ```mermaid
 gantt
-  title Round‑Robin within one priority (slice = 2 ticks)
+  title "Round‑Robin within one priority (slice = 2 ticks)"
   dateFormat  X
   axisFormat  %L
 
@@ -149,11 +149,11 @@ gantt
   dateFormat  X
   axisFormat  %L
 
-  section P1 (lower priority)
+  section "P1 (lower priority)"
   P1-Task :active, 0, 6
   P1-Task : 10, 6
 
-  section P0 (higher priority)
+  section "P0 (higher priority)"
   P0-Task : 6, 4
 ```
 Explanation:
