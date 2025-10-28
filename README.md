@@ -98,7 +98,7 @@ sequenceDiagram
   App->>Core: hrt_sleep(ms)
   Core-->>App: state = SLEEP, remove from READY
   Port-->>Core: periodic hrt__tick_isr()
-  Core-->>Core: advance tick; if wake_tick lte now then make READY
+  Core-->>Core: advance tick, if wake_tick lte now then make READY
   Core-->>App: READY re-enters priority queue (FIFO within prio)
   Core-->>App: scheduled when selected by scheduler
 ```
