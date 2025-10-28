@@ -67,10 +67,9 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 ```mermaid
 sequenceDiagram
   autonumber
-  participant T1 as "Task T1"
-  participant T2 as "Task T2"
+  participant T1 as Task T1
+  participant T2 as Task T2
 
-  Note over T1,T2: tick_hz=1000 (1ms), policy=HRT_SCHED_PRIORITY_RR, slice=5ms. Self-transitions mean continue running; handoff at slice expiry.
 
   T1->>T1: T0 running
   T1->>T1: T1 running
@@ -95,7 +94,6 @@ sequenceDiagram
   T2->>T2: T17 running
   T2->>T2: T18 running
   T2->>T2: T19 running
-  Note over T1,T2: Pattern continues with handoffs at T20, T25, T30
 ```
 Caption:
 - Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
@@ -106,10 +104,9 @@ Caption:
 ```mermaid
 sequenceDiagram
   autonumber
-  participant B as "Task B (lower)"
-  participant A as "Task A (higher)"
+  participant B as Task B (lower)
+  participant A as Task A (higher)
 
-  Note over A,B: tick_hz=1000 (1ms). B runs from T0. A becomes READY at T12 and preempts. A completes by T18; B resumes. Second preemption at T30; A completes by T36.
 
   B->>B: T0 running
   B->>B: T1 running

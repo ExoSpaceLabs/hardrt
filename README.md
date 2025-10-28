@@ -91,17 +91,16 @@ Time & sleep flow
 ```mermaid
 sequenceDiagram
   autonumber
-  participant App as "App Task"
-  participant Core as "HeaRTOS Core"
-  participant Port as "Port (Tick)"
+  participant App as App Task
+  participant Core as HeaRTOS Core
+  participant Port as Port (Tick)
 
-  App->>Core: "hrt_sleep(ms)"
-  Core-->>App: "state = SLEEP, remove from READY"
-  Note right of Core: "wake_tick = now + ceil(ms * hz / 1000)"
-  Port-->>Core: "periodic hrt__tick_isr()"
-  Core-->>Core: "advance tick; if wake_tick ≤ now then make READY"
-  Core-->>App: "READY re-enters priority queue (FIFO within prio)"
-  Core-->>App: "scheduled when selected by scheduler"
+  App->>Core: hrt_sleep(ms)
+  Core-->>App: state = SLEEP, remove from READY
+  Port-->>Core: periodic hrt__tick_isr()
+  Core-->>Core: advance tick; if wake_tick lte now then make READY
+  Core-->>App: READY re-enters priority queue (FIFO within prio)
+  Core-->>App: scheduled when selected by scheduler
 ```
 
 ### Priority queues and within-class round-robin
@@ -130,11 +129,10 @@ flowchart TB
 ```mermaid
 sequenceDiagram
   autonumber
-  participant T1 as "Task T1"
-  participant T2 as "Task T2"
-  participant T3 as "Task T3"
+  participant T1 as Task T1
+  participant T2 as Task T2
+  participant T3 as Task T3
 
-  Note over T1,T3: tick_hz=1000 (1ms); policy=HRT_SCHED_RR; slice=2ms
 
   T1->>T1: T0 running
   T1->>T1: T1 running
@@ -159,10 +157,9 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant P1 as "Task P1 (lower)"
-  participant P0 as "Task P0 (higher)"
+  participant P1 as Task P1 (lower)
+  participant P0 as Task P0 (higher)
 
-  Note over P1,P0: tick_hz=1000 (1ms). P1 runs from T0. P0 becomes READY at T6 and preempts. P0 completes by T10; P1 resumes.
 
   P1->>P1: T0 running
   P1->>P1: T1 running
@@ -178,7 +175,11 @@ sequenceDiagram
   P0-->>P1: yield at T10 (resume lower)
 
   P1->>P1: T11 running
-  P1->>P1: T12 to T16 running (continues)
+  P1->>P1: T12 running
+  P1->>P1: T13 running
+  P1->>P1: T14 running
+  P1->>P1: T15 running
+  P1->>P1: T16 running
 ```
 Explanation:
 - In RR, each task keeps the CPU for its slice, then a handoff occurs at the next tick boundary.
