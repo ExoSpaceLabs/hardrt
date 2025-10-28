@@ -91,17 +91,17 @@ Time & sleep flow
 ```mermaid
 sequenceDiagram
   autonumber
-  participant App as App Task
-  participant Core as HeaRTOS Core
+  participant App as "App Task"
+  participant Core as "HeaRTOS Core"
   participant Port as "Port (Tick)"
 
   App->>Core: "hrt_sleep(ms)"
-  Core-->>App: state = SLEEP, remove from READY
+  Core-->>App: "state = SLEEP, remove from READY"
   Note right of Core: "wake_tick = now + ceil(ms * hz / 1000)"
-  Port-->>Core: periodic hrt__tick_isr()
-  Core-->>Core: advance tick; if wake_tick <= now -> make READY
+  Port-->>Core: "periodic hrt__tick_isr()"
+  Core-->>Core: "advance tick; if wake_tick ≤ now then make READY"
   Core-->>App: "READY re-enters priority queue (FIFO within prio)"
-  Core-->>App: scheduled when selected by scheduler
+  Core-->>App: "scheduled when selected by scheduler"
 ```
 
 ### Priority queues and within-class round-robin
@@ -126,39 +126,32 @@ flowchart TB
   Q0T1 -->|FIFO within same priority| CPU
 ```
 
-### Round‑robin timeline (decision: use Gantt)
+### Round‑robin timeline (decision: use Timeline)
 ```mermaid
-gantt
-  title "Round‑Robin within one priority (slice = 2 ticks)"
-  dateFormat  X
-  axisFormat  %L
-
-  section Tasks
-  T1 :active, 0, 2
-  T2 : 2, 2
-  T3 : 4, 2
-  T1 : 6, 2
-  T2 : 8, 2
-  T3 : 10, 2
+timeline
+  title "Round‑Robin within one priority (slice = 2 ms) — tick_hz = 1000"
+  section "HRT_PRIO0"
+  0-2 ms: T1 runs
+  2-4 ms: T2 runs
+  4-6 ms: T3 runs
+  6-8 ms: T1 runs
+  8-10 ms: T2 runs
+  10-12 ms: T3 runs
 ```
 
 ### Priority preemption timeline (higher preempts lower)
 ```mermaid
-gantt
-  title Priority preemption (P0 > P1), tick_hz arbitrary
-  dateFormat  X
-  axisFormat  %L
-
+timeline
+  title "Priority preemption (P0 > P1) — tick_hz = 1000"
   section "P1 (lower priority)"
-  P1-Task :active, 0, 6
-  P1-Task : 10, 6
-
+  0-6 ms: P1 runs
+  10-16 ms: P1 runs
   section "P0 (higher priority)"
-  P0-Task : 6, 4
+  6-10 ms: P0 runs
 ```
 Explanation:
-- P1 starts running; at tick 6, a P0 task becomes READY and preempts P1.
-- P0 runs from 6–10; when it finishes/blocks, P1 resumes at 10 and continues.
+- P1 starts running; at 6 ms, a P0 task becomes READY and preempts P1.
+- P0 runs from 6–10 ms; when it finishes/blocks, P1 resumes at 10 ms and continues until 16 ms.
 - Within a given priority, rotation is FIFO; across priorities, higher wins.
 
 ## ✨ Features
