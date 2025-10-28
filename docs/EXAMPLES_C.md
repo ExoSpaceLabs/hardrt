@@ -66,7 +66,7 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 ### Round‑robin within one priority (Gantt)
 ```mermaid
 gantt
-  title RR example (two tasks, same priority, slice=5 ticks)
+  title RR example (two tasks, same priority, slice = 5 ticks)
   dateFormat  X
   axisFormat  %L
 
@@ -75,7 +75,13 @@ gantt
   T2 : 5, 5
   T1 : 10, 5
   T2 : 15, 5
+  T1 : 20, 5
+  T2 : 25, 5
 ```
+Caption:
+- Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
+- Two READY tasks at the same priority with `timeslice=5` ticks. No sleeps/blocks during the shown window.
+- Rotation is FIFO and contiguous: T1 0–5, T2 5–10, T1 10–15, T2 15–20, T1 20–25, T2 25–30.
 
 ### Priority preemption (Gantt)
 ```mermaid
@@ -85,13 +91,15 @@ gantt
   axisFormat  %L
 
   section B (lower priority)
-  B-task :active, 0, 8
-  B-task : 14, 6
+  B-task :active, 0, 12
+  B-task : 18, 12
+  B-task : 36, 6
 
   section A (higher priority)
-  A-task : 8, 6
+  A-task : 12, 6
+  A-task : 30, 6
 ```
-Explanation:
-- B starts; at tick 8, A becomes READY and preempts B.
-- A runs 8–14. When A sleeps/exits, B resumes at 14.
-- Within the same priority, tasks RR by slice; across priorities, higher wins.
+Caption:
+- B (lower) runs initially. At tick 12, A (higher) becomes READY and preempts B; A runs 12–18.
+- B resumes 18–30 until A arrives again at 30 and preempts 30–36; B then resumes at 36.
+- Shows two preemption events to make the behavior unmistakable (higher priority always wins when READY).

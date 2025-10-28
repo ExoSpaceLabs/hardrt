@@ -38,33 +38,32 @@ At a glance vs typical RTOSes
 Architecture (conceptual)
 ```mermaid
 flowchart TB
-  subgraph HW[Hardware / Host OS]
+  subgraph "Hardware / Host OS"
+    H[HW]
   end
 
-  subgraph PORT[Port Layer]
+  subgraph "Port Layer"
     P1[Tick source + ISR glue] --> P2[Context save/restore]
   end
 
-  subgraph CORE[HeaRTOS Core]
+  subgraph "HeaRTOS Core"
     C1[Scheduler] --> C2[Time base]
   end
 
-  subgraph APP[Your App]
+  subgraph "Application"
     A1[tasks()/drivers()/logic]
   end
 
-  APP --> CORE
-  CORE --> PORT
-  PORT --> HW
+  A1 --> C1
+  C1 --> P1
+  P2 --> H
 
-  classDef box fill:#f9f9f9,stroke:#bbb,rx:6,ry:6;
-  class APP,CORE,PORT,HW box;
 ```
 
 Scheduling flow (priority + RR)
 ```mermaid
 flowchart LR
-  subgraph TickISR[Tick ISR: hrt__tick_isr()]
+  subgraph "Tick ISR: hrt__tick_isr()"
     T1[inc tick] --> T2{Any sleepers due?}
     T2 -- yes --> T3[wake: move to READY]
     T2 -- no --> T4[ ]
@@ -78,14 +77,14 @@ flowchart LR
     T9 --> T10
   end
 
-  subgraph Sched[Scheduler loop (safe context)]
+  subgraph "Scheduler loop (safe context)"
     S1{slice expired?}
     S1 -- yes --> S2[move running to tail of its ready queue\n                     + refresh slice]
     S1 -- no  --> S3[pick highest-prio READY (FIFO in class)]
     S2 --> S3 --> S4[context switch]
   end
 
-  TickISR -->|pend| Sched
+  T10 -->|pend| S1
 ```
 
 Time & sleep flow
@@ -108,28 +107,23 @@ sequenceDiagram
 ### Priority queues and within-class round-robin
 ```mermaid
 flowchart TB
-  subgraph PQ0[Priority 0 (highest)]
+  subgraph "Priority 0 (highest)"
     direction LR
     Q0T1[Task P0-A] --> Q0T2[Task P0-B] --> Q0T3[Task P0-C]
   end
 
-  subgraph PQ1[Priority 1]
+  subgraph "Priority 1"
     direction LR
     Q1T1[Task P1-A] --> Q1T2[Task P1-B]
   end
 
-  subgraph PQ2[Priority 2]
+  subgraph "Priority 2"
     direction LR
     Q2T1[Task P2-A]
   end
 
-  CPU[[CPU]] -->|pick next READY| PQ0
-  PQ0 -->|FIFO within same priority| CPU
-  note right of PQ0: Round‑Robin if timeslice>0
-
-  style PQ0 fill:#eef,stroke:#99f,rx:6,ry:6
-  style PQ1 fill:#efe,stroke:#9f9,rx:6,ry:6
-  style PQ2 fill:#fee,stroke:#f99,rx:6,ry:6
+  CPU[[CPU]] -->|pick next READY| Q0T1
+  Q0T1 -->|FIFO within same priority| CPU
 ```
 
 ### Round‑robin timeline (decision: use Gantt)
