@@ -134,26 +134,25 @@ sequenceDiagram
   participant T2 as "Task T2"
   participant T3 as "Task T3"
 
-  Note over T1,T3: "tick_hz = 1000 (1 tick = 1 ms), policy = HRT_SCHED_RR, slice = 2 ms"
-  Note over T1,T3: "Self-transitions show per-tick continuity; handoffs at T2, T4, T6, ..."
+  Note over T1,T3: tick_hz=1000 (1ms); policy=HRT_SCHED_RR; slice=2ms
 
-  T1->>T1: "T0 running"
-  T1->>T1: "T1 running"
-  T1-->>T2: "handoff at T2 (slice expired)"
+  T1->>T1: T0 running
+  T1->>T1: T1 running
+  T1-->>T2: handoff at T2 (slice expired)
 
-  T2->>T2: "T3 running"
-  T2-->>T3: "handoff at T4 (slice expired)"
+  T2->>T2: T3 running
+  T2-->>T3: handoff at T4 (slice expired)
 
-  T3->>T3: "T5 running"
-  T3-->>T1: "handoff at T6 (slice expired)"
+  T3->>T3: T5 running
+  T3-->>T1: handoff at T6 (slice expired)
 
-  T1->>T1: "T7 running"
-  T1-->>T2: "handoff at T8 (slice expired)"
+  T1->>T1: T7 running
+  T1-->>T2: handoff at T8 (slice expired)
 
-  T2->>T2: "T9 running"
-  T2-->>T3: "handoff at T10 (slice expired)"
+  T2->>T2: T9 running
+  T2-->>T3: handoff at T10 (slice expired)
 
-  T3->>T3: "T11 running"
+  T3->>T3: T11 running
 ```
 
 ### Priority preemption (sequence with tick handoffs)
@@ -163,24 +162,23 @@ sequenceDiagram
   participant P1 as "Task P1 (lower)"
   participant P0 as "Task P0 (higher)"
 
-  Note over P1,P0: "tick_hz = 1000 (1 tick = 1 ms)"
-  Note over P1,P0: "P1 runs; P0 becomes READY at T6 (preempts). P0 completes by T10; P1 resumes."
+  Note over P1,P0: tick_hz=1000 (1ms). P1 runs from T0. P0 becomes READY at T6 and preempts. P0 completes by T10; P1 resumes.
 
-  P1->>P1: "T0 running"
-  P1->>P1: "T1 running"
-  P1->>P1: "T2 running"
-  P1->>P1: "T3 running"
-  P1->>P1: "T4 running"
-  P1->>P1: "T5 running"
+  P1->>P1: T0 running
+  P1->>P1: T1 running
+  P1->>P1: T2 running
+  P1->>P1: T3 running
+  P1->>P1: T4 running
+  P1->>P1: T5 running
 
-  P1-->>P0: "preempt at T6 (higher priority READY)"
+  P1-->>P0: preempt at T6 (higher priority READY)
 
-  P0->>P0: "T7 running"
-  P0->>P0: "T8 running"
-  P0-->>P1: "yield/done at T10 (resume lower)"
+  P0->>P0: T7 running
+  P0->>P0: T8 running
+  P0-->>P1: yield at T10 (resume lower)
 
-  P1->>P1: "T11 running"
-  P1->>P1: "T12..T16 running (continues)"
+  P1->>P1: T11 running
+  P1->>P1: T12 to T16 running (continues)
 ```
 Explanation:
 - In RR, each task keeps the CPU for its slice, then a handoff occurs at the next tick boundary.
