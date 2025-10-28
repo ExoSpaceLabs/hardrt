@@ -63,36 +63,105 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 
 ## Visualizing scheduling
 
-### Round‑robin within one priority (Timeline)
+### Round‑robin within one priority (Sequence at tick times)
 ```mermaid
-timeline
-  title "RR example (two tasks, same priority, slice = 5 ms) — tick_hz = 1000"
-  section "HRT_PRIO1"
-  0-5 ms: T1 runs
-  5-10 ms: T2 runs
-  10-15 ms: T1 runs
-  15-20 ms: T2 runs
-  20-25 ms: T1 runs
-  25-30 ms: T2 runs
+sequenceDiagram
+  autonumber
+  participant T1 as "Task T1"
+  participant T2 as "Task T2"
+
+  Note over T1,T2: "tick_hz = 1000 (1 tick = 1 ms), policy = HRT_SCHED_PRIORITY_RR, slice = 5 ms"
+  Note over T1,T2: "Self-transitions = continue running this tick; handoff message at slice expiry"
+
+  T1->>T1: "T0 running"
+  T1->>T1: "T1 running"
+  T1->>T1: "T2 running"
+  T1->>T1: "T3 running"
+  T1->>T1: "T4 running"
+  T1-->>T2: "handoff at T5 (slice expired)"
+
+  T2->>T2: "T6 running"
+  T2->>T2: "T7 running"
+  T2->>T2: "T8 running"
+  T2->>T2: "T9 running"
+  T2-->>T1: "handoff at T10 (slice expired)"
+
+  T1->>T1: "T11 running"
+  T1->>T1: "T12 running"
+  T1->>T1: "T13 running"
+  T1->>T1: "T14 running"
+  T1-->>T2: "handoff at T15 (slice expired)"
+
+  T2->>T2: "T16 running"
+  T2->>T2: "T17 running"
+  T2->>T2: "T18 running"
+  T2->>T2: "T19 running"
+  Note over T1,T2: "Pattern continues: handoffs at T20, T25, T30, ..."
 ```
 Caption:
 - Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
-- Two READY tasks at the same priority with `timeslice=5 ms`. No sleeps/blocks during the shown window.
-- Rotation is FIFO and contiguous: T1 0–5 ms, T2 5–10 ms, T1 10–15 ms, T2 15–20 ms, T1 20–25 ms, T2 25–30 ms.
+- Two READY tasks with `timeslice=5 ms`. Handoffs occur exactly at T5, T10, T15, ...
+- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
 
-### Priority preemption (Timeline)
+### Priority preemption (Sequence at tick times)
 ```mermaid
-timeline
-  title "Priority preemption (A higher than B) — tick_hz = 1000"
-  section "B (lower priority)"
-  0-12 ms: B runs
-  18-30 ms: B runs
-  36-42 ms: B runs
-  section "A (higher priority)"
-  12-18 ms: A runs
-  30-36 ms: A runs
+sequenceDiagram
+  autonumber
+  participant B as "Task B (lower)"
+  participant A as "Task A (higher)"
+
+  Note over A,B: "tick_hz = 1000 (1 tick = 1 ms)"
+  Note over A,B: "B runs; A becomes READY at T12 (preempts). A completes by T18; B resumes. Second preemption at T30; A completes by T36."
+
+  B->>B: "T0 running"
+  B->>B: "T1 running"
+  B->>B: "T2 running"
+  B->>B: "T3 running"
+  B->>B: "T4 running"
+  B->>B: "T5 running"
+  B->>B: "T6 running"
+  B->>B: "T7 running"
+  B->>B: "T8 running"
+  B->>B: "T9 running"
+  B->>B: "T10 running"
+  B->>B: "T11 running"
+
+  B-->>A: "preempt at T12 (higher priority READY)"
+
+  A->>A: "T13 running"
+  A->>A: "T14 running"
+  A->>A: "T15 running"
+  A->>A: "T16 running"
+  A-->>B: "yield/done at T18 (resume lower)"
+
+  B->>B: "T19 running"
+  B->>B: "T20 running"
+  B->>B: "T21 running"
+  B->>B: "T22 running"
+  B->>B: "T23 running"
+  B->>B: "T24 running"
+  B->>B: "T25 running"
+  B->>B: "T26 running"
+  B->>B: "T27 running"
+  B->>B: "T28 running"
+  B->>B: "T29 running"
+
+  B-->>A: "preempt at T30 (higher priority READY)"
+
+  A->>A: "T31 running"
+  A->>A: "T32 running"
+  A->>A: "T33 running"
+  A->>A: "T34 running"
+  A-->>B: "yield/done at T36 (resume lower)"
+
+  B->>B: "T37 running"
+  B->>B: "T38 running"
+  B->>B: "T39 running"
+  B->>B: "T40 running"
+  B->>B: "T41 running"
+  B->>B: "T42 running"
 ```
 Caption:
-- B (lower) runs initially. At 12 ms, A (higher) becomes READY and preempts B; A runs 12–18 ms.
-- B resumes 18–30 ms until A arrives again at 30 ms and preempts 30–36 ms; B then resumes at 36 ms.
-- Shows two preemption events to make the behavior unmistakable (higher priority always wins when READY).
+- Two preemption events are shown explicitly: at T12 and T30 when A arrives (higher priority preempts B).
+- A yields/completes at T18 and T36, allowing B to resume.
+- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.

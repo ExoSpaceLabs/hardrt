@@ -126,33 +126,66 @@ flowchart TB
   Q0T1 -->|FIFO within same priority| CPU
 ```
 
-### Round‑robin timeline (decision: use Timeline)
+### Round‑robin (sequence with tick handoffs)
 ```mermaid
-timeline
-  title "Round‑Robin within one priority (slice = 2 ms) — tick_hz = 1000"
-  section "HRT_PRIO0"
-  0-2 ms: T1 runs
-  2-4 ms: T2 runs
-  4-6 ms: T3 runs
-  6-8 ms: T1 runs
-  8-10 ms: T2 runs
-  10-12 ms: T3 runs
+sequenceDiagram
+  autonumber
+  participant T1 as "Task T1"
+  participant T2 as "Task T2"
+  participant T3 as "Task T3"
+
+  Note over T1,T3: "tick_hz = 1000 (1 tick = 1 ms), policy = HRT_SCHED_RR, slice = 2 ms"
+  Note over T1,T3: "Self-transitions show per-tick continuity; handoffs at T2, T4, T6, ..."
+
+  T1->>T1: "T0 running"
+  T1->>T1: "T1 running"
+  T1-->>T2: "handoff at T2 (slice expired)"
+
+  T2->>T2: "T3 running"
+  T2-->>T3: "handoff at T4 (slice expired)"
+
+  T3->>T3: "T5 running"
+  T3-->>T1: "handoff at T6 (slice expired)"
+
+  T1->>T1: "T7 running"
+  T1-->>T2: "handoff at T8 (slice expired)"
+
+  T2->>T2: "T9 running"
+  T2-->>T3: "handoff at T10 (slice expired)"
+
+  T3->>T3: "T11 running"
 ```
 
-### Priority preemption timeline (higher preempts lower)
+### Priority preemption (sequence with tick handoffs)
 ```mermaid
-timeline
-  title "Priority preemption (P0 > P1) — tick_hz = 1000"
-  section "P1 (lower priority)"
-  0-6 ms: P1 runs
-  10-16 ms: P1 runs
-  section "P0 (higher priority)"
-  6-10 ms: P0 runs
+sequenceDiagram
+  autonumber
+  participant P1 as "Task P1 (lower)"
+  participant P0 as "Task P0 (higher)"
+
+  Note over P1,P0: "tick_hz = 1000 (1 tick = 1 ms)"
+  Note over P1,P0: "P1 runs; P0 becomes READY at T6 (preempts). P0 completes by T10; P1 resumes."
+
+  P1->>P1: "T0 running"
+  P1->>P1: "T1 running"
+  P1->>P1: "T2 running"
+  P1->>P1: "T3 running"
+  P1->>P1: "T4 running"
+  P1->>P1: "T5 running"
+
+  P1-->>P0: "preempt at T6 (higher priority READY)"
+
+  P0->>P0: "T7 running"
+  P0->>P0: "T8 running"
+  P0-->>P1: "yield/done at T10 (resume lower)"
+
+  P1->>P1: "T11 running"
+  P1->>P1: "T12..T16 running (continues)"
 ```
 Explanation:
-- P1 starts running; at 6 ms, a P0 task becomes READY and preempts P1.
-- P0 runs from 6–10 ms; when it finishes/blocks, P1 resumes at 10 ms and continues until 16 ms.
-- Within a given priority, rotation is FIFO; across priorities, higher wins.
+- In RR, each task keeps the CPU for its slice, then a handoff occurs at the next tick boundary.
+- In priority preemption, the higher-priority task takes over immediately at its arrival tick; the lower resumes when the higher finishes.
+- Self-transitions indicate ticks where the same task continues to run (no interrupt/context switch).
 
 ## ✨ Features
 
