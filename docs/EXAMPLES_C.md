@@ -58,3 +58,40 @@ int main(void){
 }
 ```
 You should see `T1` and `T2` alternate over time as their slices expire.
+
+---
+
+## Visualizing scheduling
+
+### Round‑robin within one priority (Gantt)
+```mermaid
+gantt
+  title RR example (two tasks, same priority, slice=5 ticks)
+  dateFormat  X
+  axisFormat  %L
+
+  section HRT_PRIO1
+  T1 :active, 0, 5
+  T2 : 5, 5
+  T1 : 10, 5
+  T2 : 15, 5
+```
+
+### Priority preemption (Gantt)
+```mermaid
+gantt
+  title Priority preemption (A higher than B)
+  dateFormat  X
+  axisFormat  %L
+
+  section B (lower priority)
+  B-task :active, 0, 8
+  B-task : 14, 6
+
+  section A (higher priority)
+  A-task : 8, 6
+```
+Explanation:
+- B starts; at tick 8, A becomes READY and preempts B.
+- A runs 8–14. When A sleeps/exits, B resumes at 14.
+- Within the same priority, tasks RR by slice; across priorities, higher wins.

@@ -36,44 +36,136 @@ At a glance vs typical RTOSes
 - HeaRTOS: keep the heartbeat small — predictable scheduler, static tasks, portable ports, and tests. Pair it with exactly the libraries your product needs.
 
 Architecture (conceptual)
-```
-+----------------------------+        Optional
-|        Your App            |<----+  C++ wrapper (heartospp)
-|  tasks()/drivers()/logic   |     |
-+----------------------------+     |
-|        HeaRTOS Core        |     |
-|  scheduler + timebase      |     |
-+----------------------------+     |
-|         Port Layer         |-----+  (posix, null, cortex_m)
-|  tick + context switching  |
-+----------------------------+
-|     Hardware / Host OS     |
-+----------------------------+
+```mermaid
+flowchart TB
+  subgraph HW[Hardware / Host OS]
+  end
+
+  subgraph PORT[Port Layer]
+    P1[Tick source + ISR glue] --> P2[Context save/restore]
+  end
+
+  subgraph CORE[HeaRTOS Core]
+    C1[Scheduler] --> C2[Time base]
+  end
+
+  subgraph APP[Your App]
+    A1[tasks()/drivers()/logic]
+  end
+
+  APP --> CORE
+  CORE --> PORT
+  PORT --> HW
+
+  classDef box fill:#f9f9f9,stroke:#bbb,rx:6,ry:6;
+  class APP,CORE,PORT,HW box;
 ```
 
 Scheduling flow (priority + RR)
-```
-Tick ISR -> hrt__tick_isr()
-  - advance tick
-  - wake sleepers whose wake_tick <= now
-  - decrement running task's slice (if RR)
-  - pend reschedule (do not switch here)
+```mermaid
+flowchart LR
+  subgraph TickISR[Tick ISR: hrt__tick_isr()]
+    T1[inc tick] --> T2{Any sleepers due?}
+    T2 -- yes --> T3[wake: move to READY]
+    T2 -- no --> T4[ ]
+    T3 --> T5{RR policy active and running?}
+    T4 --> T5
+    T5 -- yes --> T6[decrement running slice]
+    T6 --> T7{slice==0?}
+    T7 -- yes --> T8[pend reschedule]
+    T7 -- no --> T9[no-op]
+    T8 --> T10[pend reschedule (also for wakes)]
+    T9 --> T10
+  end
 
-Scheduler loop (safe context)
-  - if running task's slice expired: move it to tail of its ready queue and refresh slice
-  - pick next READY task by priority, FIFO within class
-  - context switch to selected task
+  subgraph Sched[Scheduler loop (safe context)]
+    S1{slice expired?}
+    S1 -- yes --> S2[move running to tail of its ready queue\n                     + refresh slice]
+    S1 -- no  --> S3[pick highest-prio READY (FIFO in class)]
+    S2 --> S3 --> S4[context switch]
+  end
+
+  TickISR -->|pend| Sched
 ```
 
 Time & sleep flow
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as App Task
+  participant Core as HeaRTOS Core
+  participant Port as Port (Tick)
+
+  App->>Core: hrt_sleep(ms)
+  Core-->>App: state = SLEEP, remove from READY
+  Note right of Core: wake_tick = now + ceil(ms * hz / 1000)
+  Port-->>Core: periodic hrt__tick_isr()
+  Core-->>Core: advance tick; if wake_tick <= now -> make READY
+  Core-->>App: READY re-enters priority queue (FIFO within prio)
+  Core-->>App: scheduled when selected by scheduler
 ```
-App calls hrt_sleep(ms)
-  -> core computes wake_tick = now + ceil(ms * tick_hz / 1000)
-  -> task state = SLEEP, removed from ready queue
-Tick source (port) periodically calls hrt__tick_isr()
-  -> sleepers reaching wake_tick become READY and rejoin their priority queue
-  -> scheduler is pended to run at a safe point
+
+### Priority queues and within-class round-robin
+```mermaid
+flowchart TB
+  subgraph PQ0[Priority 0 (highest)]
+    direction LR
+    Q0T1[Task P0-A] --> Q0T2[Task P0-B] --> Q0T3[Task P0-C]
+  end
+
+  subgraph PQ1[Priority 1]
+    direction LR
+    Q1T1[Task P1-A] --> Q1T2[Task P1-B]
+  end
+
+  subgraph PQ2[Priority 2]
+    direction LR
+    Q2T1[Task P2-A]
+  end
+
+  CPU[[CPU]] -->|pick next READY| PQ0
+  PQ0 -->|FIFO within same priority| CPU
+  note right of PQ0: Round‑Robin if timeslice>0
+
+  style PQ0 fill:#eef,stroke:#99f,rx:6,ry:6
+  style PQ1 fill:#efe,stroke:#9f9,rx:6,ry:6
+  style PQ2 fill:#fee,stroke:#f99,rx:6,ry:6
 ```
+
+### Round‑robin timeline (decision: use Gantt)
+```mermaid
+gantt
+  title Round‑Robin within one priority (slice = 2 ticks)
+  dateFormat  X
+  axisFormat  %L
+
+  section Tasks
+  T1 :active, 0, 2
+  T2 : 2, 2
+  T3 : 4, 2
+  T1 : 6, 2
+  T2 : 8, 2
+  T3 : 10, 2
+```
+
+### Priority preemption timeline (higher preempts lower)
+```mermaid
+gantt
+  title Priority preemption (P0 > P1), tick_hz arbitrary
+  dateFormat  X
+  axisFormat  %L
+
+  section P1 (lower priority)
+  P1-Task :active, 0, 6
+  P1-Task : 10, 6
+
+  section P0 (higher priority)
+  P0-Task : 6, 4
+```
+Explanation:
+- P1 starts running; at tick 6, a P0 task becomes READY and preempts P1.
+- P0 runs from 6–10; when it finishes/blocks, P1 resumes at 10 and continues.
+- Within a given priority, rotation is FIFO; across priorities, higher wins.
 
 ## ✨ Features
 
