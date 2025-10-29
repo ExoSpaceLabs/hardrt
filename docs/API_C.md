@@ -82,6 +82,29 @@ void hrt_set_default_timeslice(uint16_t t);
 - When the quantum reaches zero, a reschedule is pended from the tick ISR, and the actual rotation to the tail of the ready queue occurs when returning to the scheduler (safe context). This is how the POSIX and null ports integrate today.
 - Tasks with `timeslice == 0` are cooperative within their priority class and will not be rotated by time slicing (but they can `hrt_yield()`).
 
+### Semaphores
+
+The kernel provides a minimal binary semaphore in `heartos_sem.h`:
+
+```c
+/* Binary semaphore type */
+typedef struct { volatile uint8_t count; /* 0/1 */ } hrt_sem_t; /* internal fields omitted */
+
+void hrt_sem_init(hrt_sem_t* s, unsigned init);
+int  hrt_sem_take(hrt_sem_t* s);          /* blocks until available; 0 on success */
+int  hrt_sem_try_take(hrt_sem_t* s);      /* 0 on success, -1 if not available */
+int  hrt_sem_give(hrt_sem_t* s);          /* wakes exactly one waiter if present */
+int  hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch); /* ISR-safe */
+```
+
+Notes
+- Binary semantics: multiple consecutive `give()` calls do not overflow; one subsequent `take()` will succeed.
+- Waiters are queued FIFO; on wake the task is made READY and normal priority/RR scheduling applies.
+- If a waiter is woken from task context, the giver yields so a higher‑priority waiter can run immediately.
+- The ISR variant only pends a context switch and optionally sets `*need_switch=1`.
+
+See `docs/SEMAPHORES.md` for a full guide and examples.
+
 ### Minimal example
 
 ```c

@@ -240,6 +240,16 @@ See docs/EXAMPLES_C.md for a walkthrough of the bundled C example, build/run ins
 
 ---
 
+## 🔒 Semaphores
+
+HeaRTOS includes a minimal binary semaphore for synchronization and simple mutual exclusion. It is binary (0/1), wakes waiters in FIFO order, and preempts correctly when a higher‑priority task is woken. See the full guide, example, and tests:
+
+- Documentation: docs/SEMAPHORES.md
+- Example target: `sem_basic` (source at examples/sem_basic)
+- Tests: part of `heartos_tests` (see tests/test_semaphore.c)
+
+---
+
 ## 🧱 Porting
 
 Ports live under `/src/port/` and integrate tick, context setup/switch, and the core scheduler.
