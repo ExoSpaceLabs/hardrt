@@ -36,29 +36,8 @@ At a glance vs typical RTOSes
 - HeaRTOS: keep the heartbeat small — predictable scheduler, static tasks, portable ports, and tests. Pair it with exactly the libraries your product needs.
 
 Architecture (conceptual)
-```mermaid
-flowchart TB
-  subgraph "Hardware / Host OS"
-    H[HW]
-  end
 
-  subgraph "Port Layer"
-    P1[Tick source + ISR glue] --> P2[Context save/restore]
-  end
-
-  subgraph "HeaRTOS Core"
-    C1[Scheduler] --> C2[Time base]
-  end
-
-  subgraph "Application"
-    A1["tasks()/drivers()/logic"]
-  end
-
-  A1 --> C1
-  C1 --> P1
-  P2 --> H
-
-```
+![arch](docs/images/Architecture.png)
 
 Scheduling flow (priority + RR)
 ```mermaid
@@ -86,6 +65,7 @@ flowchart LR
 
   T10 -->|pend| S1
 ```
+NOTE: Wil replace with Drawio
 
 Time & sleep flow
 ```mermaid
@@ -124,6 +104,7 @@ flowchart TB
   CPU[[CPU]] -->|pick next READY| Q0T1
   Q0T1 -->|FIFO within same priority| CPU
 ```
+NOTE: Wil replace with Drawio
 
 ### Round‑robin (sequence with tick handoffs)
 ```mermaid
@@ -152,6 +133,7 @@ sequenceDiagram
 
   T3->>T3: T11 running
 ```
+NOTE: Wil replace with Drawio
 
 ### Priority preemption (sequence with tick handoffs)
 ```mermaid
@@ -181,6 +163,8 @@ sequenceDiagram
   P1->>P1: T15 running
   P1->>P1: T16 running
 ```
+NOTE: Wil replace with Drawio
+
 Explanation:
 - In RR, each task keeps the CPU for its slice, then a handoff occurs at the next tick boundary.
 - In priority preemption, the higher-priority task takes over immediately at its arrival tick; the lower resumes when the higher finishes.
