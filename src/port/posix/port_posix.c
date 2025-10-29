@@ -11,6 +11,10 @@
 #include "heartos.h"
 #include "heartos_time.h"
 
+
+static int g_crit_depth = 0;
+static sigset_t g_saved_mask;
+
 /* ---- Core-private hooks ---- */
 int         hrt__pick_next_ready(void);
 void        hrt__make_ready(int id);
@@ -194,5 +198,19 @@ void hrt_port_enter_scheduler(void) {
 
         unblock_sigalrm(&old);
         /* when we return here, a yield/sleep/time-slice triggered it */
+    }
+}
+
+void hrt_port_crit_enter(void){
+    if (g_crit_depth++ == 0) {
+        /* Block SIGALRM; we don't attempt to restore an arbitrary previous mask here.
+           Critical sections are short; on final exit we simply unmask SIGALRM. */
+        sigprocmask(SIG_BLOCK, &g_sigalrm_set, NULL);
+    }
+}
+void hrt_port_crit_exit(void){
+    if (--g_crit_depth == 0) {
+        /* Unblock SIGALRM when leaving the outermost critical section. */
+        sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);
     }
 }

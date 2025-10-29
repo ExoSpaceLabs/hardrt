@@ -84,5 +84,6 @@ const test_case_t* get_tests_wraparound(int* out_count);
 const test_case_t* get_tests_sleep_zero(int* out_count);
 const test_case_t* get_tests_task_return(int* out_count);
 const test_case_t* get_tests_idle_behavior(int* out_count);
+const test_case_t* get_tests_semaphore(int* out_count);
 
 #endif /* HEARTOS_TEST_COMMON_H */

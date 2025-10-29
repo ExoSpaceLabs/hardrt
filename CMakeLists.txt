@@ -59,6 +59,7 @@ set(LIBRARY_SOURCES
         "${SOURCE_CORE_DIR}/heartos_time.c"
         "${SOURCE_CORE_DIR}/heartos_version.c"
         "${SOURCE_CORE_DIR}/heartos_portinfo.c"   # provides hrt_port_name()/hrt_port_id()
+        "${SOURCE_CORE_DIR}/heartos_sem.c"
 )
 
 # ---- Library target ----
@@ -141,10 +142,9 @@ install(EXPORT HeaRTOSTargets
 
 # ---- Examples ----
 if(HEARTOS_BUILD_EXAMPLES)
-  # HeaRTOS example: two_tasks
-  # This file is included only when HEARTOS_BUILD_EXAMPLES is ON.
-  # projects have their own CMakeLists.txt file
+  # Examples have their own CMakeLists.txt; include them directly
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
 endif()
 
 # ---- Tests (POSIX only) ----

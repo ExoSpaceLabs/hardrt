@@ -28,6 +28,7 @@ int main(void){
     g = get_tests_wraparound(&n);   append_group(g, n, registry, &total);
     g = get_tests_sleep_zero(&n);   append_group(g, n, registry, &total);
     g = get_tests_task_return(&n);  append_group(g, n, registry, &total);
+    g = get_tests_semaphore(&n);    append_group(g, n, registry, &total);
 
     int tests_failed = 0;
     int tests_passed = 0;

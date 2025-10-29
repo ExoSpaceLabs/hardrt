@@ -52,3 +52,7 @@ void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
     (void)id; (void)tramp; (void)stack_base; (void)words;
     /* Cortex-M port will lay out exception frame; POSIX uses ucontext. */
 }
+
+
+void hrt_port_crit_enter(void){ /* no-op */ }
+void hrt_port_crit_exit(void){ /* no-op */ }

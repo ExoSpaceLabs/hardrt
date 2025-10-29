@@ -9,7 +9,7 @@ mkdir build && cd build
 cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON -DHEARTOS_BUILD_TESTS=ON ..
 
 # Build tests and example
-cmake --build . --target heartos_tests two_tasks -j"${NPROC:-$(nproc)}"
+cmake --build . --target heartos_tests two_tasks sem_basic -j"${NPROC:-$(nproc)}"
 
 # Run the test suite first; if it fails, exit without running the example
 # Note: Use either -V or --output-on-failure, not both, to avoid duplicate output on failures.
