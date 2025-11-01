@@ -12,6 +12,30 @@ option(HEARTOS_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OF
 option(HEARTOS_BUILD_EXAMPLES "Build examples" ON)
 option(HEARTOS_BUILD_TESTS "Build test suite (POSIX port)" ON)
 
+# ---- Kernel sizing knobs (public compile definitions) ----
+# These control the number of concurrent tasks and the number of priority classes.
+# They are wired into the public headers via HEARTOS_MAX_TASKS/HEARTOS_MAX_PRIO.
+set(HEARTOS_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
+set(HEARTOS_CFG_MAX_PRIO  4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
+
+# Validate sizing knobs at configure time (no kernel source changes needed)
+# Constraints:
+# - 1 <= HEARTOS_CFG_MAX_PRIO <= 12 (physical limit in current enum)
+# - HEARTOS_CFG_MAX_TASKS >= 1
+# - HEARTOS_CFG_MAX_TASKS >= HEARTOS_CFG_MAX_PRIO
+math(EXPR _HRT_CFG_PRIO "${HEARTOS_CFG_MAX_PRIO}")
+math(EXPR _HRT_CFG_TASKS "${HEARTOS_CFG_MAX_TASKS}")
+
+if(_HRT_CFG_PRIO LESS 1 OR _HRT_CFG_PRIO GREATER 12)
+  message(FATAL_ERROR "HEARTOS_CFG_MAX_PRIO must be between 1 and 12 (inclusive). Got ${HEARTOS_CFG_MAX_PRIO}.")
+endif()
+if(_HRT_CFG_TASKS LESS 1)
+  message(FATAL_ERROR "HEARTOS_CFG_MAX_TASKS must be >= 1. Got ${HEARTOS_CFG_MAX_TASKS}.")
+endif()
+if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
+  message(FATAL_ERROR "Invalid configuration: HEARTOS_CFG_MAX_TASKS (${HEARTOS_CFG_MAX_TASKS}) must be >= HEARTOS_CFG_MAX_PRIO (${HEARTOS_CFG_MAX_PRIO}).")
+endif()
+
 # ---- Paths ----
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/inc")
 set(SOURCE_DIR  "${CMAKE_SOURCE_DIR}/src")
@@ -64,6 +88,14 @@ set(LIBRARY_SOURCES
 
 # ---- Library target ----
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
+
+# Propagate sizing knobs to all consumers (library PUBLIC interface)
+# so examples/tests and downstream apps see consistent limits.
+target_compile_definitions(${LIB_NAME}
+        PUBLIC
+        HEARTOS_MAX_TASKS=${HEARTOS_CFG_MAX_TASKS}
+        HEARTOS_MAX_PRIO=${HEARTOS_CFG_MAX_PRIO}
+)
 
 target_include_directories(${LIB_NAME}
         PUBLIC

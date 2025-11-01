@@ -65,7 +65,7 @@ flowchart LR
 
   T10 -->|pend| S1
 ```
-NOTE: Wil replace with Drawio
+NOTE: Will replace with Drawio
 
 Time & sleep flow
 ```mermaid
@@ -104,7 +104,7 @@ flowchart TB
   CPU[[CPU]] -->|pick next READY| Q0T1
   Q0T1 -->|FIFO within same priority| CPU
 ```
-NOTE: Wil replace with Drawio
+NOTE: Will replace with Drawio
 
 ### Round‑robin (sequence with tick handoffs)
 ```mermaid
@@ -133,7 +133,7 @@ sequenceDiagram
 
   T3->>T3: T11 running
 ```
-NOTE: Wil replace with Drawio
+NOTE: Will replace with Drawio
 
 ### Priority preemption (sequence with tick handoffs)
 ```mermaid
@@ -163,7 +163,7 @@ sequenceDiagram
   P1->>P1: T15 running
   P1->>P1: T16 running
 ```
-NOTE: Wil replace with Drawio
+NOTE: Will replace with Drawio
 
 Explanation:
 - In RR, each task keeps the CPU for its slice, then a handoff occurs at the next tick boundary.
@@ -213,6 +213,33 @@ cmake --build . --target two_tasks -j
 
 - For full build/install options and using `find_package(HeaRTOS)`, see docs/BUILD.md.
 - For the POSIX test suite, see docs/TESTS_POSIX.md.
+
+### Build-time configuration (CMake)
+You can tune kernel sizing at configure time without editing sources. These map to preprocessor macros used by the public headers and all targets:
+
+- `HEARTOS_CFG_MAX_TASKS` → `HEARTOS_MAX_TASKS` (default 8)
+- `HEARTOS_CFG_MAX_PRIO` → `HEARTOS_MAX_PRIO` (default 4)
+
+Examples:
+```bash
+# POSIX port, 12 priority levels and 12 tasks, build and run tests
+cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_TESTS=ON \
+      -DHEARTOS_CFG_MAX_PRIO=12 -DHEARTOS_CFG_MAX_TASKS=12 \
+      ..
+cmake --build . --target heartos_tests -j && ./heartos_tests
+
+# Two tasks example with 8 tasks max and 4 priorities (defaults)
+cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake --build . --target two_tasks -j && ./examples/two_tasks/two_tasks
+```
+
+Constraints and notes:
+- Priorities have a physical cap of 12 levels in this release (`HRT_PRIO0..HRT_PRIO11`).
+- There is no hard cap on the number of tasks in the source; it’s limited by memory and your configuration.
+- CMake validates at configure time: `HEARTOS_CFG_MAX_PRIO` must be 1..12 and `HEARTOS_CFG_MAX_TASKS >= HEARTOS_CFG_MAX_PRIO`.
+- Practical tip: set `HEARTOS_CFG_MAX_TASKS` >= `HEARTOS_CFG_MAX_PRIO` (often equal) so each priority can have at least one runnable task.
+
+For the exhaustive list of options, see docs/BUILD.md.
 
 ---
 

@@ -20,7 +20,7 @@ typedef enum {
 } hrt_policy_t;
 
 /* Priority levels (0 is highest) */
-typedef enum { HRT_PRIO0=0, HRT_PRIO1, /* ... */ HRT_PRIO12 } hrt_prio_t;
+typedef enum { HRT_PRIO0=0, HRT_PRIO1, /* ... */ HRT_PRIO11 } hrt_prio_t;
 
 /* Init-time configuration */
 typedef struct {
@@ -64,7 +64,7 @@ void hrt_start(void);
 ```c
 void     hrt_sleep(uint32_t ms);  /* sleep for ms; wakes on future ticks */
 void     hrt_yield(void);         /* yield to allow others in same class */
-uint32_t hrt_tick_now(void);      /* millisecond tick counter */
+uint32_t hrt_tick_now(void);      /* system tick counter (increments at tick_hz; wraps on overflow) */
 ```
 
 ### Runtime tuning

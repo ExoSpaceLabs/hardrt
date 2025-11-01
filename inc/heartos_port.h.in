@@ -36,13 +36,16 @@ const char* hrt_port_name(void);
  */
 int         hrt_port_id(void);
 
-/* Port-provided critical section for short kernel updates.
- * Minimal guarantee: masks preemption/tick on POSIX; no-op on null.
- * Not reentrant/nestable in this minimal design.
+/**
+ * @brief Enter a short critical section for kernel updates.
+ * @note On POSIX port, masks preemption/tick; on null port, it may be a no-op.
  */
 void hrt_port_crit_enter(void);
-void hrt_port_crit_exit(void);
 
+/**
+ * @brief Exit the critical section previously entered.
+ */
+void hrt_port_crit_exit(void);
 
 #ifdef __cplusplus
 }

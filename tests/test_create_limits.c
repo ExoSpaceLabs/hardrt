@@ -64,7 +64,17 @@ static void test_attr_null_inherits_default_slice_zero(void){
     T_ASSERT_TRUE(g_rr_iters >= 1, "RR peer should run after coop peer sleeps once");
 }
 
+/* Sanity: configured limits should be consistent and dynamic. */
+static void test_config_limits_sanity(void){
+    /* Macros come from public headers via compile definitions */
+    T_ASSERT_TRUE(HEARTOS_MAX_TASKS > 0, "HEARTOS_MAX_TASKS must be > 0");
+    T_ASSERT_TRUE(HEARTOS_MAX_PRIO  > 0, "HEARTOS_MAX_PRIO must be > 0");
+    T_ASSERT_TRUE(HEARTOS_MAX_TASKS >= HEARTOS_MAX_PRIO,
+                  "Max tasks must be >= number of priority levels");
+}
+
 static const test_case_t CASES[] = {
+    {"Config: limits sanity (tasks >= priorities)", test_config_limits_sanity},
     {"Create: max tasks enforcement", test_max_tasks_enforced},
     {"Create: minimum stack rejected", test_min_stack_rejected},
     {"Create: attr==NULL inherits default_slice=0 (cooperative)", test_attr_null_inherits_default_slice_zero},

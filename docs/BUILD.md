@@ -50,9 +50,22 @@ For details, see docs/TESTS_POSIX.md.
 | `HEARTOS_PORT` | `null` | Select build port: `null`, `posix`, or `cortex_m` |
 | `HEARTOS_ENABLE_CPP` | `OFF` | Build C++17 header-only wrapper (`heartospp`) |
 | `HEARTOS_BUILD_EXAMPLES` | `ON` | Build bundled demo projects |
+| `HEARTOS_CFG_MAX_TASKS` | `8` | Maximum number of concurrent tasks supported by the kernel (maps to `HEARTOS_MAX_TASKS`) |
+| `HEARTOS_CFG_MAX_PRIO`  | `4` | Number of scheduler priority classes (0..N-1; maps to `HEARTOS_MAX_PRIO`) |
 
-Example:
+Constraints and notes:
+- Priority levels have a physical cap of 12 in this release (`HRT_PRIO0..HRT_PRIO11`).
+- There is no hard cap on the number of tasks in the source; practical limits depend on your system/memory.
+- CMake validates at configure time: `HEARTOS_CFG_MAX_PRIO` must be in [1, 12] and `HEARTOS_CFG_MAX_TASKS >= HEARTOS_CFG_MAX_PRIO` (and `>= 1`).
+
+Examples:
 ```bash
+# POSIX tests with 12 priority levels and 12 tasks
+cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_TESTS=ON \
+      -DHEARTOS_CFG_MAX_PRIO=12 -DHEARTOS_CFG_MAX_TASKS=12 ..
+cmake --build . --target heartos_tests -j && ./heartos_tests
+
+# Defaults (4 priorities, 8 tasks) with C++ wrapper
 cmake -DHEARTOS_PORT=posix -DHEARTOS_ENABLE_CPP=ON ..
 ```
 

@@ -11,15 +11,42 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Test-only hooks provided by POSIX port when HEARTOS_TEST_HOOKS is enabled */
+
+/**
+ * @brief Stop the scheduler loop (test-only hook; POSIX port).
+ */
 void hrt__test_stop_scheduler(void);
+
+/**
+ * @brief Reset scheduler internal state to defaults (test-only; POSIX port).
+ */
 void hrt__test_reset_scheduler_state(void);
+
 /* Optional extra hooks (only available when HEARTOS_TEST_HOOKS) */
 #ifdef HEARTOS_TEST_HOOKS
+/**
+ * @brief Reset the idle loop counter.
+ */
 void hrt__test_idle_counter_reset(void);
+
+/**
+ * @brief Read the idle loop counter value.
+ */
 unsigned long long hrt__test_idle_counter_value(void);
+
+/**
+ * @brief Advance the system tick by a delta (no real time passes).
+ */
 void hrt__test_fast_forward_ticks(uint32_t delta);
+
+/**
+ * @brief Set the tick counter to an exact value.
+ */
 void hrt__test_set_tick(uint32_t v);
+
+/**
+ * @brief Get the current tick counter.
+ */
 uint32_t hrt__test_get_tick(void);
 #endif
 #ifdef __cplusplus
@@ -65,11 +92,19 @@ extern int g_failures;
     } \
 } while(0)
 
-/* Test case type */
+/**
+ * @brief Test case function signature.
+ */
 typedef void (*test_fn_t)(void);
+
+/**
+ * @brief Named test case descriptor.
+ */
 typedef struct { const char* name; test_fn_t fn; } test_case_t;
 
-/* Each group exposes a getter returning a pointer to a static array and count */
+/**
+ * @brief Each group exposes a getter returning a static array and its count.
+ */
 const test_case_t* get_tests_identity(int* out_count);
 const test_case_t* get_tests_sleep_stop(int* out_count);
 const test_case_t* get_tests_rr_yield(int* out_count);

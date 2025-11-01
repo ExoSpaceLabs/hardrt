@@ -65,8 +65,7 @@ extern "C" {
         HRT_PRIO8,
         HRT_PRIO9,
         HRT_PRIO10,
-        HRT_PRIO11,
-        HRT_PRIO12
+        HRT_PRIO11
     } hrt_prio_t;
 
 /**
