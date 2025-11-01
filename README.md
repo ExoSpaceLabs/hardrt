@@ -1,6 +1,6 @@
-# 🫀 HeaRTOS
+# 🫀 HeaRTOS [[ExoSpaceLabs](https://github.com/ExoSpaceLabs)]
 
-**HeaRTOS** — the heartbeat of small embedded systems.  
+**HeaRTOS** is the heartbeat of small embedded systems.  
 A tiny, portable, modular real-time operating system written in C, with optional C++17 wrappers.  
 Minimal footprint, predictable behavior, and zero hardware dependencies in its core.
 
@@ -57,6 +57,7 @@ find_package(HeaRTOS 0.2.0 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HeaRTOS::heartos)
 ```
+For further information and CMake flags see [Build](docs/BUILD.md) document.
 
 ---
 
@@ -69,15 +70,6 @@ target_link_libraries(app PRIVATE HeaRTOS::heartos)
 ### Semaphores (binary)
 - `hrt_sem_init`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
 - Use as a mutex substitute or an event signal. For mutex-like use, enabling immediate handoff on give is recommended (see roadmap).
-
----
-
-## 🧩 CMake Options
-| Option | Default | Description |
-|:--|:--|:--|
-| `HEARTOS_ENABLE_CPP` | `OFF` | Build C++ wrappers (header-only interface target) |
-| `HEARTOS_BUILD_EXAMPLES` | `ON` | Build examples |
-| `HEARTOS_BUILD_TESTS` | `ON` | Build test suite (POSIX port) |
 
 ---
 
