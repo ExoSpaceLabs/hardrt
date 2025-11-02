@@ -162,3 +162,24 @@ Caption:
 - Two preemption events are shown explicitly: at T12 and T30 when A arrives (higher priority preempts B).
 - A yields/completes at T18 and T36, allowing B to resume.
 - Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
+
+---
+
+### External tick example (two_tasks_external)
+
+This example is like `two_tasks` but HeaRTOS time advances only when the application calls `hrt_tick_from_isr()` — here driven by a small POSIX thread that sleeps one tick and calls the API every loop.
+
+Build and run on POSIX:
+```bash
+cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake --build . --target two_tasks_external -j
+./examples/two_tasks_external/two_tasks_external
+```
+Expected behavior:
+- Task A prints a counter roughly every 500 ms.
+- Task B prints a heartbeat roughly every 1000 ms.
+- The scheduler advances solely due to the external tick thread.
+
+Notes:
+- The example configures `hrt_config_t.tick_src = HRT_TICK_EXTERNAL`.
+- See also: [TICK_SOURCE.md](TICK_SOURCE.md) for a concise overview of external tick usage.

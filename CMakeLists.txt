@@ -187,6 +187,7 @@ if(HEARTOS_BUILD_EXAMPLES)
   # Examples have their own CMakeLists.txt; include them directly
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_external)
 endif()
 
 # ---- Tests (POSIX only) ----
