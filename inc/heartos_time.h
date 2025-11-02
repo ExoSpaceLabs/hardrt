@@ -6,11 +6,17 @@ extern "C" {
 
 #endif
 
-// Called from a timer ISR to advance the kernel tick.
-// - If the port owns the tick (SysTick), the port's ISR calls this.
-// - If the app owns a hardware timer (EXTERNAL), that ISR calls this.
-// This function only updates time and wakes sleepers. It does NOT force a context
-// switch; the port/ISR should request one in a port-appropriate way.
+/**
+ * @brief Advance the kernel tick from a timer ISR.
+ *
+ * @details Called once per hardware tick to update time accounting and wake
+ * sleeping tasks whose deadlines have expired.
+ * - If the port owns the tick (e.g., SysTick), the port's ISR should call this.
+ * - If the application owns a hardware timer (HRT_TICK_EXTERNAL), that ISR should call this.
+ *
+ * This function does not perform a context switch directly; the port or ISR
+ * should request one in a port-appropriate way after calling this function.
+ */
 void hrt_tick_from_isr(void);
 
 

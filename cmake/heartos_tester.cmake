@@ -29,6 +29,7 @@ if(HEARTOS_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_sleep_zero.c
           ${CMAKE_SOURCE_DIR}/tests/test_task_return.c
           ${CMAKE_SOURCE_DIR}/tests/test_semaphore.c
+          ${CMAKE_SOURCE_DIR}/tests/test_external_tick.c
   )
 
   target_link_libraries(heartos_tests PRIVATE ${LIB_NAME})

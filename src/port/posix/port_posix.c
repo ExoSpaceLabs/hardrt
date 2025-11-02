@@ -10,6 +10,7 @@
 
 #include "heartos.h"
 #include "heartos_time.h"
+#include "heartos_port_int.h"
 
 
 static int g_crit_depth = 0;
@@ -60,32 +61,40 @@ static volatile sig_atomic_t g_switch_pending = 0;
 static sigset_t g_sigalrm_set;
 
 #ifdef HEARTOS_TEST_HOOKS
-static volatile sig_atomic_t g_test_stop = 0;
-static volatile unsigned long long g_idle_counter = 0;
-void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
-/* Test helper: reset scheduler test state between test cases */
-void hrt__test_reset_scheduler_state(void) {
-    g_test_stop = 0;
-    g_switch_pending = 1;
-}
-
-/* Idle counter helpers (tests may inspect liveness) */
-void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
-unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
-
-/* Fast-forward ticks for wraparound tests: mask SIGALRM and call core tick. */
-void hrt__test_fast_forward_ticks(uint32_t delta) {
-    sigset_t old;
-    /* block SIGALRM directly to avoid re-entrancy during synthetic ticks */
-    sigprocmask(SIG_BLOCK, &g_sigalrm_set, &old);
-    for (uint32_t i = 0; i < delta; ++i) { hrt__tick_isr(); }
-    sigprocmask(SIG_SETMASK, &old, NULL);
-}
-
-/* Access to tick for tests (delegates to core helpers) */
-void hrt__test_set_tick(uint32_t v);
-uint32_t hrt__test_get_tick(void);
-#endif
+ static volatile sig_atomic_t g_test_stop = 0;
+ static volatile unsigned long long g_idle_counter = 0;
+ void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
+ /* Test helper: reset scheduler test state between test cases */
+ void hrt__test_reset_scheduler_state(void) {
+     g_test_stop = 0;
+     g_switch_pending = 1;
+ }
+ 
+ /* Idle counter helpers (tests may inspect liveness) */
+ void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
+ unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
+ 
+ /* Fast-forward ticks for wraparound tests: mask SIGALRM and call core tick. */
+ void hrt__test_fast_forward_ticks(uint32_t delta) {
+     sigset_t old;
+     /* block SIGALRM directly to avoid re-entrancy during synthetic ticks */
+     sigprocmask(SIG_BLOCK, &g_sigalrm_set, &old);
+     for (uint32_t i = 0; i < delta; ++i) { hrt__tick_isr(); }
+     sigprocmask(SIG_SETMASK, &old, NULL);
+ }
+ 
+ /* Allow tests to block/unblock SIGALRM around sensitive regions */
+ void hrt__test_block_sigalrm(void) {
+     sigprocmask(SIG_BLOCK, &g_sigalrm_set, NULL);
+ }
+ void hrt__test_unblock_sigalrm(void) {
+     sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);
+ }
+ 
+ /* Access to tick for tests (delegates to core helpers) */
+ void hrt__test_set_tick(uint32_t v);
+ uint32_t hrt__test_get_tick(void);
+ #endif
 
 /* ---- Helpers to mask/unmask SIGALRM around critical regions ---- */
 static inline void block_sigalrm(sigset_t *old) {
@@ -131,6 +140,10 @@ static void _tick_sighandler(int signo) {
 
 /* Start periodic SIGALRM at the requested Hz */
 void hrt_port_start_systick(uint32_t hz) {
+    /* If external tick is selected, do not start SIGALRM timer. */
+    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
+        return;
+    }
     sigemptyset(&g_sigalrm_set);
     sigaddset(&g_sigalrm_set, SIGALRM);
 

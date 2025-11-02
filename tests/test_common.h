@@ -139,4 +139,13 @@ const test_case_t *get_tests_idle_behavior(int *out_count);
 
 const test_case_t *get_tests_semaphore(int *out_count);
 
+/* External tick tests */
+const test_case_t *get_tests_external_tick(int *out_count);
+
+#ifdef HEARTOS_TEST_HOOKS
+/* POSIX-only test hooks to block/unblock SIGALRM for deterministic checks */
+void hrt__test_block_sigalrm(void);
+void hrt__test_unblock_sigalrm(void);
+#endif
+
 #endif /* HEARTOS_TEST_COMMON_H */
