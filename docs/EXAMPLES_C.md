@@ -64,38 +64,10 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 ## Visualizing scheduling
 
 ### Round‑robin within one priority (Sequence at tick times)
-> Note: this diagram will be replaced with a draw io version.
-```mermaid
-sequenceDiagram
-  autonumber
-  participant T1 as Task T1
-  participant T2 as Task T2
+> Note: timing needs to be fixed. And possibly moved to dedicated file. explaining policy.
+ 
+![policy_RR.png](images/policy_RR.png)
 
-
-  T1->>T1: T0 running
-  T1->>T1: T1 running
-  T1->>T1: T2 running
-  T1->>T1: T3 running
-  T1->>T1: T4 running
-  T1-->>T2: handoff at T5 (slice expired)
-
-  T2->>T2: T6 running
-  T2->>T2: T7 running
-  T2->>T2: T8 running
-  T2->>T2: T9 running
-  T2-->>T1: handoff at T10 (slice expired)
-
-  T1->>T1: T11 running
-  T1->>T1: T12 running
-  T1->>T1: T13 running
-  T1->>T1: T14 running
-  T1-->>T2: handoff at T15 (slice expired)
-
-  T2->>T2: T16 running
-  T2->>T2: T17 running
-  T2->>T2: T18 running
-  T2->>T2: T19 running
-```
 Caption:
 - Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
 - Two READY tasks with `timeslice=5 ms`. Handoffs occur exactly at T5, T10, T15, ...
