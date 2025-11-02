@@ -2,7 +2,7 @@
 
 This roadmap outlines the evolution of HeaRTOS from its current v0.2.x stage to the planned 1.0.0 release.
 
-Note: may change during its course of development.
+> Note: may change during its course of development.
 
 ---
 

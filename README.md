@@ -37,24 +37,7 @@ The Architecture is mainly divided in 3 layers:
 
 Where each task is executed in accordance of the policy adopted by the scheduler.
 
-### Scheduling Flow
-![scheduling_flow.png](docs/images/scheduling_flow.png)
-
-Tick (ISR/signal) -> hrt__tick_isr():
-  - g_tick++
-  - wake any SLEEP tasks whose wake_tick <= now
-  - hrt__pend_context_switch()  (set resched flag)
-
-Scheduler loop (port):
- - if resched flag:
-   -  next = hrt__pick_next_ready()
-   -  swapcontext/PendSV to next task
-
-Task-level yield/sleep:
-  - mark state (READY->queue or SLEEP)
-  - hrt__pend_context_switch()
-  - hrt_port_yield_to_scheduler()  (safe handoff from task ctx)
-
+see also [Concepts](#-concepts)
 
 ## 📁 Repository Layout
 ```
@@ -105,11 +88,27 @@ For further information and CMake flags see [Build](docs/BUILD.md) document.
 - `hrt_sem_init`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
 - Use as a mutex substitute or an event signal. For mutex-like use, enabling immediate handoff on give is recommended (see roadmap).
 
+### Scheduling Flow
+![scheduling_flow.png](docs/images/scheduling_flow.png)
+
+Tick (ISR/signal) -> hrt__tick_isr():
+- g_tick++
+- wake any SLEEP tasks whose wake_tick <= now
+- hrt__pend_context_switch()  (set resched flag)
+
+Scheduler loop (port):
+- if resched flag:
+  -  next = hrt__pick_next_ready()
+  -  swapcontext/PendSV to next task
+
+Task-level yield/sleep:
+- mark state (READY->queue or SLEEP)
+- hrt__pend_context_switch()
+- hrt_port_yield_to_scheduler()  (safe handoff from task ctx)
+
+
 ---
 
-## 🗺️ Diagrams
-
----
 
 ## 📜 License
 Apache License 2.0 — see [LICENSE](LICENSE).

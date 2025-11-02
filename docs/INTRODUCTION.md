@@ -24,13 +24,13 @@ focusing purely on *time‑critical task execution*.
 HeaRTOS was built to be *small, understandable, and verifiable*.
 Where many RTOS kernels grow opaque, HeaRTOS keeps every subsystem visible in just a few C files.
 
-| Feature | Philosophy |
-|----------|-------------|
-| **Minimal Core** | Just tasks, scheduler, and synchronization — no heap, no HAL. |
-| **Portable** | Ports for POSIX and Cortex‑M are separate from kernel logic. |
-| **Deterministic** | No unbounded loops or dynamic allocation in the kernel. |
-| **Transparent** | All state visible; no black‑box APIs. |
-| **Educational** | Ideal for learning or building your own derived RTOS. |
+| Feature           | Philosophy                                                    |
+|-------------------|---------------------------------------------------------------|
+| **Minimal Core**  | Just tasks, scheduler, and synchronization — no heap, no HAL. |
+| **Portable**      | Ports for POSIX and Cortex‑M are separate from kernel logic.  |
+| **Deterministic** | No unbounded loops or dynamic allocation in the kernel.       |
+| **Transparent**   | All state visible; no black‑box APIs.                         |
+| **Educational**   | Ideal for learning or building your own derived RTOS.         |
 
 ---
 

@@ -1,4 +1,5 @@
 # C++ wrapper (optional)
+>Note: Not  implemented yet. will be included in later versions.
 
 HeaRTOS provides an optional, header-only C++17 convenience layer over the C API.
 

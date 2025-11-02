@@ -3,19 +3,19 @@
 This documentation set is synchronized with HeaRTOS v0.2.x and forward-compatible with v1.0.0 planning.
 
 ## Main Docs
-| File | Purpose |
-|------|----------|
-| `README.md` | Project overview, build instructions, ASCII diagrams |
-| `docs/INTRODUCTION.md` | Background: What is an RTOS? Why HeaRTOS? |
-| `docs/BUILD.md` | Build and install guide |
-| `docs/API_C.md` | Public C API reference |
-| `docs/CPP.md` | C++ header‑only wrapper reference |
-| `docs/PORTING.md` | Porting guide for POSIX and Cortex‑M |
-| `docs/SEMAPHORES.md` | Binary semaphore design and API |
-| `docs/EXAMPLES_C.md` | Example applications |
-| `docs/MODULE_STATUS.md` | Current module status matrix |
-| `docs/TESTS_POSIX.md` | POSIX test harness notes |
-| `docs/ROADMAP.md` | Release roadmap to v1.0.0 |
+| File                                 | Purpose                                              |
+|--------------------------------------|------------------------------------------------------|
+| [README.md](../README.md)            | Project overview, build instructions, ASCII diagrams |
+| [INTRODUCTION.md](INTRODUCTION.md)   | Background: What is an RTOS? Why HeaRTOS?            |
+| [BUILD.md](BUILD.md)                 | Build and install guide                              |
+| [API_C.md](API_C.md)                 | Public C API reference                               |
+| [CPP.md](CPP.md)                     | C++ header‑only wrapper reference                    |
+| [PORTING.md](PORTING.md)             | Porting guide for POSIX and Cortex‑M                 |
+| [SEMAPHORES.md](SEMAPHORES.md)       | Binary semaphore design and API                      |
+| [EXAMPLES_C.md](EXAMPLES_C.md)       | Example applications                                 |
+| [MODULE_STATUS.md](MODULE_STATUS.md) | Current module status matrix                         |
+| [TESTS_POSIX.md](TESTS_POSIX.md)     | POSIX test harness notes                             |
+| [ROADMAP.md](ROADMAP.md)             | Release roadmap to v1.0.0                            |
 
 ## Notes
 - All technical descriptions match the current code (POSIX & null ports).

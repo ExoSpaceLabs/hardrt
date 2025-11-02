@@ -114,7 +114,7 @@ cmake --build cmake-build-debug --target sem_basic && \
 cmake-build-debug/examples/sem_basic/sem_basic
 ```
 
-Note: The POSIX port (`-DHEARTOS_PORT=posix`) is required to observe scheduler behavior on a host machine.
+> Note: The POSIX port (`-DHEARTOS_PORT=posix`) is required to observe scheduler behavior on a host machine.
 
 ---
 

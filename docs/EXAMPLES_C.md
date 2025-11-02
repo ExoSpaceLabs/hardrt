@@ -25,7 +25,7 @@ cmake --build . --target two_tasks -j
 ./examples/two_tasks/two_tasks
 ```
 Expected output (excerpt; continues indefinitely):
-```
+```terminaloutput
 HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
@@ -40,7 +40,7 @@ HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
 
 To observe time-slice rotation, create two tasks with the same priority and non-zero `timeslice`:
 
-```c
+```c++
 #include "heartos.h"
 #include <stdio.h>
 
@@ -64,6 +64,7 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 ## Visualizing scheduling
 
 ### Round‑robin within one priority (Sequence at tick times)
+> Note: this diagram will be replaced with a draw io version.
 ```mermaid
 sequenceDiagram
   autonumber
@@ -101,6 +102,7 @@ Caption:
 - Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
 
 ### Priority preemption (Sequence at tick times)
+> Note: this diagram will be replaced with a draw io version.
 ```mermaid
 sequenceDiagram
   autonumber
