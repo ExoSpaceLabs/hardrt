@@ -5,7 +5,7 @@ This documentation set is synchronized with HeaRTOS v0.2.x and forward-compatibl
 ## Main Docs
 | File                                 | Purpose                                              |
 |--------------------------------------|------------------------------------------------------|
-| [README.md](../README.md)            | Project overview, build instructions, ASCII diagrams |
+| Main [README.md](../README.md)            | Project overview, build instructions, ASCII diagrams |
 | [INTRODUCTION.md](INTRODUCTION.md)   | Background: What is an RTOS? Why HeaRTOS?            |
 | [BUILD.md](BUILD.md)                 | Build and install guide                              |
 | [API_C.md](API_C.md)                 | Public C API reference                               |
