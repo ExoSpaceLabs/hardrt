@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- Project ----
 set(LIB_NAME "heartos")
 set(LIB_NAME_CPP "heartospp")
-project(${LIB_NAME} VERSION 0.2.0 LANGUAGES C CXX)
+project(${LIB_NAME} VERSION 0.3.0 LANGUAGES C CXX)
 
 # ---- Options ----
 set(HEARTOS_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
@@ -64,7 +64,6 @@ configure_file(
         @ONLY
 )
 
-
 configure_file(
         "${CMAKE_SOURCE_DIR}/inc/heartos_version.h.in"
         "${CMAKE_BINARY_DIR}/generated/heartos_version.h"
@@ -102,6 +101,8 @@ target_include_directories(${LIB_NAME}
         $<BUILD_INTERFACE:${INCLUDE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<INSTALL_INTERFACE:include>
+        PRIVATE
+        ${INCLUDE_DIR}    # so ports can include heartos_port_int.h
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
@@ -120,6 +121,10 @@ elseif(HEARTOS_PORT STREQUAL "posix")
   target_sources(${LIB_NAME} PRIVATE "${SOURCE_PORT_DIR}/posix/port_posix.c")
   # setitimer/nanosleep are in libc; no extra link flags required on glibc
 elseif(HEARTOS_PORT STREQUAL "cortex_m")
+  target_sources(${LIB_NAME} PRIVATE
+          "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
+          "${SOURCE_PORT_DIR}/cortex_m/port_cortexm_isr.c"
+  )
   message(FATAL_ERROR "Cortex-M port not implemented yet. Set HEARTOS_PORT=null or posix.")
 else()
   message(FATAL_ERROR "Unknown HEARTOS_PORT=${HEARTOS_PORT}")
@@ -147,7 +152,12 @@ install(TARGETS ${LIB_NAME}
 )
 
 # public + generated headers
-install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Install only public headers; exclude the internal one
+install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.h"
+        PATTERN "heartos_port_int.h" EXCLUDE)
+
 install(DIRECTORY "${CMAKE_BINARY_DIR}/generated/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Package config

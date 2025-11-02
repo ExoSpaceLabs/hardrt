@@ -12,8 +12,8 @@
  * @note Override by defining HRT_ASSERT to integrate with your platform's assert/logging.
  */
 #ifndef HRT_ASSERT
-  #include <assert.h>
-  #define HRT_ASSERT(x) assert(x)
+#include <assert.h>
+#define HRT_ASSERT(x) assert(x)
 #endif
 
 #endif

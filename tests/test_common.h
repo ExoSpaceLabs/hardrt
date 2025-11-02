@@ -10,6 +10,7 @@
 
 #ifdef __cplusplus
 extern "C" {
+
 #endif
 
 /**
@@ -100,25 +101,42 @@ typedef void (*test_fn_t)(void);
 /**
  * @brief Named test case descriptor.
  */
-typedef struct { const char* name; test_fn_t fn; } test_case_t;
+typedef struct {
+    const char *name;
+    test_fn_t fn;
+} test_case_t;
 
 /**
  * @brief Each group exposes a getter returning a static array and its count.
  */
-const test_case_t* get_tests_identity(int* out_count);
-const test_case_t* get_tests_sleep_stop(int* out_count);
-const test_case_t* get_tests_rr_yield(int* out_count);
-const test_case_t* get_tests_rr_sleep(int* out_count);
-const test_case_t* get_tests_priority(int* out_count);
-const test_case_t* get_tests_coop_vs_rr(int* out_count);
-const test_case_t* get_tests_tick_rate(int* out_count);
-const test_case_t* get_tests_create_limits(int* out_count);
-const test_case_t* get_tests_runtime_tuning(int* out_count);
-const test_case_t* get_tests_fifo_order(int* out_count);
-const test_case_t* get_tests_wraparound(int* out_count);
-const test_case_t* get_tests_sleep_zero(int* out_count);
-const test_case_t* get_tests_task_return(int* out_count);
-const test_case_t* get_tests_idle_behavior(int* out_count);
-const test_case_t* get_tests_semaphore(int* out_count);
+const test_case_t *get_tests_identity(int *out_count);
+
+const test_case_t *get_tests_sleep_stop(int *out_count);
+
+const test_case_t *get_tests_rr_yield(int *out_count);
+
+const test_case_t *get_tests_rr_sleep(int *out_count);
+
+const test_case_t *get_tests_priority(int *out_count);
+
+const test_case_t *get_tests_coop_vs_rr(int *out_count);
+
+const test_case_t *get_tests_tick_rate(int *out_count);
+
+const test_case_t *get_tests_create_limits(int *out_count);
+
+const test_case_t *get_tests_runtime_tuning(int *out_count);
+
+const test_case_t *get_tests_fifo_order(int *out_count);
+
+const test_case_t *get_tests_wraparound(int *out_count);
+
+const test_case_t *get_tests_sleep_zero(int *out_count);
+
+const test_case_t *get_tests_task_return(int *out_count);
+
+const test_case_t *get_tests_idle_behavior(int *out_count);
+
+const test_case_t *get_tests_semaphore(int *out_count);
 
 #endif /* HEARTOS_TEST_COMMON_H */

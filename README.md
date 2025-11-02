@@ -91,7 +91,7 @@ For further information and CMake flags see [Build](docs/BUILD.md) document.
 ### Scheduling Flow
 ![scheduling_flow.png](docs/images/scheduling_flow.png)
 
-Tick (ISR/signal) -> hrt__tick_isr():
+Tick (ISR/signal) -> hrt_tick_from_isr():
 - g_tick++
 - wake any SLEEP tasks whose wake_tick <= now
 - hrt__pend_context_switch()  (set resched flag)

@@ -4,7 +4,7 @@ Current components and their status.
 
 - `inc/heartos.h` — public C API (tasks, scheduler policy, time, config) [link](../inc/heartos.h).
 - `inc/heartos_sem.h` — binary semaphores (implemented); see docs/SEMAPHORES.md and tests [link](../inc/heartos_sem.h).
-- `inc/heartos_time.h` — tick ISR contract for ports (`hrt__tick_isr()`) [link](../inc/heartos_time.h).
+- `inc/heartos_time.h` — tick ISR contract for ports (`hrt_tick_from_isr()`) [link](../inc/heartos_time.h).
 - Generated headers (installed alongside public headers):
   - `heartos_version.h` — project version (from CMake) [link](../inc/heartos_version.h.in).
   - `heartos_port.h` — selected port identity (from CMake)[link](../inc/heartos_port.h.in).

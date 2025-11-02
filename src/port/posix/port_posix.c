@@ -16,57 +16,69 @@ static int g_crit_depth = 0;
 static sigset_t g_saved_mask;
 
 /* ---- Core-private hooks ---- */
-int         hrt__pick_next_ready(void);
-void        hrt__make_ready(int id);
-void        hrt__on_scheduler_entry(void);
-int         hrt__get_current(void);
-void        hrt__set_current(int id);
+void hrt__tick_isr(void);
+
+int hrt__pick_next_ready(void);
+
+void hrt__make_ready(int id);
+
+void hrt__on_scheduler_entry(void);
+
+int hrt__get_current(void);
+
+void hrt__set_current(int id);
 
 /* Mirror TCB fields used by the port */
 typedef struct {
     uint32_t *sp;
     uint32_t *stack_base;
-    size_t    stack_words;
-    void    (*entry)(void*);
-    void*     arg;
-    uint32_t  wake_tick;
-    uint16_t  timeslice_cfg;
-    uint16_t  slice_left;
-    uint8_t   prio;
-    uint8_t   state;
+    size_t stack_words;
+
+    void (*entry)(void *);
+
+    void *arg;
+    uint32_t wake_tick;
+    uint16_t timeslice_cfg;
+    uint16_t slice_left;
+    uint8_t prio;
+    uint8_t state;
 } _hrt_tcb_t;
-_hrt_tcb_t* hrt__tcb(int id);
+
+_hrt_tcb_t *hrt__tcb(int id);
 
 /* ---- Port state ---- */
 typedef struct {
     ucontext_t ctx;
-    void*      stk_ptr;
-    size_t     stk_bytes;
-    int        valid;
+    void *stk_ptr;
+    size_t stk_bytes;
+    int valid;
 } _port_ctx_t;
 
 static _port_ctx_t g_ctxs[HEARTOS_MAX_TASKS];
-static ucontext_t  g_sched_ctx;
+static ucontext_t g_sched_ctx;
 static volatile sig_atomic_t g_switch_pending = 0;
 static sigset_t g_sigalrm_set;
 
 #ifdef HEARTOS_TEST_HOOKS
 static volatile sig_atomic_t g_test_stop = 0;
 static volatile unsigned long long g_idle_counter = 0;
-void hrt__test_stop_scheduler(void){ g_test_stop = 1; }
+void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
 /* Test helper: reset scheduler test state between test cases */
-void hrt__test_reset_scheduler_state(void){ g_test_stop = 0; g_switch_pending = 1; }
+void hrt__test_reset_scheduler_state(void) {
+    g_test_stop = 0;
+    g_switch_pending = 1;
+}
 
 /* Idle counter helpers (tests may inspect liveness) */
-void hrt__test_idle_counter_reset(void){ g_idle_counter = 0; }
-unsigned long long hrt__test_idle_counter_value(void){ return g_idle_counter; }
+void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
+unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
 
 /* Fast-forward ticks for wraparound tests: mask SIGALRM and call core tick. */
-void hrt__test_fast_forward_ticks(uint32_t delta){
+void hrt__test_fast_forward_ticks(uint32_t delta) {
     sigset_t old;
     /* block SIGALRM directly to avoid re-entrancy during synthetic ticks */
     sigprocmask(SIG_BLOCK, &g_sigalrm_set, &old);
-    for (uint32_t i=0;i<delta;++i){ hrt__tick_isr(); }
+    for (uint32_t i = 0; i < delta; ++i) { hrt__tick_isr(); }
     sigprocmask(SIG_SETMASK, &old, NULL);
 }
 
@@ -76,17 +88,18 @@ uint32_t hrt__test_get_tick(void);
 #endif
 
 /* ---- Helpers to mask/unmask SIGALRM around critical regions ---- */
-static inline void block_sigalrm(sigset_t* old){
+static inline void block_sigalrm(sigset_t *old) {
     sigprocmask(SIG_BLOCK, &g_sigalrm_set, old);
 }
-static inline void unblock_sigalrm(const sigset_t* old){
+
+static inline void unblock_sigalrm(const sigset_t *old) {
     sigprocmask(SIG_SETMASK, old, NULL);
 }
 
 /* ---- Task trampoline ---- */
 void hrt__task_trampoline(void) {
     int id = hrt__get_current();
-    _hrt_tcb_t* t = hrt__tcb(id);
+    _hrt_tcb_t *t = hrt__tcb(id);
     t->entry(t->arg);
     /* If the task returns, request a reschedule and jump back */
     g_switch_pending = 1;
@@ -96,23 +109,22 @@ void hrt__task_trampoline(void) {
 
 /* Prepare ucontext for the task using the provided stack */
 void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t* stack_base, size_t words)
-{
-    (void)tramp; /* we use hrt__task_trampoline directly */
+                                 uint32_t *stack_base, size_t words) {
+    (void) tramp; /* we use hrt__task_trampoline directly */
     size_t bytes = words * sizeof(uint32_t);
     getcontext(&g_ctxs[id].ctx);
-    g_ctxs[id].ctx.uc_stack.ss_sp   = (void*)stack_base;
+    g_ctxs[id].ctx.uc_stack.ss_sp = (void *) stack_base;
     g_ctxs[id].ctx.uc_stack.ss_size = bytes;
-    g_ctxs[id].ctx.uc_link = &g_sched_ctx;  /* return to scheduler if task exits */
+    g_ctxs[id].ctx.uc_link = &g_sched_ctx; /* return to scheduler if task exits */
     makecontext(&g_ctxs[id].ctx, hrt__task_trampoline, 0);
-    g_ctxs[id].stk_ptr   = (void*)stack_base;
+    g_ctxs[id].stk_ptr = (void *) stack_base;
     g_ctxs[id].stk_bytes = bytes;
-    g_ctxs[id].valid     = 1;
+    g_ctxs[id].valid = 1;
 }
 
 /* Tick handler: only set a flag; do not swap here */
 static void _tick_sighandler(int signo) {
-    (void)signo;
+    (void) signo;
     hrt__tick_isr();
     g_switch_pending = 1;
 }
@@ -131,10 +143,10 @@ void hrt_port_start_systick(uint32_t hz) {
 
     struct itimerval it;
     memset(&it, 0, sizeof it);
-    long usec = (hz ? (1000000L / (long)hz) : 1000L);
-    it.it_value.tv_sec  = 0;
+    long usec = (hz ? (1000000L / (long) hz) : 1000L);
+    it.it_value.tv_sec = 0;
     it.it_value.tv_usec = usec;
-    it.it_interval      = it.it_value;
+    it.it_interval = it.it_value;
     setitimer(ITIMER_REAL, &it, NULL);
 }
 
@@ -143,7 +155,7 @@ void hrt_port_idle_wait(void) {
 #ifdef HEARTOS_TEST_HOOKS
     g_idle_counter++;
 #endif
-    struct timespec ts = {0, 1*1000*1000}; /* 1 ms */
+    struct timespec ts = {0, 1 * 1000 * 1000}; /* 1 ms */
     nanosleep(&ts, NULL);
 }
 
@@ -153,7 +165,7 @@ void hrt__pend_context_switch(void) {
 }
 
 /* Task-context only: hop into the scheduler with SIGALRM masked */
-void hrt_port_yield_to_scheduler(void){
+void hrt_port_yield_to_scheduler(void) {
     int cur = hrt__get_current();
     if (cur < 0 || !g_ctxs[cur].valid) return;
     sigset_t old;
@@ -164,7 +176,7 @@ void hrt_port_yield_to_scheduler(void){
 
 /* Scheduler loop: pick and switch, with SIGALRM masked during critical sections */
 void hrt_port_enter_scheduler(void) {
-    for(;;){
+    for (;;) {
 #ifdef HEARTOS_TEST_HOOKS
         if (g_test_stop) {
             /* Disable timer and exit scheduler loop for tests */
@@ -201,14 +213,15 @@ void hrt_port_enter_scheduler(void) {
     }
 }
 
-void hrt_port_crit_enter(void){
+void hrt_port_crit_enter(void) {
     if (g_crit_depth++ == 0) {
         /* Block SIGALRM; we don't attempt to restore an arbitrary previous mask here.
            Critical sections are short; on final exit we simply unmask SIGALRM. */
         sigprocmask(SIG_BLOCK, &g_sigalrm_set, NULL);
     }
 }
-void hrt_port_crit_exit(void){
+
+void hrt_port_crit_exit(void) {
     if (--g_crit_depth == 0) {
         /* Unblock SIGALRM when leaving the outermost critical section. */
         sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);

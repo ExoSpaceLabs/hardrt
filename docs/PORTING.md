@@ -5,7 +5,7 @@ This document explains what a port must implement and the rules for interacting 
 ## Required hooks (implemented by the port)
 
 - `void hrt_port_start_systick(uint32_t hz);`
-  - Start a periodic tick at `hz` and, on each tick, call `hrt__tick_isr()` from the timer ISR/thread.
+  - Start a periodic tick at `hz` and, on each tick, call `hrt_tick_from_isr()` from the timer ISR/thread.
 - `void hrt_port_idle_wait(void);`
   - Optional low-power or sleep while idle. It may be a short sleep on hosted ports.
 - `void hrt__pend_context_switch(void);`
@@ -24,7 +24,7 @@ Additionally, a port that implements an actual scheduler loop must provide:
 
 ## Core-provided internal helpers a port may call
 
-- `void hrt__tick_isr(void);`
+- `void hrt_tick_from_isr(void);`
   - Called by the port on every tick. It advances time, wakes sleepers, and performs time-slice accounting for the currently running task. It is ISR-safe and must not perform a context switch.
 - `void hrt__on_scheduler_entry(void);`
   - Call this right after returning from a task back to the scheduler context (with interrupts/tick masked as needed). It rotates a time-slice-expired task to the tail of its ready queue and refreshes its quantum.
@@ -35,11 +35,11 @@ Additionally, a port that implements an actual scheduler loop must provide:
 
 ## Important rules
 
-- Do not context-switch from an ISR or signal handler. From the tick ISR, only call `hrt__tick_isr()` and then request a reschedule via `hrt__pend_context_switch()`.
+- Do not context-switch from an ISR or signal handler. From the tick ISR, only call `hrt_tick_from_isr()` and then request a reschedule via `hrt__pend_context_switch()`.
 - Mask/disable the tick around raw context switches if your platform can receive ticks during a swap, to avoid re-entrancy.
 - For round-robin policies, invoke `hrt__on_scheduler_entry()` upon re-entering the scheduler from a task to apply time-slice rotation safely.
 
 ## Reference ports
 
-- `posix` (Linux hosted): uses `setitimer` + `SIGALRM` for ticks and `ucontext` for cooperative switching. The signal handler calls `hrt__tick_isr()` and sets a reschedule flag. Rotation is applied in the scheduler loop via `hrt__on_scheduler_entry()` with SIGALRM masked.
+- `posix` (Linux hosted): uses `setitimer` + `SIGALRM` for ticks and `ucontext` for cooperative switching. The signal handler calls `hrt_tick_from_isr()` and sets a reschedule flag. Rotation is applied in the scheduler loop via `hrt__on_scheduler_entry()` with SIGALRM masked.
 - `null`: a stub that provides the required hooks but does not start a tick or switch contexts. Useful for build-time validation only.
