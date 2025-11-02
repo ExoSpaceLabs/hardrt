@@ -22,6 +22,40 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 
 ---
 
+### Architecture
+
+![architecture](docs/images/Architecture.png)]
+
+The Architecture is mainly divided in 3 layers:
+- **Application Layer** : Where the tasks are defined. e.g. camera, UART downlink, HK/FDIR, etc.
+- **HeaRTOS Core** : Where the RTOS lives, manages tasks and calls the port to switch context when necessary.
+  - **HeaRTOS Port** : Wraps the hardware specific methods.
+- **Hardware Layer** : Hardware specific methods, registers, primitives etc.
+
+### Task State Machine
+![task_state_machine.png](docs/images/task_state_machine.png)
+
+Where each task is executed in accordance of the policy adopted by the scheduler.
+
+### Scheduling Flow
+![scheduling_flow.png](docs/images/scheduling_flow.png)
+
+Tick (ISR/signal) -> hrt__tick_isr():
+  - g_tick++
+  - wake any SLEEP tasks whose wake_tick <= now
+  - hrt__pend_context_switch()  (set resched flag)
+
+Scheduler loop (port):
+ - if resched flag:
+   -  next = hrt__pick_next_ready()
+   -  swapcontext/PendSV to next task
+
+Task-level yield/sleep:
+  - mark state (READY->queue or SLEEP)
+  - hrt__pend_context_switch()
+  - hrt_port_yield_to_scheduler()  (safe handoff from task ctx)
+
+
 ## 📁 Repository Layout
 ```
 heartos/
@@ -74,66 +108,6 @@ For further information and CMake flags see [Build](docs/BUILD.md) document.
 ---
 
 ## 🗺️ Diagrams
-
-### Architecture
-```
-+-----------------------------------------------------------+
-|                    Application Layer                      |
-|  (User tasks: camera, UART downlink, HK/FDIR, etc.)       |
-+---------------------------+-------------------------------+
-|          HeaRTOS Core     |          HeaRTOS Port         |
-|  - Scheduler              |  - hrt_port_start_systick()   |
-|  - Tick management        |  - hrt_port_enter_scheduler() |
-|  - Ready queues           |  - hrt_port_yield_to_scheduler() |
-|  - Semaphores (binary)    |  - hrt_port_idle_wait()       |
-+---------------------------+-------------------------------+
-|                     Hardware / OS Primitives              |
-| (Cortex-M SysTick/PendSV, or POSIX setitimer/ucontext)    |
-+-----------------------------------------------------------+
-```
-
-### Task State Machine
-```
-     +---------+
-     | CREATED |
-     +----+----+
-          |
-          v
-     +----+----+
-     |  READY  |<-----------------------------+
-     +----+----+                              |
-          |                                   |
-          v                                   |
-       +--+--+                                |
-       | RUN | -- hrt_yield() --------------> |
-       +--+--+                                |
-          |                                   |
-  hrt_sleep(ms)                               |
-          v                                   |
-       +--+----+       tick wakeup            |
-       | SLEEP | -----------------------------+
-       +-------+
-
-  (If task function returns -> EXIT, not re-queued)
-```
-
-### Scheduling Flow
-```
-Tick (ISR/signal) -> hrt__tick_isr():
-  - g_tick++
-  - wake any SLEEP tasks whose wake_tick <= now
-  - hrt__pend_context_switch()  (set resched flag)
-
-Scheduler loop (port):
-  if resched flag:
-     next = hrt__pick_next_ready()
-     swapcontext/PendSV to next task
-
-Task-level yield/sleep:
-  - mark state (READY->queue or SLEEP)
-  - hrt__pend_context_switch()
-  - hrt_port_yield_to_scheduler()  (safe handoff from task ctx)
-```
 
 ---
 
