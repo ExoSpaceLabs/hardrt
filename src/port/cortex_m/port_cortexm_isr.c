@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
+#include <stddef.h>   // for size_t
+#include "heartos_port_int.h"
+
 
 /* Core-private hooks */
 int hrt__pick_next_ready(void);

@@ -125,7 +125,6 @@ elseif(HEARTOS_PORT STREQUAL "cortex_m")
           "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
           "${SOURCE_PORT_DIR}/cortex_m/port_cortexm_isr.c"
   )
-  message(FATAL_ERROR "Cortex-M port not implemented yet. Set HEARTOS_PORT=null or posix.")
 else()
   message(FATAL_ERROR "Unknown HEARTOS_PORT=${HEARTOS_PORT}")
 endif()

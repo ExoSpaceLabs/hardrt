@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include "heartos.h"
 #include "heartos_time.h"
+#include "heartos_port_int.h"
+
 
 /* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
 #define SCS_BASE            (0xE000E000UL)

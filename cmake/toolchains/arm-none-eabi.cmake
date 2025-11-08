@@ -24,7 +24,9 @@ set(CMAKE_C_COMPILER   ${ARM_NONE_EABI_GCC})
 set(CMAKE_CXX_COMPILER ${ARM_NONE_EABI_GPP})
 set(CMAKE_AR           ${ARM_NONE_EABI_AR})
 set(CMAKE_RANLIB       ${ARM_NONE_EABI_RANLIB})
-set(CMAKE_ASM_COMPILER ${ARM_NONE_EABI_AS})
+
+#enable_language(ASM)
+set(CMAKE_ASM_COMPILER ${ARM_NONE_EABI_GCC})
 
 # Avoid host paths leaking into finds
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -38,16 +40,11 @@ if(NOT DEFINED MCU_FLAGS)
   set(MCU_FLAGS "-mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard")
 endif()
 
-# Common compile flags for all LANGs (will be extended by project targets)
-set(COMMON_COMPILE_FLAGS "${MCU_FLAGS} -ffunction-sections -fdata-sections")
-# Linker: same arch flags + garbage collect unused sections
-set(COMMON_LINK_FLAGS    "${MCU_FLAGS} -Wl,--gc-sections")
-
 # Initialize CMake flags (projects may append per-target)
-set(CMAKE_C_FLAGS_INIT   "${COMMON_COMPILE_FLAGS}")
-set(CMAKE_CXX_FLAGS_INIT "${COMMON_COMPILE_FLAGS}")
-set(CMAKE_ASM_FLAGS_INIT "${MCU_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS_INIT "${COMMON_LINK_FLAGS}")
+set(CMAKE_C_FLAGS_INIT   "${MCU_FLAGS} -ffreestanding -fno-builtin -ffunction-sections -fdata-sections")
+set(CMAKE_CXX_FLAGS_INIT "${MCU_FLAGS} -ffreestanding -fno-builtin -ffunction-sections -fdata-sections")
+set(CMAKE_ASM_FLAGS_INIT "${MCU_FLAGS} -x assembler-with-cpp")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${MCU_FLAGS} -Wl,--gc-sections")
 set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
 
 # ---- Build-type defaults ----
