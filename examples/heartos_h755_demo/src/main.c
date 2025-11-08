@@ -11,8 +11,9 @@ extern uint32_t SystemCoreClock;
 
 static uint32_t stackA[512], stackB[512];
 
-static void TaskA(void*) { for(;;) hrt_sleep(500); }
-static void TaskB(void*) { for(;;) hrt_sleep(1000); }
+static void TaskA(void* arg) { (void)arg; for(;;) hrt_sleep(500); }
+static void TaskB(void* arg) { (void)arg; for(;;) hrt_sleep(1000); }
+
 
 static inline void hold_cm4(void){
 #define RCC_BASE 0x58024400UL
