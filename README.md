@@ -4,19 +4,19 @@
 A tiny, portable, modular real-time operating system written in C, with optional C++17 wrappers.  
 Minimal footprint, predictable behavior, and zero hardware dependencies in its core.
 
-**Version:** `0.2.0`
+**Version:** `0.3.0`
 
 ---
 
 ## ✨ Features
 - **Pure C core** — no dynamic allocation, no HAL dependencies.
-- **Portable ports** — currently: null, posix.
+- **Portable ports** — currently: null, posix, cortex-m.
 - **Scheduler** — priority, round-robin, or hybrid; RR currently rotates on yield/sleep.
 - **Binary semaphores** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up.
 - **Static tasks** — stacks and TCBS supplied by the application.
 - **CMake package** — install and consume via `find_package(HeaRTOS)`.
 - **Generated metadata** — version and port headers at build time.
-- **Optional C++17 wrapper** — header-only interface target when enabled.
+- **Optional C++17 wrapper** — header-only interface target when enabled (WIP).
 
 > The POSIX port is for logic verification, not timing accuracy. ucontext is used and supported on Linux/glibc.
 
@@ -24,7 +24,7 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 
 ### Architecture
 
-![architecture](docs/images/Architecture.png)]
+![architecture](docs/images/Architecture.png)
 
 The Architecture is mainly divided in 3 layers:
 - **Application Layer** : Where the tasks are defined. e.g. camera, UART downlink, HK/FDIR, etc.
@@ -45,8 +45,8 @@ heartos/
 ├── inc/                    # Public headers
 ├── src/                    # Core + port implementations
 │   ├── core/               # Kernel internals
-│   └── port/               # Architecture-specific backends (null, posix)
-├── cpp/                    # Optional C++17 interface
+│   └── port/               # Architecture-specific backends (null, posix, cortex_m)
+├── cpp/                    # Optional C++17 interface (WIP)
 ├── examples/               # Example applications
 ├── tests/                  # POSIX test harness
 ├── docs/                   # Documentation
