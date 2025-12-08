@@ -29,22 +29,6 @@ int hrt__get_current(void);
 
 void hrt__set_current(int id);
 
-/* Mirror TCB fields used by the port */
-typedef struct {
-    uint32_t *sp;
-    uint32_t *stack_base;
-    size_t stack_words;
-
-    void (*entry)(void *);
-
-    void *arg;
-    uint32_t wake_tick;
-    uint16_t timeslice_cfg;
-    uint16_t slice_left;
-    uint8_t prio;
-    uint8_t state;
-} _hrt_tcb_t;
-
 _hrt_tcb_t *hrt__tcb(int id);
 
 /* ---- Port state ---- */
@@ -107,10 +91,10 @@ static inline void unblock_sigalrm(const sigset_t *old) {
 
 /* ---- Task trampoline ---- */
 void hrt__task_trampoline(void) {
-    int id = hrt__get_current();
-    _hrt_tcb_t *t = hrt__tcb(id);
+    const int id = hrt__get_current();
+    const _hrt_tcb_t *t = hrt__tcb(id);
     t->entry(t->arg);
-    /* If the task returns, request a reschedule and jump back */
+    /* If the task returns, request a rescheduling and jump back */
     g_switch_pending = 1;
     swapcontext(&g_ctxs[id].ctx, &g_sched_ctx);
     /* not reached */
@@ -120,7 +104,7 @@ void hrt__task_trampoline(void) {
 void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
                                  uint32_t *stack_base, size_t words) {
     (void) tramp; /* we use hrt__task_trampoline directly */
-    size_t bytes = words * sizeof(uint32_t);
+    const size_t bytes = words * sizeof(uint32_t);
     getcontext(&g_ctxs[id].ctx);
     g_ctxs[id].ctx.uc_stack.ss_sp = (void *) stack_base;
     g_ctxs[id].ctx.uc_stack.ss_size = bytes;
@@ -139,7 +123,7 @@ static void _tick_sighandler(int signo) {
 }
 
 /* Start periodic SIGALRM at the requested Hz */
-void hrt_port_start_systick(uint32_t hz) {
+void hrt_port_start_systick(const uint32_t tick_hz) {
     /* If external tick is selected, do not start SIGALRM timer. */
     if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
         return;
@@ -156,7 +140,7 @@ void hrt_port_start_systick(uint32_t hz) {
 
     struct itimerval it;
     memset(&it, 0, sizeof it);
-    long usec = (hz ? (1000000L / (long) hz) : 1000L);
+    long usec = (tick_hz ? (1000000L / (long) tick_hz) : 1000L);
     it.it_value.tv_sec = 0;
     it.it_value.tv_usec = usec;
     it.it_interval = it.it_value;
@@ -168,7 +152,7 @@ void hrt_port_idle_wait(void) {
 #ifdef HEARTOS_TEST_HOOKS
     g_idle_counter++;
 #endif
-    struct timespec ts = {0, 1 * 1000 * 1000}; /* 1 ms */
+    const struct timespec ts = {0, 1 * 1000 * 1000}; /* 1 ms */
     nanosleep(&ts, NULL);
 }
 
@@ -179,7 +163,7 @@ void hrt__pend_context_switch(void) {
 
 /* Task-context only: hop into the scheduler with SIGALRM masked */
 void hrt_port_yield_to_scheduler(void) {
-    int cur = hrt__get_current();
+    const int cur = hrt__get_current();
     if (cur < 0 || !g_ctxs[cur].valid) return;
     sigset_t old;
     block_sigalrm(&old);
@@ -207,7 +191,7 @@ void hrt_port_enter_scheduler(void) {
         sigset_t old;
         block_sigalrm(&old);
 
-        int next = hrt__pick_next_ready();
+        const int next = hrt__pick_next_ready();
         if (next < 0) {
             unblock_sigalrm(&old);
             hrt_port_idle_wait();
@@ -239,4 +223,13 @@ void hrt_port_crit_exit(void) {
         /* Unblock SIGALRM when leaving the outermost critical section. */
         sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);
     }
+}
+
+void hrt_port_sp_valid(const uint32_t sp)
+{
+    (void)sp;
+    /* POSIX “stacks” are host stacks / malloc etc.; no HW limit. */
+}
+void hrt__init_idle_task(void) {
+
 }

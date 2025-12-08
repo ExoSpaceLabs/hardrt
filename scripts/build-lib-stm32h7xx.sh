@@ -10,7 +10,7 @@ BUILD_TYPE="${BUILD_TYPE:-Release}"         # or Debug
 GENERATOR="${GENERATOR:-Unix Makefiles}"
 JOBS="${JOBS:-$(nproc)}"
 STM32CUBE_H7_ROOT="${STM32CUBE_H7_ROOT:-/home/dev/STM32Cube/Repository/STM32CubeH7}"
-
+CTESTS="${CTESTS:-OFF}"
 # CLI overrides (optional)
 usage() {
   echo "Usage: $0 [--heartos DIR] [--app DIR] [--stm32h7 DIR] [--port cortex_m|posix|null] [--toolchain FILE] [--build-type TYPE] [--generator GEN] [--jobs N]"
@@ -25,18 +25,21 @@ while [[ $# -gt 0 ]]; do
     --toolchain) TC_FILE="$2"; shift 2;;
     --build-type) BUILD_TYPE="$2"; shift 2;;
     --generator) GENERATOR="$2"; shift 2;;
+    --c-tests) CTESTS="ON"; shift 1;;
     --jobs) JOBS="$2"; shift 2;;
     -h|--help) usage;;
     *) echo "Unknown arg: $1"; usage;;
   esac
 done
 
-echo "[INFO] HeaRTOS: $HEARTOS_DIR"
-echo "[INFO] App    : $APP_DIR"
-echo "[INFO] STM32H7: $STM32CUBE_H7_ROOT"
-echo "[INFO] Port   : $PORT"
-echo "[INFO] Build  : $BUILD_TYPE"
-echo "[INFO] Gen    : $GENERATOR"
+echo "[INFO] HeaRTOS   : $HEARTOS_DIR"
+echo "[INFO] App       : $APP_DIR"
+echo "[INFO] Toolchain : $TC_FILE"
+echo "[INFO] STM32H7   : $STM32CUBE_H7_ROOT"
+echo "[INFO] Port      : $PORT"
+echo "[INFO] Build     : $BUILD_TYPE"
+echo "[INFO] CTests    : $CTESTS"
+echo "[INFO] Gen       : $GENERATOR"
 
 # -------- Build HeaRTOS static lib --------
 pushd "$HEARTOS_DIR" >/dev/null
@@ -53,6 +56,7 @@ CMAKE_ARGS=(
   -DHEARTOS_ENABLE_CPP=OFF
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"
+  -DHEARTOS_BUILD_TESTS="$CTESTS"
 )
 
 if [[ "$PORT" == "cortex_m" ]]; then

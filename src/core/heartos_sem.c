@@ -17,20 +17,6 @@ void hrt__set_current(int id);
 
 void hrt__make_ready(int id);
 
-/* Access to TCB for state changes */
-typedef struct {
-    uint32_t *sp;
-    uint32_t *stack_base;
-    size_t stack_words;
-    hrt_task_fn entry;
-    void *arg;
-    uint32_t wake_tick;
-    uint16_t timeslice_cfg;
-    uint16_t slice_left;
-    uint8_t prio;
-    uint8_t state; /* HRT_READY/HRT_SLEEP/HRT_BLOCKED/HRT_UNUSED */
-} _hrt_tcb_t;
-
 extern _hrt_tcb_t *hrt__tcb(int id);
 
 /* Port-provided critical section (non-nestable minimal CS) */
@@ -40,6 +26,9 @@ void hrt_port_crit_exit(void);
 
 /* Internal: enqueue/dequeue waiter (FIFO) */
 static void _waitq_push(hrt_sem_t *s, uint8_t id) {
+    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+    };
     if (s->count_wait >= HEARTOS_MAX_TASKS) return;
     s->q[s->tail] = id;
     s->tail = (uint8_t) ((s->tail + 1) % HEARTOS_MAX_TASKS);
@@ -49,6 +38,9 @@ static void _waitq_push(hrt_sem_t *s, uint8_t id) {
 static int _waitq_pop(hrt_sem_t *s) {
     if (!s->count_wait) return -1;
     int id = s->q[s->head];
+    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+    };
     s->head = (uint8_t) ((s->head + 1) % HEARTOS_MAX_TASKS);
     s->count_wait--;
     return id;
@@ -71,7 +63,10 @@ int hrt_sem_take(hrt_sem_t *s) {
 
     /* Block current task */
     int me = hrt__get_current();
-    if (me < 0) return -1; /* called before scheduler start? no thanks */
+    if (me < 0 || me >= HEARTOS_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return -1;
+    }
 
     hrt_port_crit_enter();
 
@@ -88,10 +83,10 @@ int hrt_sem_take(hrt_sem_t *s) {
     printf("[sem] take: task %d queued, waiters=%u\n", me, (unsigned) s->count_wait);
 #endif
     _hrt_tcb_t *t = hrt__tcb(me);
+    if (!t){hrt_error(ERR_TCB_NULL);}
     t->state = HRT_BLOCKED;
 
     /* Request reschedule and yield to scheduler from task context */
-    extern void hrt__pend_context_switch(void);
     extern void hrt_port_yield_to_scheduler(void);
 
     hrt_port_crit_exit();
@@ -112,6 +107,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
     if (waiter >= 0) {
         /* Wake exactly one waiter */
         _hrt_tcb_t *tw = hrt__tcb(waiter);
+        if (!tw) {hrt_error(ERR_TCB_NULL);}
         /* Do not pre-set state here; hrt__make_ready() will set state to READY
          * and push the task into the ready queue. */
         hrt__make_ready(waiter);
@@ -132,7 +128,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
     if (is_isr) {
         if (need_switch) *need_switch = woken;
         if (woken) {
-            extern void hrt__pend_context_switch(void);
+
             hrt__pend_context_switch();
         }
     } else {

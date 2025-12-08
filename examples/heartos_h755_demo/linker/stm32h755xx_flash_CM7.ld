@@ -14,7 +14,7 @@
 **
 **  Target      : STMicroelectronics STM32
 **
-**  Distribution: The file is distributed “as is,” without any warranty
+**  Distribution: The file is distributed ï¿½as is,ï¿½ without any warranty
 **                of any kind.
 **
 *****************************************************************************
@@ -46,6 +46,10 @@ FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 1024K
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
 }
+
+/* ------------------------- RAM SYMBOLS ------------------------- */
+__RAM_START__ = ORIGIN(RAM);
+__RAM_END__   = ORIGIN(RAM) + LENGTH(RAM);
 
 /* Define output sections */
 SECTIONS

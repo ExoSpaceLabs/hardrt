@@ -1,14 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
+#include <stddef.h>
 #include "heartos.h"
 #include "heartos_time.h"
 #include "heartos_port_int.h"
-
-
 /* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
-#define SCS_BASE            (0xE000E000UL)
-#define SysTick_BASE        (SCS_BASE + 0x0010UL)
-#define SCB_BASE            (SCS_BASE + 0x0D00UL)
+
 
 typedef struct {
     volatile uint32_t CTRL;
@@ -24,10 +21,18 @@ typedef struct {
     volatile uint32_t AIRCR;
     volatile uint32_t SCR;
     volatile uint32_t CCR;
-    volatile uint8_t  SHPR[12]; /* 3 x 4 bytes */
+    volatile uint8_t  SHPR[12]; /* system handler priority registers */
     volatile uint32_t SHCSR;
-    /* ... not needed further */
 } SCB_Type;
+
+#define SCS_BASE            (0xE000E000UL)
+#define SysTick_BASE        (SCS_BASE + 0x0010UL)
+#define SCB_BASE            (SCS_BASE + 0x0D00UL)
+
+// variables defined in the linker script that show the address limits of RAM.
+extern uint8_t __RAM_START__;
+extern uint8_t __RAM_END__;
+#define HRT_SP_FRAME_BYTES 64u
 
 #define SysTick             ((SysTick_Type *) SysTick_BASE)
 #define SCB                 ((SCB_Type *)     SCB_BASE)
@@ -40,32 +45,82 @@ typedef struct {
 #define SYSTICK_TICKINT          (1UL << 1)
 #define SYSTICK_ENABLE           (1UL << 0)
 
-/* -------- Core-private hooks we call from the port -------- */
-void hrt__tick_isr(void);
-void hrt__pend_context_switch(void);
 
-/* -------- Mirror TCB so we can prep initial stack -------- */
+
+/* -------- Enter scheduler (Cortex-M flavor)
+ * Enable IRQs, pend the first switch, then idle forever.
+ */
+#if HEARTOS_OWN_VTOR
+extern uint32_t g_pfnVectors;
+static void heartos_set_vtor(void){
+    (*(volatile uint32_t*)0xE000ED08u) = (uint32_t)&g_pfnVectors;
+}
+#endif
+
+#if HEARTOS_SILENCE_NVIC
+#define NVIC_BASE (0xE000E100UL)
 typedef struct {
-    uint32_t *sp;
-    uint32_t *stack_base;
-    size_t    stack_words;
-    void    (*entry)(void*);
-    void*     arg;
-    uint32_t  wake_tick;
-    uint16_t  timeslice_cfg;
-    uint16_t  slice_left;
-    uint8_t   prio;
-    uint8_t   state;
-} _hrt_tcb_t;
+    volatile uint32_t ISER[16]; uint32_t _r0[16];
+    volatile uint32_t ICER[16]; uint32_t _r1[16];
+    volatile uint32_t ISPR[16]; uint32_t _r2[16];
+    volatile uint32_t ICPR[16]; uint32_t _r3[16];
+    volatile uint32_t IABR[16]; uint32_t _r4[16];
+    volatile uint8_t  IP[240];  uint32_t _r5[644];
+    volatile uint32_t STIR;
+} NVIC_Type;
+#define NVIC ((NVIC_Type*)NVIC_BASE)
+static void heartos_disable_all_external_irqs(void){
+    for (int i = 0; i < 16; ++i) {
+        NVIC->ICER[i] = 0xFFFFFFFFu;
+        NVIC->ICPR[i] = 0xFFFFFFFFu;
+    }
+}
+#endif
+
+//TODO REMOVE DEBUG VARIABLES
+volatile uint32_t dbg_curr_sp;
+volatile uint32_t dbg_pend_calls;
+volatile uint32_t dbg_pend_from_cortexm = 0;
+volatile uint32_t dbg_basperi;
+
+/* -------- Core-private hooks we call from the port -------- */
+extern void hrt__tick_isr(void);
 extern _hrt_tcb_t* hrt__tcb(int id);
 
-/* -------- Weak app-provided core clock query --------
- * Your app should override this to return the real CPU clock (Hz).
- * We DO NOT touch clock trees here.
+void hrt_port_sp_valid(const uint32_t sp) {
+    dbg_curr_sp = sp;
+    (void)dbg_curr_sp;
+
+    const uint32_t ram_lo = (uint32_t)&__RAM_START__;
+    const uint32_t ram_hi = (uint32_t)&__RAM_END__;
+    const uint32_t frame_bytes = HRT_SP_FRAME_BYTES;
+    if (sp == 0) {
+        hrt_error(ERR_SP_NULL);
+    }
+    if (ram_hi - ram_lo < 2 * frame_bytes) {
+        hrt_error(ERR_INVALID_RAM_RANGE);
+    }
+
+    /* basic range guard */
+    if (sp < ram_lo + frame_bytes || sp > ram_hi - frame_bytes) {
+        hrt_error(ERR_STACK_RANGE);
+    }
+
+    /* AAPCS: 8-byte alignment for SP */
+    if (sp & 0x7u) {
+        hrt_error(ERR_STACK_ALIGN);
+    };
+}
+/* -------- Core clock query (weak) --------
+ * Prefer SystemCoreClock if the vendor file is linked; otherwise fallback.
+ * If you REALLY want to drive this via hrt_config_t, provide a strong
+ * app-level override of this function that returns cfg->core_hz.
  */
 __attribute__((weak))
 uint32_t hrt_port_get_core_hz(void) {
-    return 100000000u; /* 100 MHz default if user doesn't override */
+    extern uint32_t SystemCoreClock; /* provided by system_stm32h7xx.c */
+    if (SystemCoreClock) return SystemCoreClock;
+    return 100000000u; /* fallback: 100 MHz */
 }
 
 /* -------- Critical sections via BASEPRI (M3/M4/M7) -------- */
@@ -73,18 +128,30 @@ static inline void _set_BASEPRI(uint32_t v){ __asm volatile ("msr BASEPRI, %0" :
 static inline uint32_t _get_BASEPRI(void){ uint32_t v; __asm volatile ("mrs %0, BASEPRI" : "=r"(v)); return v; }
 
 static uint32_t g_basepri_prev = 0;
+static volatile uint32_t g_cs_nest = 0; /* critical section nesting counter */
 
 void hrt_port_crit_enter(void){
-    /* Raise BASEPRI to mask PendSV/SysTick and other preempting interrupts.
-       Choose a nonzero priority level consistent with your NVIC setup. */
+    /* Mask preempting interrupts (including SysTick/PendSV). Priority 0x80 is a sane mid level. */
     uint32_t prev = _get_BASEPRI();
-    /* 0x80 is a common mid-level priority mask with 8-bit fields. Adjust as needed. */
-    _set_BASEPRI(0x80);
-    g_basepri_prev = prev;
+    if (g_cs_nest == 0u) {
+        g_basepri_prev = prev;            /* save only on outermost enter */
+        _set_BASEPRI(0x80);               /* raise BASEPRI threshold */
+        __asm volatile("dsb sy\nisb");  /* ensure mask takes effect before critical work */
+    }
+    g_cs_nest++;
 }
 
 void hrt_port_crit_exit(void){
-    _set_BASEPRI(g_basepri_prev);
+    if (g_cs_nest == 0u) {
+        /* underflow guard: nothing to do */
+        return;
+    }
+    g_cs_nest--;
+    if (g_cs_nest == 0u) {
+        /* restore previous threshold on outermost exit */
+        _set_BASEPRI(g_basepri_prev);
+        __asm volatile("dsb sy\nisb");
+    }
 }
 
 /* -------- Idle wait -------- */
@@ -92,91 +159,153 @@ void hrt_port_idle_wait(void){
     __asm volatile ("wfi");
 }
 
-/* -------- Trigger a context switch (PendSV) -------- */
-void hrt__pend_context_switch(void){
-    SCB->ICSR = SCB_ICSR_PENDSVSET_Msk; /* set PendSV pending */
+// idle task for when tasks are not available
+static void hrt_idle_task(void *arg) {
+    (void)arg;
+    for (;;) {
+        hrt_port_idle_wait();
+    }
 }
 
-/* Voluntary hop: just pend a switch; handler will do the rest */
+void hrt__init_idle_task(void)
+{
+    memset(&g_idle_tcb, 0, sizeof(g_idle_tcb));
+
+    g_idle_tcb.state         = HRT_READY;        // always logically runnable
+    g_idle_tcb.prio          = 0;                // irrelevant if not in rq
+    g_idle_tcb.timeslice_cfg = 0;                // cooperative, never RR
+    g_idle_tcb.slice_left    = 0;
+    g_idle_tcb.entry         = hrt_idle_task;
+    g_idle_tcb.arg           = NULL;
+
+    // Build initial stack frame exactly like hrt_create_task does:
+    uint32_t *sp = &g_idle_stack[HEARTOS_IDLE_STACK_WORDS];
+
+    // Auto-stacked frame (xPSR, PC, LR, R12, R3, R2, R1, R0):
+    *(--sp) = 0x01000000u;                 // xPSR (Thumb bit set)
+    *(--sp) = (uint32_t)hrt_idle_task;     // PC
+    *(--sp) = (uint32_t)hrt__task_trampoline; // LR on task exit (never reached)
+    *(--sp) = 0; // R12
+    *(--sp) = 0; // R3
+    *(--sp) = 0; // R2
+    *(--sp) = 0; // R1
+    *(--sp) = 0; // R0 (arg)
+
+    // Then the "manually" saved r4–r11, initialized to 0:
+    for (int i = 0; i < 8; ++i) {
+        *(--sp) = 0;
+    }
+
+    g_idle_tcb.sp = sp;
+    _set_sp(HRT_IDLE_ID, sp);     // whatever your internal helper is
+}
+
+
+/* -------- Trigger a context switch (PendSV) -------- */
+static inline void _pend_pendsv(void){
+    dbg_basperi = _get_BASEPRI();
+    dbg_pend_calls++;
+    SCB->ICSR = SCB_ICSR_PENDSVSET_Msk; /* set PendSV pending */
+    __asm volatile("dsb sy\nisb");
+}
+
+void hrt__pend_context_switch(void){
+    _pend_pendsv();
+}
+
+/* Voluntary hop: just pend a switch; handler will do the rest on exception return */
 void hrt_port_yield_to_scheduler(void){
-    hrt__pend_context_switch();
-    /* Execution continues; switch occurs on exception return */
+    // _pend_pendsv();
+    /* execution continues; the switch happens at exception return */
 }
 
 /* -------- Start SysTick at requested Hz -------- */
 void hrt_port_start_systick(uint32_t tick_hz){
     if (!tick_hz) return;
-
-    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
-        // App owns a timer and will call hrt_tick_from_isr() itself.
-        return;
-    }
-
-    uint32_t core_hz = hrt__cfg_core_hz();
-#ifdef HEARTOS_CORE_HZ_DEFAULT
-    if (!core_hz) core_hz = (uint32_t)HEARTOS_CORE_HZ_DEFAULT;
+#if HEARTOS_OWN_VTOR
+    //heartos_set_vtor();
 #endif
-    if (!core_hz) {
-        // No CPU clock info; don't start a broken SysTick.
-        return;
-    }
+#if HEARTOS_SILENCE_NVIC
+    // heartos_disable_all_external_irqs();
+#endif
 
-    uint32_t reload = (core_hz / tick_hz) - 1u;
+    /* If you later add an EXTERNAL tick mode, bypass here in that case. */
+
+    const uint32_t core_hz = hrt_port_get_core_hz();
+    if (!core_hz) return;
+
+    uint32_t reload = core_hz / tick_hz;
+    if (reload == 0u) reload = 1u;
+    if (reload > 0xFFFFFFu) reload = 0xFFFFFFu;
+    reload -= 1u;
+
+    /* Program SysTick */
     SysTick->LOAD = reload;
     SysTick->VAL  = 0;
-    SCB->SHPR[11] = 0xFF;  // PendSV lowest
-    SCB->SHPR[10] = 0xF0;  // SysTick low (above PendSV)
+
+    /* Priority hygiene: PendSV lowest (0xFF), SysTick just above (0xFE).
+       On CM7 with 4-bit implemented priority, only upper bits count.
+       SHPR[10] byte 2 maps PendSV, SHPR[11] byte 3 maps SysTick in ARMv7-M. */
+    SCB->SHPR[10] = 0xF0; /* PendSV lowest (effective on CM7) */
+    SCB->SHPR[11] = 0xE0; /* SysTick higher than PendSV (effective on CM7) */
+
     SysTick->CTRL = SYSTICK_CLKSOURCE_CPU | SYSTICK_TICKINT | SYSTICK_ENABLE;
+
+    /* Make sure global interrupts are enabled */
+    __asm volatile ("cpsie i");
 }
 
 /* -------- Initial stack frame for a new task --------
- * We build the exception-return frame so that on first switch the CPU "returns"
- * into hrt__task_trampoline with LR set to task return handler.
+ * Build the exception-return frame so the first switch "returns"
+ * into hrt__task_trampoline with Thread mode/PSP.
  */
 extern void hrt__task_trampoline(void);
 
 void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
                                  uint32_t* stack_base, size_t words)
 {
-    (void)tramp; /* we always start via hrt__task_trampoline */
-    /* ARM pushes 8 regs automatically on exception return: r0-r3,r12,lr,pc,xpsr */
-    uint32_t *stk = stack_base + words;
+    (void)tramp;
+    uint32_t *stack_end = stack_base + words;
+    uint32_t *stk = stack_end;
 
-    /* Ensure 8-byte alignment */
     stk = (uint32_t*)((uintptr_t)stk & ~0x7u);
 
-    /* Simulate hardware-stacked frame (descending) */
-    *(--stk) = 0x01000000u;                    /* xPSR: Thumb bit set */
-    *(--stk) = (uint32_t)hrt__task_trampoline; /* PC */
-    *(--stk) = 0xFFFFFFFDu;                    /* LR on task entry (thread, PSP) */
-    *(--stk) = 0; /* r12 */
-    *(--stk) = 0; /* r3  */
-    *(--stk) = 0; /* r2  */
-    *(--stk) = 0; /* r1  */
-    /* r0 = task argument will be loaded by trampoline from TCB */
+    // guard: stack must remain in [stack_base, stack_end]
+    if (stk <= stack_base || stk > stack_end) {
+        hrt_error(ERR_STACK_RANGE);
+        return;
+    }
 
-    *(--stk) = 0; /* r0 placeholder */
+    *(--stk) = 0x01000000u;
+    *(--stk) = (uint32_t)hrt__task_trampoline;
+    *(--stk) = 0xFFFFFFFDu;
+    *(--stk) = 0;
+    *(--stk) = 0;
+    *(--stk) = 0;
+    *(--stk) = 0;
+    *(--stk) = 0;
 
-    /* Reserve space for callee-saved r4-r11 that PendSV saves/restores */
     for (int i = 0; i < 8; ++i) *(--stk) = 0;
 
-    _hrt_tcb_t* t = hrt__tcb(id);
-    t->sp = stk;
+    if (stk < stack_base) {
+        hrt_error(ERR_STACK_UNDERFLOW_INIT);
+        return;
+    }
+
+    _set_sp(id, stk);
 }
 
-/* -------- Enter scheduler (Cortex-M flavor)
- * Nothing to loop here; we just pend the first switch and let interrupts run.
- */
 void hrt_port_enter_scheduler(void){
-    __asm volatile ("cpsie i"); /* enable interrupts */
+
+    __asm volatile ("cpsie i");
+    dbg_pend_from_cortexm++;
     hrt__pend_context_switch();
-    for(;;){
-        hrt_port_idle_wait();
-    }
+    for(;;) { hrt_port_idle_wait(); }
 }
 
 /* -------- SysTick handler: tick + request reschedule -------- */
 void SysTick_Handler(void){
+    // __asm volatile("bkpt #0");
     hrt__tick_isr();
-    hrt__pend_context_switch();
+
 }

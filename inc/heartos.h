@@ -27,6 +27,7 @@ extern "C" {
 #define HEARTOS_MAX_PRIO  4  /* 0..3 (0 is highest) */
 #endif
 
+
 /**
  * @brief Task entry function signature.
  * @param arg Opaque pointer passed to the task on start.
@@ -42,6 +43,28 @@ typedef enum {
     HRT_BLOCKED, /**< Blocked on a primitive (future use) */
     HRT_UNUSED /**< Slot not in use */
 } hrt_state_t;
+
+
+typedef enum {
+    NONE = 0,
+    ERR_INVALID_ID = 1,
+    ERR_INVALID_NEXT_ID = 2,
+    ERR_SP_NULL = 3,
+    //ERR_NEXT_SP_NULL = 4,
+    ERR_TCB_NULL = 5,
+    ERR_INVALID_TASK = 6,
+    ERR_NO_TASKS = 7,
+    ERR_INVALID_PRIO = 8,
+    ERR_RQ_OVERFLOW = 9,
+    ERR_INVALID_ID_FROM_RQ = 10,
+    ERR_STACK_UNDERFLOW_INIT = 11,
+    ERR_STACK_RANGE = 12,
+    ERR_STACK_ALIGN = 13,
+    ERR_INVALID_RAM_RANGE = 14,
+    ERR_DUP_READY = 15,
+    ERR_RQ_UNDERFLOW = 9
+}hrt_err;
+
 
 /**
  * @brief Scheduler policy.
@@ -98,6 +121,32 @@ typedef struct {
     hrt_prio_t priority; /**< Task base priority */
     uint16_t timeslice; /**< 0 = cooperative within class; otherwise ticks per slice */
 } hrt_task_attr_t;
+
+/* -------- Mirror TCB so we can prep initial stack -------- */
+typedef struct {
+    uint32_t *sp;
+    uint32_t *stack_base;
+    size_t    stack_words;
+    void    (*entry)(void*);
+    void*     arg;
+    uint32_t  wake_tick;
+    uint16_t  timeslice_cfg;
+    uint16_t  slice_left;
+    uint8_t   prio;
+    uint8_t   state;
+} _hrt_tcb_t;
+
+_hrt_tcb_t *hrt__tcb(int id);
+
+    // sp helpers
+uint32_t *_get_sp(const int id);
+void _set_sp(const int id, uint32_t *sp);
+
+
+#define HRT_IDLE_ID   (HEARTOS_MAX_TASKS - 1)
+#define HEARTOS_IDLE_STACK_WORDS 64
+static _hrt_tcb_t   g_idle_tcb;
+static uint32_t     g_idle_stack[HEARTOS_IDLE_STACK_WORDS];
 
 /**
  * @brief Get the semantic version string of HeaRTOS at runtime.
@@ -221,6 +270,16 @@ void hrt__task_trampoline(void); /* arch-specific entry trampoline */
  */
 void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
                                  uint32_t *stack_base, size_t words);
+
+
+/**
+ * @brief function to identify the error during debug.
+ *
+ * @param code
+ */
+void hrt_error(hrt_err code);
+
+
 
 #ifdef __cplusplus
 }

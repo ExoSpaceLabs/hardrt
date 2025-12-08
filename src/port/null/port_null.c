@@ -17,6 +17,10 @@
      safe to rotate a time-sliced task to the tail of its ready queue.
 */
 
+
+void hrt__init_idle_task(void) {
+
+}
 void hrt_port_enter_scheduler(void) {
     /* No scheduler in null port; hrt_start() returns immediately. */
 }
@@ -62,4 +66,8 @@ void hrt_port_crit_enter(void) {
 
 void hrt_port_crit_exit(void) {
     /* no-op */
+}
+void hrt_port_sp_valid(uint32_t sp)
+{
+    (void)sp;
 }

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- Project ----
 set(LIB_NAME "heartos")
 set(LIB_NAME_CPP "heartospp")
-project(${LIB_NAME} VERSION 0.3.0 LANGUAGES C CXX)
+project(${LIB_NAME} VERSION 0.3.0 LANGUAGES C CXX ASM)
 
 # ---- Options ----
 set(HEARTOS_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
@@ -12,11 +12,29 @@ option(HEARTOS_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OF
 option(HEARTOS_BUILD_EXAMPLES "Build examples" ON)
 option(HEARTOS_BUILD_TESTS "Build test suite (POSIX port)" ON)
 
+
+# ---- Port Cortex-m specific
+option(HEARTOS_OWN_VTOR "Port sets VTOR at bring-up" ON)
+option(HEARTOS_SILENCE_NVIC "Port disables/clears all external NVIC IRQs at bring-up" ON)
+option(HEARTOS_DEFAULT_WEAK_HANDLERS "Startup maps all unused IRQs to Default_Handler" ON)
+
 # ---- Kernel sizing knobs (public compile definitions) ----
 # These control the number of concurrent tasks and the number of priority classes.
 # They are wired into the public headers via HEARTOS_MAX_TASKS/HEARTOS_MAX_PRIO.
 set(HEARTOS_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
 set(HEARTOS_CFG_MAX_PRIO  4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
+
+
+message("-- Definitions --")
+message("-- HEARTOS_PORT                  : ${HEARTOS_PORT}")
+message("-- HEARTOS_ENABLE_CPP            : ${HEARTOS_ENABLE_CPP}")
+message("-- HEARTOS_BUILD_EXAMPLES        : ${HEARTOS_BUILD_EXAMPLES}")
+message("-- HEARTOS_BUILD_TESTS           : ${HEARTOS_BUILD_TESTS}")
+message("-- HEARTOS_OWN_VTOR              : ${HEARTOS_OWN_VTOR}") #TODO REMOVE and associated
+message("-- HEARTOS_SILENCE_NVIC          : ${HEARTOS_SILENCE_NVIC}") #TODO REMOVE
+message("-- HEARTOS_DEFAULT_WEAK_HANDLERS : ${HEARTOS_DEFAULT_WEAK_HANDLERS}") #TODO REMOVE
+message("-- HEARTOS_CFG_MAX_TASKS         : ${HEARTOS_CFG_MAX_TASKS}")
+message("-- HEARTOS_CFG_MAX_PRIO          : ${HEARTOS_CFG_MAX_PRIO}")
 
 # Validate sizing knobs at configure time (no kernel source changes needed)
 # Constraints:
@@ -96,6 +114,12 @@ target_compile_definitions(${LIB_NAME}
         HEARTOS_MAX_PRIO=${HEARTOS_CFG_MAX_PRIO}
 )
 
+target_compile_definitions(heartos PRIVATE
+        $<$<BOOL:${HEARTOS_OWN_VTOR}>:HEARTOS_OWN_VTOR=1>
+        $<$<BOOL:${HEARTOS_SILENCE_NVIC}>:HEARTOS_SILENCE_NVIC=1>
+        $<$<BOOL:${HEARTOS_DEFAULT_WEAK_HANDLERS}>:HEARTOS_DEFAULT_WEAK_HANDLERS=1>
+)
+
 target_include_directories(${LIB_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${INCLUDE_DIR}>
@@ -124,6 +148,8 @@ elseif(HEARTOS_PORT STREQUAL "cortex_m")
   target_sources(${LIB_NAME} PRIVATE
           "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
           "${SOURCE_PORT_DIR}/cortex_m/port_cortexm_isr.c"
+          "${SOURCE_PORT_DIR}/cortex_m/hardfault_diag.c"
+          "${SOURCE_PORT_DIR}/cortex_m/hrt_pendsv_handler.s"
   )
 else()
   message(FATAL_ERROR "Unknown HEARTOS_PORT=${HEARTOS_PORT}")

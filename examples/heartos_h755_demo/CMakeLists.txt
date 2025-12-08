@@ -23,6 +23,8 @@ endif ()
 set(STM32CUBE_INCLUDE_DIRS
         ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Core/Include
         ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Device/ST/STM32H7xx/Include
+        ${STM32CUBE_H7_ROOT}/Drivers/STM32H7xx_HAL_Driver/Inc
+        inc
 )
 
 # your arm-none-eabi toolchain file

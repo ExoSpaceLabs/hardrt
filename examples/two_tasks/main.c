@@ -33,7 +33,7 @@ int main(void){
        hrt_port_name(), hrt_port_id());
 
 
-    hrt_config_t cfg = {
+    const hrt_config_t cfg = {
         .tick_hz = 1000,
         .policy  = HRT_SCHED_PRIORITY_RR,
         .default_slice = 5
@@ -43,8 +43,8 @@ int main(void){
         return 1;
     }
 
-    hrt_task_attr_t p0 = { .priority = HRT_PRIO0, .timeslice = 0 };
-    hrt_task_attr_t p1 = { .priority = HRT_PRIO1, .timeslice = 5 };
+    const hrt_task_attr_t p0 = { .priority = HRT_PRIO0, .timeslice = 0 };
+    const hrt_task_attr_t p1 = { .priority = HRT_PRIO1, .timeslice = 5 };
 
     if (hrt_create_task(taskA, 0, stack_a, sizeof(stack_a)/sizeof(stack_a[0]), &p0) < 0)
         puts("create taskA failed");
