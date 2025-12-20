@@ -15,7 +15,7 @@ static void wrap_sleeper(void *arg) {
 }
 
 static void test_tick_wraparound_sleep_wakes(void) {
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
     hrt__test_reset_scheduler_state(); g_wrap_woke = 0;
     hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 3};
     T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init should return 0 (wraparound)");
@@ -37,7 +37,7 @@ static void test_tick_wraparound_sleep_wakes(void) {
     T_ASSERT_EQ_INT(1, g_wrap_woke, "sleeper should wake across 32-bit tick wrap");
 #else
     (void) wrap_sleeper; /* skip if test hooks not present */
-    printf("SKIP: wraparound test requires HEARTOS_TEST_HOOKS.\n");
+    printf("SKIP: wraparound test requires HARDRT_TEST_HOOKS.\n");
 #endif
 }
 

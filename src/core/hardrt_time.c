@@ -1,5 +1,5 @@
-#include "heartos.h"
-#include "heartos_time.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
 
 extern _hrt_tcb_t* hrt__tcb(int id);
 extern void       hrt__make_ready(int id);

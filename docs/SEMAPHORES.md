@@ -1,6 +1,6 @@
 ## 🔒 Semaphores (binary)
 
-HeaRTOS provides a minimal binary semaphore primitive for simple mutual exclusion and task synchronization. Semaphores in HeaRTOS are deliberately small and predictable:
+HardRT provides a minimal binary semaphore primitive for simple mutual exclusion and task synchronization. Semaphores in HardRT are deliberately small and predictable:
 
 - Binary only: the `count` is either 0 (unavailable) or 1 (available).
 - FIFO waiter queue: tasks that block in `hrt_sem_take` are queued in first-in, first-out order within a priority class; global scheduling rules still apply (fixed priority with optional round‑robin within a class).
@@ -13,13 +13,13 @@ This document summarizes the API and the behavioral guarantees, and shows a smal
 
 ### API
 
-Header: `#include "heartos_sem.h"`
+Header: `#include "hardrt_sem.h"`
 
 ```c
 /* Type (binary semaphore) */
 typedef struct {
     volatile uint8_t count;      /* 0 or 1 */
-    uint8_t          q[HEARTOS_MAX_TASKS];
+    uint8_t          q[HARDRT_MAX_TASKS];
     uint8_t          head, tail, count_wait; /* internal FIFO */
 } hrt_sem_t;
 
@@ -39,7 +39,7 @@ int hrt_sem_give(hrt_sem_t* s);
 int hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch);
 ```
 
-See the authoritative declarations in `inc/heartos_sem.h`.
+See the authoritative declarations in `inc/hardrt_sem.h`.
 
 ---
 
@@ -57,7 +57,7 @@ See the authoritative declarations in `inc/heartos_sem.h`.
   - Within a priority class that uses round‑robin, READY tasks continue to be rotated by their time‑slice rules. The semaphore’s FIFO determines which waiter becomes READY next; RR then applies among all READY tasks of that class.
 - Safety and constraints
   - `hrt_sem_take()` before the scheduler is started (or without a current task) returns `-1`.
-  - The internal wait queue capacity is bounded by `HEARTOS_MAX_TASKS`.
+  - The internal wait queue capacity is bounded by `HARDRT_MAX_TASKS`.
 
 ---
 
@@ -66,8 +66,8 @@ See the authoritative declarations in `inc/heartos_sem.h`.
 Minimal two‑task example (full example at `examples/sem_basic`):
 
 ```c
-#include "heartos.h"
-#include "heartos_sem.h"
+#include "hardrt.h"
+#include "hardrt_sem.h"
 #include <stdio.h>
 
 static uint32_t sa[2048], sb[2048];
@@ -114,7 +114,7 @@ cmake --build cmake-build-debug --target sem_basic && \
 cmake-build-debug/examples/sem_basic/sem_basic
 ```
 
-> Note: The POSIX port (`-DHEARTOS_PORT=posix`) is required to observe scheduler behavior on a host machine.
+> Note: The POSIX port (`-DHARDRT_PORT=posix`) is required to observe scheduler behavior on a host machine.
 
 ---
 
@@ -131,8 +131,8 @@ The POSIX test suite includes dedicated semaphore tests to prevent regressions:
 Build and run all tests:
 
 ```bash
-cmake --build cmake-build-debug --target heartos_tests && \
-cmake-build-debug/heartos_tests
+cmake --build cmake-build-debug --target hardrt_tests && \
+cmake-build-debug/hardrt_tests
 ```
 
 ---
@@ -147,4 +147,4 @@ cmake-build-debug/heartos_tests
 ### Limitations and future work
 
 - Only binary semaphores are provided. Counting semaphores and mutexes (with priority inheritance) are out of scope for the minimal core but may be added as optional modules if they do not compromise predictability and size.
-- The internal wait queue is bounded by `HEARTOS_MAX_TASKS`. Extremely contended scenarios should be sized accordingly.
+- The internal wait queue is bounded by `HARDRT_MAX_TASKS`. Extremely contended scenarios should be sized accordingly.

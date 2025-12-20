@@ -1,6 +1,6 @@
 /* Tests for binary semaphore behavior: try/take/give, blocking and FIFO waiters. */
 #include "test_common.h"
-#include "heartos_sem.h"
+#include "hardrt_sem.h"
 
 /* ---- Case 1: basic try/take/give without blocking ---- */
 static void test_sem_try_and_give_basic(void) {

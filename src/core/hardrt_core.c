@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdio.h>
 
-#include "heartos.h"
-#include "heartos_cfg.h"
-#include "heartos_time.h"
-#include "heartos_port_int.h"
+#include "hardrt.h"
+#include "hardrt_cfg.h"
+#include "hardrt_time.h"
+#include "hardrt_port_int.h"
 #include <string.h>
 
 #define HRT_STALL_ON_ERROR 1
 
 
 /* Globals */
-static _hrt_tcb_t g_tcbs[HEARTOS_MAX_TASKS];
+static _hrt_tcb_t g_tcbs[HARDRT_MAX_TASKS];
 static int g_current = -1;
 static uint32_t g_tick = 0;
 static uint32_t g_tick_hz = 1000;
@@ -37,13 +37,13 @@ volatile uint32_t dbg_pend_from_core;
 
 /* Ready queues per priority (store task indices) */
 typedef struct {
-    uint8_t q[HEARTOS_MAX_TASKS];
+    uint8_t q[HARDRT_MAX_TASKS];
     uint8_t head, tail, count;
 } prio_q_t;
 
-static prio_q_t g_rq[HEARTOS_MAX_PRIO];
+static prio_q_t g_rq[HARDRT_MAX_PRIO];
 _hrt_tcb_t *hrt__tcb(const int id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) return NULL;
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return NULL;
     return &g_tcbs[id];
 }
 
@@ -59,7 +59,7 @@ void hrt_port_yield_to_scheduler(void);
 /* ------------- Queue helpers ------------- */
 static void rq_push(const uint8_t p, const int id) {
     /* Validate priority */
-    if (p >= HEARTOS_MAX_PRIO) {
+    if (p >= HARDRT_MAX_PRIO) {
         dbg_tsk_q = 5000;
         (void)dbg_tsk_q;
         hrt_error(ERR_INVALID_PRIO);
@@ -67,7 +67,7 @@ static void rq_push(const uint8_t p, const int id) {
     }
 
     /* Validate task id BEFORE storing it into the queue */
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         dbg_tsk_q = 1000;
         (void)dbg_tsk_q;
         hrt_error(ERR_INVALID_ID);
@@ -77,7 +77,7 @@ static void rq_push(const uint8_t p, const int id) {
     prio_q_t *q = &g_rq[p];
 
     /* Hard fail on overflow in debug; in release you could drop or overwrite */
-    if (q->count >= HEARTOS_MAX_TASKS) {
+    if (q->count >= HARDRT_MAX_TASKS) {
         dbg_tsk_q = q->count;
         (void)dbg_tsk_q;
         hrt_error(ERR_RQ_OVERFLOW);
@@ -85,14 +85,14 @@ static void rq_push(const uint8_t p, const int id) {
     }
 
     q->q[q->tail] = (uint8_t)id;
-    q->tail = (uint8_t)((q->tail + 1u) % HEARTOS_MAX_TASKS);
+    q->tail = (uint8_t)((q->tail + 1u) % HARDRT_MAX_TASKS);
     q->count++;
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
 }
 
 static int rq_pop(const uint8_t p) {
-    if (p >= HEARTOS_MAX_PRIO) {
+    if (p >= HARDRT_MAX_PRIO) {
         dbg_tsk_q = p;
         (void)dbg_tsk_q;
         hrt_error(ERR_INVALID_PRIO);
@@ -114,13 +114,13 @@ static int rq_pop(const uint8_t p) {
     }
 
     const int id = q->q[q->head];
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         dbg_tsk_q = -2000;
         (void)dbg_tsk_q;
         hrt_error(ERR_INVALID_ID_FROM_RQ);
         return -1;
     }
-    q->head = (uint8_t)((q->head + 1u) % HEARTOS_MAX_TASKS);
+    q->head = (uint8_t)((q->head + 1u) % HARDRT_MAX_TASKS);
     q->count--;
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
@@ -130,7 +130,7 @@ static int rq_pop(const uint8_t p) {
 
 /* Helper to fetch/store SP for a given task id */
 uint32_t *_get_sp(const int id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
+    if (id < 0 || id >= HARDRT_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
     if (!hrt__tcb(id)) {
         hrt_error(ERR_TCB_NULL);
     }
@@ -139,7 +139,7 @@ uint32_t *_get_sp(const int id) {
     return hrt__tcb(id)->sp;
 }
 void _set_sp(const int id, uint32_t *sp) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
+    if (id < 0 || id >= HARDRT_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
     if (sp == NULL) { hrt_error(ERR_SP_NULL); }
     if (!hrt__tcb(id)) {
         hrt_error(ERR_TCB_NULL);
@@ -152,7 +152,7 @@ void _set_sp(const int id, uint32_t *sp) {
 int hrt_init(const hrt_config_t *cfg) {
     memset(g_tcbs, 0, sizeof(g_tcbs));
     memset(g_rq, 0, sizeof(g_rq));
-    for (int i = 0; i < HEARTOS_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
+    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
 
 
     g_tick = 0;
@@ -184,7 +184,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     }
 
     int id = -1;
-    for (int i = 0; i < HEARTOS_MAX_TASKS; ++i) {
+    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
         if (g_tcbs[i].state == HRT_UNUSED) {
             id = i;
             break;
@@ -289,7 +289,7 @@ void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 
 /* ------------- Internal helpers used by sched/time ------------- */
 void hrt__make_ready(const int id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
     }
@@ -318,7 +318,7 @@ void hrt__make_ready(const int id) {
 
 /* Requeue a READY task to the tail without modifying its slice/state. */
 void hrt__requeue_noreset(const int id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
     }
@@ -337,10 +337,10 @@ int hrt__pick_next_ready(void)
 {
     int id = -1;
 
-    for (int p = 0; p < HEARTOS_MAX_PRIO; ++p) {
+    for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
         int candidate = rq_pop((uint8_t)p);
 
-        if (candidate >= HEARTOS_MAX_TASKS) {
+        if (candidate >= HARDRT_MAX_TASKS) {
             hrt_error(ERR_INVALID_ID);
             candidate = -1;
         }
@@ -359,7 +359,7 @@ int hrt__pick_next_ready(void)
 /* Expose some globals to other core files */
 int hrt__get_current(void) { return g_current; }
 void hrt__set_current(const int id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
     }
@@ -428,7 +428,7 @@ void hrt_error(const hrt_err code) {
 #endif
 }
 
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
 /* Test-only helpers for POSIX tests: set/get the current tick safely. */
 void hrt__test_set_tick(uint32_t v) {
     /* Directly set the tick counter. Ports should ensure no concurrent tick when calling this. */
@@ -440,7 +440,7 @@ uint32_t hrt__test_get_tick(void) { return g_tick; }
 
 uint32_t hrt__schedule(const uint32_t old_sp) {
     // Save current context if this isn't the first switch
-    if (g_current >= 0 && g_current < HEARTOS_MAX_TASKS) {
+    if (g_current >= 0 && g_current < HARDRT_MAX_TASKS) {
         _hrt_tcb_t *cur = hrt__tcb(g_current);
         if (!cur) {
             hrt_error(ERR_TCB_NULL);

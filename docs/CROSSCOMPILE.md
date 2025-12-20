@@ -29,8 +29,8 @@ use the following command to build the project
 
 cmake -S . -B build-mcu \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake \
-  -DHEARTOS_PORT=cortex_m \
-  -DHEARTOS_BUILD_EXAMPLES=OFF
+  -DHARDRT_PORT=cortex_m \
+  -DHARDRT_BUILD_EXAMPLES=OFF
   
 
 cmake --build build-mcu -j
@@ -75,7 +75,7 @@ run the following openocd command to flash board:
 openocd -s /usr/share/openocd/scripts   -f scripts/openocd_h755_clean.cfg   -c "init; reset halt; \
       stm32h7x mass_erase 0; \
       stm32h7x mass_erase 1; \
-      program examples/heartos_h755_demo/build-cortex_m/heartos_cm7_demo.elf verify; \
+      program examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf verify; \
       reset halt; shutdown"
 
 ```
@@ -90,7 +90,7 @@ Which will launch the board in debug mode. And now we can uce gdb to debug for t
 
 Terminal B:
 ```bash
-gdb-multiarch examples/heartos_h755_demo/build-cortex_m/heartos_cm7_demo.elf
+gdb-multiarch examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf
 
 ```
 inside (gdb)
@@ -104,7 +104,7 @@ c
 
 commands
 ```bash
-gdb-multiarch -q examples/heartos_h755_demo/build-cortex_m/heartos_cm7_demo.elf -batch -x scripts/gdb/sp_check.gdb
+gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -batch -x scripts/gdb/sp_check.gdb
 
 
 ```

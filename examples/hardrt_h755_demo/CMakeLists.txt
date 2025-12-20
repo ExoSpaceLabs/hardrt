@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(heartos_cm7_demo LANGUAGES C ASM)
+project(hardrt_cm7_demo LANGUAGES C ASM)
 
 
 # -----------------------------
@@ -32,7 +32,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
     message(FATAL_ERROR "Set -DCMAKE_TOOLCHAIN_FILE=.../arm-none-eabi.cmake")
 endif()
 
-find_package(HeaRTOS REQUIRED)  # from your installed heartos
+find_package(HardRT REQUIRED)  # from your installed hardrt
 
 set(MCU_OPTS
         -mcpu=cortex-m7
@@ -50,17 +50,17 @@ add_executable(${PROJECT_NAME}.elf
 )
 
 target_include_directories(${PROJECT_NAME}.elf PRIVATE ${STM32CUBE_INCLUDE_DIRS})
-target_compile_definitions(heartos_cm7_demo.elf PRIVATE ${STM32_DEVICE} ${STM32_CORE})
+target_compile_definitions(hardrt_cm7_demo.elf PRIVATE ${STM32_DEVICE} ${STM32_CORE})
 
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
         ${MCU_OPTS} -Os -ffreestanding -fno-builtin -ffunction-sections -fdata-sections
 )
-target_link_libraries(${PROJECT_NAME}.elf PRIVATE HeaRTOS::heartos)
+target_link_libraries(${PROJECT_NAME}.elf PRIVATE HardRT::hardrt)
 target_link_options(${PROJECT_NAME}.elf PRIVATE
         ${MCU_OPTS}
         -T${CMAKE_SOURCE_DIR}/linker/stm32h755xx_flash_CM7.ld
         -Wl,--gc-sections
-        -Wl,-Map=heartos_cm7_demo.map
+        -Wl,-Map=hardrt_cm7_demo.map
         -specs=nano.specs
         -specs=nosys.specs
         -nostartfiles

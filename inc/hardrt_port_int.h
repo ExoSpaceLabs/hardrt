@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include "heartos.h"   // for hrt_tick_source_t
+#include "hardrt.h"   // for hrt_tick_source_t
 
 #include <stdint.h>
 #ifdef __cplusplus

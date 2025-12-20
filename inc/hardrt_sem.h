@@ -1,13 +1,13 @@
-#ifndef HEARTOS_SEM_H
-#define HEARTOS_SEM_H
+#ifndef HARDRT_SEM_H
+#define HARDRT_SEM_H
 #ifdef __cplusplus
 extern "C" {
 
 #endif
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
-#include "heartos_cfg.h"
-#include "heartos.h"
+#include "hardrt_cfg.h"
+#include "hardrt.h"
 
 /**
  * @brief Binary semaphore type (count is 0 or 1).
@@ -15,7 +15,7 @@ extern "C" {
  */
 typedef struct {
     volatile uint8_t count; /**< 0 or 1 */
-    uint8_t q[HEARTOS_MAX_TASKS]; /**< Wait queue (task ids) */
+    uint8_t q[HARDRT_MAX_TASKS]; /**< Wait queue (task ids) */
     uint8_t head, tail, count_wait; /**< Queue indices and length */
 } hrt_sem_t;
 

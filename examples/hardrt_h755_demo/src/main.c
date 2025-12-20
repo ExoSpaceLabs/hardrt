@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include "heartos.h"
-#include "heartos_time.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
 #include "stm32h7xx.h"
 #include "stm32h7xx_hal.h"
 

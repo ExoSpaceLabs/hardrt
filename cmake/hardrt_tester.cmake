@@ -1,19 +1,19 @@
-# HeaRTOS test targets (included only when HEARTOS_BUILD_TESTS is ON)
+# HardRT test targets (included only when HARDRT_BUILD_TESTS is ON)
 
 # Enable CTest for this directory
 enable_testing()
 
 # Only the POSIX port has a runnable scheduler and tests for now
-if(HEARTOS_PORT STREQUAL "posix")
+if(HARDRT_PORT STREQUAL "posix")
   # Expose test hooks inside the library for POSIX scheduler to stop cleanly
-  target_compile_definitions(${LIB_NAME} PRIVATE HEARTOS_TEST_HOOKS)
+  target_compile_definitions(${LIB_NAME} PRIVATE HARDRT_TEST_HOOKS)
 
-  add_executable(heartos_tests
+  add_executable(hardrt_tests
           ${CMAKE_CURRENT_LIST_DIR}/../tests/test_main.c # path fixed below via source-dir; keep list readable
           )
   # Replace the single source above with the actual list relative to project root
-  set_target_properties(heartos_tests PROPERTIES LINKER_LANGUAGE C)
-  target_sources(heartos_tests PRIVATE
+  set_target_properties(hardrt_tests PROPERTIES LINKER_LANGUAGE C)
+  target_sources(hardrt_tests PRIVATE
           ${CMAKE_SOURCE_DIR}/tests/test_main.c
           ${CMAKE_SOURCE_DIR}/tests/test_identity.c
           ${CMAKE_SOURCE_DIR}/tests/test_sleep_stop.c
@@ -32,12 +32,12 @@ if(HEARTOS_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_external_tick.c
   )
 
-  target_link_libraries(heartos_tests PRIVATE ${LIB_NAME})
-  target_compile_features(heartos_tests PRIVATE c_std_11)
-  # Ensure test sources also see HEARTOS_TEST_HOOKS to enable hook-dependent cases
-  target_compile_definitions(heartos_tests PRIVATE HEARTOS_TEST_HOOKS)
+  target_link_libraries(hardrt_tests PRIVATE ${LIB_NAME})
+  target_compile_features(hardrt_tests PRIVATE c_std_11)
+  # Ensure test sources also see HARDRT_TEST_HOOKS to enable hook-dependent cases
+  target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
 
-  add_test(NAME heartos_tests COMMAND heartos_tests)
+  add_test(NAME hardrt_tests COMMAND hardrt_tests)
 else()
-  message(STATUS "Tests are enabled but HEARTOS_PORT=${HEARTOS_PORT} has no runtime scheduler; skipping test target")
+  message(STATUS "Tests are enabled but HARDRT_PORT=${HARDRT_PORT} has no runtime scheduler; skipping test target")
 endif()

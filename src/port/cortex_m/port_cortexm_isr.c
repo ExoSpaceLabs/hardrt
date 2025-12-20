@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
 #include <stddef.h>   // for size_t
-#include "heartos.h"
-#include "heartos_port_int.h"
+#include "hardrt.h"
+#include "hardrt_port_int.h"
 
 
 /* Core-private hooks */

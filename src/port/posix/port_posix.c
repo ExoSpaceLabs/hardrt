@@ -8,9 +8,9 @@
 #include <stdio.h>
 #include <time.h>   /* nanosleep */
 
-#include "heartos.h"
-#include "heartos_time.h"
-#include "heartos_port_int.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
+#include "hardrt_port_int.h"
 
 
 static int g_crit_depth = 0;
@@ -39,12 +39,12 @@ typedef struct {
     int valid;
 } _port_ctx_t;
 
-static _port_ctx_t g_ctxs[HEARTOS_MAX_TASKS];
+static _port_ctx_t g_ctxs[HARDRT_MAX_TASKS];
 static ucontext_t g_sched_ctx;
 static volatile sig_atomic_t g_switch_pending = 0;
 static sigset_t g_sigalrm_set;
 
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
  static volatile sig_atomic_t g_test_stop = 0;
  static volatile unsigned long long g_idle_counter = 0;
  void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
@@ -149,7 +149,7 @@ void hrt_port_start_systick(const uint32_t tick_hz) {
 
 /* Idle hook: tiny nap to avoid 100% CPU */
 void hrt_port_idle_wait(void) {
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
     g_idle_counter++;
 #endif
     const struct timespec ts = {0, 1 * 1000 * 1000}; /* 1 ms */
@@ -174,7 +174,7 @@ void hrt_port_yield_to_scheduler(void) {
 /* Scheduler loop: pick and switch, with SIGALRM masked during critical sections */
 void hrt_port_enter_scheduler(void) {
     for (;;) {
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
         if (g_test_stop) {
             /* Disable timer and exit scheduler loop for tests */
             struct itimerval it = {0};

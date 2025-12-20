@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "heartos_sem.h"
-#include "heartos_time.h"
+#include "hardrt_sem.h"
+#include "hardrt_time.h"
 
 /* Local debug prints for this file only. Not overridable from outside. */
 #undef HRT_SEM_DEBUG
 #define HRT_SEM_DEBUG 0
 
-#if HRT_SEM_DEBUG || defined(HEARTOS_TEST_HOOKS)
+#if HRT_SEM_DEBUG || defined(HARDRT_TEST_HOOKS)
 #include <stdio.h>
 #endif
 
@@ -26,22 +26,22 @@ void hrt_port_crit_exit(void);
 
 /* Internal: enqueue/dequeue waiter (FIFO) */
 static void _waitq_push(hrt_sem_t *s, uint8_t id) {
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     };
-    if (s->count_wait >= HEARTOS_MAX_TASKS) return;
+    if (s->count_wait >= HARDRT_MAX_TASKS) return;
     s->q[s->tail] = id;
-    s->tail = (uint8_t) ((s->tail + 1) % HEARTOS_MAX_TASKS);
+    s->tail = (uint8_t) ((s->tail + 1) % HARDRT_MAX_TASKS);
     s->count_wait++;
 }
 
 static int _waitq_pop(hrt_sem_t *s) {
     if (!s->count_wait) return -1;
     int id = s->q[s->head];
-    if (id < 0 || id >= HEARTOS_MAX_TASKS) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     };
-    s->head = (uint8_t) ((s->head + 1) % HEARTOS_MAX_TASKS);
+    s->head = (uint8_t) ((s->head + 1) % HARDRT_MAX_TASKS);
     s->count_wait--;
     return id;
 }
@@ -63,7 +63,7 @@ int hrt_sem_take(hrt_sem_t *s) {
 
     /* Block current task */
     int me = hrt__get_current();
-    if (me < 0 || me >= HEARTOS_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return -1;
     }
@@ -118,7 +118,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
     } else {
         /* No waiter: set binary sem to available */
         s->count = 1;
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
         printf("[sem] give: no waiters, set count=1\n");
 #endif
     }

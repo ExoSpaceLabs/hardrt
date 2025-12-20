@@ -1,5 +1,5 @@
-#include "heartos.h"
-#include "heartos_sem.h"
+#include "hardrt.h"
+#include "hardrt_sem.h"
 #include <stdio.h>
 
 static uint32_t sa[2048], sb[2048];

@@ -1,6 +1,6 @@
-# 🧭 HeaRTOS Roadmap
+# 🧭 HardRT Roadmap
 
-This roadmap outlines the evolution of HeaRTOS from its current v0.2.x stage to the planned 1.0.0 release.
+This roadmap outlines the evolution of HardRT from its current v0.2.x stage to the planned 1.0.0 release.
 
 > Note: roadmap may be subject to changes during its lifetime.
 

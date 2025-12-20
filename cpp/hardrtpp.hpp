@@ -1,7 +1,7 @@
 #pragma once
-#include "heartos.h"
+#include "hardrt.h"
 
-namespace heartos {
+namespace hardrt {
     /**
      * @brief C++ convenience wrapper around the C task creation API.
      * @note This header is optional; it forwards to the C API and does not add
@@ -19,7 +19,7 @@ namespace heartos {
          * @param slice Round-robin time slice in ticks (0 = cooperative within class).
          * @return Task id (>=0) on success; negative on failure.
          * @code
-         * using namespace heartos;
+         * using namespace hardrt;
          * static uint32_t stackA[256];
          * void worker(void* arg) { // body }
          * int id = Task::create(worker, nullptr, stackA, 256, HRT_PRIO1, 5);
@@ -31,4 +31,4 @@ namespace heartos {
             return hrt_create_task(fn, arg, stack, words, &a);
         }
     };
-} // namespace heartos
+} // namespace hardrt

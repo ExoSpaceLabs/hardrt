@@ -1,4 +1,4 @@
-#include "heartos.h"
+#include "hardrt.h"
 #include <stdio.h>
 
 /* With the POSIX port, this will actually run and preempt via SIGALRM. */
@@ -28,7 +28,7 @@ static void taskB(void* arg){
 }
 
 int main(void){
-    printf("HeaRTOS version: %s (0x%06X), port: %s (id=%d)\n",
+    printf("HardRT version: %s (0x%06X), port: %s (id=%d)\n",
        hrt_version_string(), hrt_version_u32(),
        hrt_port_name(), hrt_port_id());
 
@@ -39,7 +39,7 @@ int main(void){
         .default_slice = 5
     };
     if (hrt_init(&cfg) != 0){
-        puts("HeaRTOS init failed");
+        puts("HardRT init failed");
         return 1;
     }
 

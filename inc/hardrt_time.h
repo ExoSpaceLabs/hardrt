@@ -1,5 +1,5 @@
-#ifndef HEARTOS_TIME_H
-#define HEARTOS_TIME_H
+#ifndef HARDRT_TIME_H
+#define HARDRT_TIME_H
 #include <stdint.h>
 #ifdef __cplusplus
 extern "C" {

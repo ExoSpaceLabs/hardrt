@@ -1,8 +1,8 @@
-#ifndef HEARTOS_CFG_H
-#define HEARTOS_CFG_H
+#ifndef HARDRT_CFG_H
+#define HARDRT_CFG_H
 
 /**
- * @brief Configuration and portability macros for HeaRTOS.
+ * @brief Configuration and portability macros for HardRT.
  * @note You can override these with -D at compile time to adapt to your platform.
  */
 

@@ -1,12 +1,12 @@
 # 📘 Documentation Summary
 
-This documentation set is synchronized with HeaRTOS v0.2.x and forward-compatible with v1.0.0 planning.
+This documentation set is synchronized with HardRT v0.2.x and forward-compatible with v1.0.0 planning.
 
 ## Main Docs
 | File                                 | Purpose                                              |
 |--------------------------------------|------------------------------------------------------|
 | Main [README.md](../README.md)       | Project overview, build instructions, diagrams       |
-| [INTRODUCTION.md](INTRODUCTION.md)   | Background: What is an RTOS? Why HeaRTOS?            |
+| [INTRODUCTION.md](INTRODUCTION.md)   | Background: What is an RTOS? Why HardRT?            |
 | [BUILD.md](BUILD.md)                 | Build and install guide                              |
 | [API_C.md](API_C.md)                 | Public C API reference                               |
 | [CPP.md](CPP.md)                     | C++ header‑only wrapper reference                    |

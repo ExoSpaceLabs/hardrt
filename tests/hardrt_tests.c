@@ -1,13 +1,13 @@
 /* Legacy monolithic test suite used during early development; kept for reference.
  * Current tests are split into focused groups under tests/test_*.c and executed
  * by test_main.c. */
-#include "heartos.h"
+#include "hardrt.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-/* Test hook provided by POSIX port when built with HEARTOS_TEST_HOOKS */
+/* Test hook provided by POSIX port when built with HARDRT_TEST_HOOKS */
 #ifdef __cplusplus
 extern "C" {
 

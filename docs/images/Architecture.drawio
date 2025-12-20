@@ -31,7 +31,7 @@
         <mxCell id="cSMQM1iMFeHTtyXhxyHi-17" value="" style="swimlane;startSize=30;rounded=1;arcSize=26;shadow=0;gradientColor=none;" parent="1" vertex="1">
           <mxGeometry x="120" y="270" width="520" height="280" as="geometry" />
         </mxCell>
-        <mxCell id="cSMQM1iMFeHTtyXhxyHi-18" value="&lt;div align=&quot;left&quot;&gt;HeaRTOS Core&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;" parent="cSMQM1iMFeHTtyXhxyHi-17" vertex="1">
+        <mxCell id="cSMQM1iMFeHTtyXhxyHi-18" value="&lt;div align=&quot;left&quot;&gt;HardRT Core&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;" parent="cSMQM1iMFeHTtyXhxyHi-17" vertex="1">
           <mxGeometry x="40" width="130" height="30" as="geometry" />
         </mxCell>
         <mxCell id="cSMQM1iMFeHTtyXhxyHi-27" value="Scheduler" style="rounded=0;whiteSpace=wrap;html=1;" parent="cSMQM1iMFeHTtyXhxyHi-17" vertex="1">

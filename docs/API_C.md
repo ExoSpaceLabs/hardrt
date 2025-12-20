@@ -1,7 +1,7 @@
 
 ## 🧠 API Overview (C)
 
-This page summarizes the public C API available in HeaRTOS v0.2.0. See `inc/heartos.h` for authoritative declarations.
+This page summarizes the public C API available in HardRT v0.2.0. See `inc/hardrt.h` for authoritative declarations.
 
 ### Types
 
@@ -84,7 +84,7 @@ void hrt_set_default_timeslice(uint16_t t);
 
 ### Semaphores
 
-The kernel provides a minimal binary semaphore in `heartos_sem.h`:
+The kernel provides a minimal binary semaphore in `hardrt_sem.h`:
 
 ```c
 /* Binary semaphore type */
@@ -108,7 +108,7 @@ See `docs/SEMAPHORES.md` for a full guide and examples.
 ### Minimal example
 
 ```c
-#include "heartos.h"
+#include "hardrt.h"
 
 static uint32_t stackA[2048];
 static uint32_t stackB[2048];

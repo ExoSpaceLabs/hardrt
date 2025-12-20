@@ -1,4 +1,4 @@
-# Porting HeaRTOS
+# Porting HardRT
 
 This document explains what a port must implement and the rules for interacting with the core scheduler and time subsystem.
 

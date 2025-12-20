@@ -6,7 +6,7 @@ rm -rf build
 mkdir build && cd build
 
 # Configure for POSIX with examples and tests enabled
-cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON -DHEARTOS_BUILD_TESTS=ON ..
+cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_EXAMPLES=ON -DHARDRT_BUILD_TESTS=ON ..
 
 # Build tests and example
 cmake --build . -j"${NPROC:-$(nproc)}"

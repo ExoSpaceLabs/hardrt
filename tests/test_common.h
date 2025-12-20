@@ -1,12 +1,12 @@
-#ifndef HEARTOS_TEST_COMMON_H
-#define HEARTOS_TEST_COMMON_H
+#ifndef HARDRT_TEST_COMMON_H
+#define HARDRT_TEST_COMMON_H
 
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 
 /* Public API under test */
-#include "heartos.h"
+#include "hardrt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,8 +23,8 @@ void hrt__test_stop_scheduler(void);
  */
 void hrt__test_reset_scheduler_state(void);
 
-/* Optional extra hooks (only available when HEARTOS_TEST_HOOKS) */
-#ifdef HEARTOS_TEST_HOOKS
+/* Optional extra hooks (only available when HARDRT_TEST_HOOKS) */
+#ifdef HARDRT_TEST_HOOKS
 /**
  * @brief Reset the idle loop counter.
  */
@@ -142,10 +142,10 @@ const test_case_t *get_tests_semaphore(int *out_count);
 /* External tick tests */
 const test_case_t *get_tests_external_tick(int *out_count);
 
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
 /* POSIX-only test hooks to block/unblock SIGALRM for deterministic checks */
 void hrt__test_block_sigalrm(void);
 void hrt__test_unblock_sigalrm(void);
 #endif
 
-#endif /* HEARTOS_TEST_COMMON_H */
+#endif /* HARDRT_TEST_COMMON_H */

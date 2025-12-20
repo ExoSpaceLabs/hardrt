@@ -6,13 +6,13 @@ This guide shows how to build and run the bundled `two_tasks` example with both 
 ### Build with the null port
 
 ```bash
-cmake -DHEARTOS_PORT=null -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake -DHARDRT_PORT=null -DHARDRT_BUILD_EXAMPLES=ON ..
 cmake --build . --target two_tasks -j
 ./examples/two_tasks/two_tasks
 ```
 Expected output (program exits immediately; no live scheduling):
 ```
-HeaRTOS version: 0.2.0 (0x000200), port: null (id=0)
+HardRT version: 0.2.0 (0x000200), port: null (id=0)
 ```
 Notes:
 - The null port doesn’t start a tick or switch contexts; `hrt_start()` returns.
@@ -20,13 +20,13 @@ Notes:
 ### Build with the POSIX port
 
 ```bash
-cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_EXAMPLES=ON ..
 cmake --build . --target two_tasks -j
 ./examples/two_tasks/two_tasks
 ```
 Expected output (excerpt; continues indefinitely):
 ```terminaloutput
-HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
+HardRT version: 0.2.0 (0x000200), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 [A] tick count [1]
@@ -41,7 +41,7 @@ HeaRTOS version: 0.2.0 (0x000200), port: posix (id=1)
 To observe time-slice rotation, create two tasks with the same priority and non-zero `timeslice`:
 
 ```c++
-#include "heartos.h"
+#include "hardrt.h"
 #include <stdio.h>
 
 static uint32_t sa[2048], sb[2048];
@@ -139,11 +139,11 @@ Caption:
 
 ### External tick example (two_tasks_external)
 
-This example is like `two_tasks` but HeaRTOS time advances only when the application calls `hrt_tick_from_isr()` — here driven by a small POSIX thread that sleeps one tick and calls the API every loop.
+This example is like `two_tasks` but HardRT time advances only when the application calls `hrt_tick_from_isr()` — here driven by a small POSIX thread that sleeps one tick and calls the API every loop.
 
 Build and run on POSIX:
 ```bash
-cmake -DHEARTOS_PORT=posix -DHEARTOS_BUILD_EXAMPLES=ON ..
+cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_EXAMPLES=ON ..
 cmake --build . --target two_tasks_external -j
 ./examples/two_tasks_external/two_tasks_external
 ```

@@ -1,0 +1,3 @@
+@PACKAGE_INIT@
+include("${CMAKE_CURRENT_LIST_DIR}/HardRTTargets.cmake")
+set(HARDRT_VERSION "@PROJECT_VERSION@")

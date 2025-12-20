@@ -7,7 +7,7 @@ static void long_sleeper(void *arg) {
 }
 
 static void test_idle_counter_increments_when_idle(void) {
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 3};
     T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init should return 0 (idle behavior)");
@@ -30,7 +30,7 @@ static void test_idle_counter_increments_when_idle(void) {
     unsigned long long idle_ticks = hrt__test_idle_counter_value();
     T_ASSERT_TRUE(idle_ticks > 0, "idle counter should increment when idle");
 #else
-    printf("SKIP: idle behavior test requires HEARTOS_TEST_HOOKS.\n");
+    printf("SKIP: idle behavior test requires HARDRT_TEST_HOOKS.\n");
 #endif
 }
 

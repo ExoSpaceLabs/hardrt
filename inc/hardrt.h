@@ -1,5 +1,5 @@
-#ifndef HEARTOS_H
-#define HEARTOS_H
+#ifndef HARDRT_H
+#define HARDRT_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -13,18 +13,18 @@ extern "C" {
 
 /**
  * @brief Maximum number of concurrent tasks supported by the kernel.
- * @note Can be overridden at compile time via -DHEARTOS_MAX_TASKS.
+ * @note Can be overridden at compile time via -DHARDRT_MAX_TASKS.
  */
-#ifndef HEARTOS_MAX_TASKS
-#define HEARTOS_MAX_TASKS 8
+#ifndef HARDRT_MAX_TASKS
+#define HARDRT_MAX_TASKS 8
 #endif
 
 /**
  * @brief Number of priority classes supported by the scheduler.
- * @note Priority 0 is the highest priority. Can be overridden via -DHEARTOS_MAX_PRIO.
+ * @note Priority 0 is the highest priority. Can be overridden via -DHARDRT_MAX_PRIO.
  */
-#ifndef HEARTOS_MAX_PRIO
-#define HEARTOS_MAX_PRIO  4  /* 0..3 (0 is highest) */
+#ifndef HARDRT_MAX_PRIO
+#define HARDRT_MAX_PRIO  4  /* 0..3 (0 is highest) */
 #endif
 
 
@@ -80,7 +80,7 @@ typedef enum {
 
 /**
  * @brief Logical priority values (0 is highest).
- * @note The range effectively usable depends on HEARTOS_MAX_PRIO.
+ * @note The range effectively usable depends on HARDRT_MAX_PRIO.
  */
 typedef enum {
     HRT_PRIO0 = 0,
@@ -143,13 +143,13 @@ uint32_t *_get_sp(const int id);
 void _set_sp(const int id, uint32_t *sp);
 
 
-#define HRT_IDLE_ID   (HEARTOS_MAX_TASKS - 1)
-#define HEARTOS_IDLE_STACK_WORDS 64
+#define HRT_IDLE_ID   (HARDRT_MAX_TASKS - 1)
+#define HARDRT_IDLE_STACK_WORDS 64
 static _hrt_tcb_t   g_idle_tcb;
-static uint32_t     g_idle_stack[HEARTOS_IDLE_STACK_WORDS];
+static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS];
 
 /**
- * @brief Get the semantic version string of HeaRTOS at runtime.
+ * @brief Get the semantic version string of HardRT at runtime.
  * @return NUL-terminated string, e.g. "0.2.0".
  */
 const char *hrt_version_string(void);
@@ -168,7 +168,7 @@ const char *hrt_port_name(void);
 
 /**
  * @brief Get the numeric port identifier.
- * @return Integer port id matching HEARTOS_PORT_ID from the generated header.
+ * @return Integer port id matching HARDRT_PORT_ID from the generated header.
  */
 int hrt_port_id(void);
 

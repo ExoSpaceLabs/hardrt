@@ -1,6 +1,6 @@
-# 🫀 Introduction to HeaRTOS
+# 🫀 Introduction to HardRT
 
-HeaRTOS — the **heartbeat of small embedded systems** — is a minimal, deterministic real‑time operating system
+HardRT — the **heartbeat of small embedded systems** — is a minimal, deterministic real‑time operating system
 written in C, designed for clarity, portability, and educational transparency.
 
 ---
@@ -19,10 +19,10 @@ focusing purely on *time‑critical task execution*.
 
 ---
 
-## ❤️ Why HeaRTOS?
+## ❤️ Why HardRT?
 
-HeaRTOS was built to be *small, understandable, and verifiable*.
-Where many RTOS kernels grow opaque, HeaRTOS keeps every subsystem visible in just a few C files.
+HardRT was built to be *small, understandable, and verifiable*.
+Where many RTOS kernels grow opaque, HardRT keeps every subsystem visible in just a few C files.
 
 | Feature           | Philosophy                                                    |
 |-------------------|---------------------------------------------------------------|

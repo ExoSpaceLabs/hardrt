@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
 #include <stddef.h>
-#include "heartos.h"
-#include "heartos_time.h"
-#include "heartos_port_int.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
+#include "hardrt_port_int.h"
 /* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
 
 
@@ -50,14 +50,14 @@ extern uint8_t __RAM_END__;
 /* -------- Enter scheduler (Cortex-M flavor)
  * Enable IRQs, pend the first switch, then idle forever.
  */
-#if HEARTOS_OWN_VTOR
+#if HARDRT_OWN_VTOR
 extern uint32_t g_pfnVectors;
-static void heartos_set_vtor(void){
+static void hardrt_set_vtor(void){
     (*(volatile uint32_t*)0xE000ED08u) = (uint32_t)&g_pfnVectors;
 }
 #endif
 
-#if HEARTOS_SILENCE_NVIC
+#if HARDRT_SILENCE_NVIC
 #define NVIC_BASE (0xE000E100UL)
 typedef struct {
     volatile uint32_t ISER[16]; uint32_t _r0[16];
@@ -69,7 +69,7 @@ typedef struct {
     volatile uint32_t STIR;
 } NVIC_Type;
 #define NVIC ((NVIC_Type*)NVIC_BASE)
-static void heartos_disable_all_external_irqs(void){
+static void hardrt_disable_all_external_irqs(void){
     for (int i = 0; i < 16; ++i) {
         NVIC->ICER[i] = 0xFFFFFFFFu;
         NVIC->ICPR[i] = 0xFFFFFFFFu;
@@ -179,7 +179,7 @@ void hrt__init_idle_task(void)
     g_idle_tcb.arg           = NULL;
 
     // Build initial stack frame exactly like hrt_create_task does:
-    uint32_t *sp = &g_idle_stack[HEARTOS_IDLE_STACK_WORDS];
+    uint32_t *sp = &g_idle_stack[HARDRT_IDLE_STACK_WORDS];
 
     // Auto-stacked frame (xPSR, PC, LR, R12, R3, R2, R1, R0):
     *(--sp) = 0x01000000u;                 // xPSR (Thumb bit set)
@@ -222,11 +222,11 @@ void hrt_port_yield_to_scheduler(void){
 /* -------- Start SysTick at requested Hz -------- */
 void hrt_port_start_systick(uint32_t tick_hz){
     if (!tick_hz) return;
-#if HEARTOS_OWN_VTOR
-    //heartos_set_vtor();
+#if HARDRT_OWN_VTOR
+    //hardrt_set_vtor();
 #endif
-#if HEARTOS_SILENCE_NVIC
-    // heartos_disable_all_external_irqs();
+#if HARDRT_SILENCE_NVIC
+    // hardrt_disable_all_external_irqs();
 #endif
 
     /* If you later add an EXTERNAL tick mode, bypass here in that case. */

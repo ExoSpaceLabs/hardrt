@@ -1,5 +1,5 @@
-#ifndef HEARTOS_QUEUE_H
-#define HEARTOS_QUEUE_H
+#ifndef HARDRT_QUEUE_H
+#define HARDRT_QUEUE_H
 #include <stddef.h>
 #ifdef __cplusplus
 extern "C" {

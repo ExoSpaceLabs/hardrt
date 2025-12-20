@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "heartos.h"
-#include "heartos_time.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
 
 /* Null port: provides stub hooks so the library links.
    - No tick source is started.

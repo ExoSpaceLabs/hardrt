@@ -1,5 +1,5 @@
-#include "heartos.h"
-#include "heartos_time.h"
+#include "hardrt.h"
+#include "hardrt_time.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
@@ -54,7 +54,7 @@ static void taskB(void* arg){
 }
 
 int main(void){
-    printf("HeaRTOS version: %s (0x%06X), port: %s (id=%d)\n",
+    printf("HardRT version: %s (0x%06X), port: %s (id=%d)\n",
            hrt_version_string(), hrt_version_u32(),
            hrt_port_name(), hrt_port_id());
 
@@ -68,7 +68,7 @@ int main(void){
     };
 
     if (hrt_init(&cfg) != 0){
-        puts("HeaRTOS init failed");
+        puts("HardRT init failed");
         return 1;
     }
 

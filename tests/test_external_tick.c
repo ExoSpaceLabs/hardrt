@@ -1,8 +1,8 @@
 /* Tests for external tick usage: valid and invalid scenarios */
 #include "test_common.h"
-#include "heartos_time.h"
+#include "hardrt_time.h"
 
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
 void hrt__test_block_sigalrm(void);
 void hrt__test_unblock_sigalrm(void);
 #endif
@@ -101,13 +101,13 @@ static void test_systick_mode_ignores_manual_tick_from_isr(void) {
     int rc = hrt_init(&cfg);
     T_ASSERT_EQ_INT(0, rc, "hrt_init systick mode");
 
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
     hrt__test_block_sigalrm();
 #endif
     uint32_t before = hrt_tick_now();
     for (int i = 0; i < 10; ++i) hrt_tick_from_isr();
     uint32_t after = hrt_tick_now();
-#ifdef HEARTOS_TEST_HOOKS
+#ifdef HARDRT_TEST_HOOKS
     hrt__test_unblock_sigalrm();
 #endif
     T_ASSERT_EQ_INT((int)before, (int)after, "manual tick_from_isr ignored in SYSTICK mode");

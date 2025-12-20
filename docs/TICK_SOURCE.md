@@ -1,13 +1,13 @@
 # Tick Source (external tick)
 
-HeaRTOS can use either a port‑owned periodic tick or an application‑provided (external) tick.
+HardRT can use either a port‑owned periodic tick or an application‑provided (external) tick.
 
 - `HRT_TICK_SYSTICK` (default): the active port starts its own timer and calls `hrt_tick_from_isr()` every tick.
 - `HRT_TICK_EXTERNAL`: your application owns a hardware timer and must call `hrt_tick_from_isr()` from its timer ISR on every tick.
 
 How to select it at init:
 ```c
-#include "heartos.h"
+#include "hardrt.h"
 
 int main(void){
     hrt_config_t cfg = {0};
@@ -20,7 +20,7 @@ int main(void){
 
 From your timer ISR (external mode):
 ```c
-#include "heartos_time.h"
+#include "hardrt_time.h"
 
 void MyTimer_IRQHandler(void){
     // ... clear timer IRQ flag ...

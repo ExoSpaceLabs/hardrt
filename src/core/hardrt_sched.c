@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "heartos.h"
-#include "heartos_port_int.h"
-#include "heartos_time.h"
+#include "hardrt.h"
+#include "hardrt_port_int.h"
+#include "hardrt_time.h"
 
-/* Core-private accessors from heartos_core.c */
+/* Core-private accessors from hardrt_core.c */
 
 volatile uint32_t dbg_pend_from_tick  = 0;
 
@@ -25,7 +25,7 @@ void hrt__tick_isr(void) {
 
     uint8_t triggerPendSV = 0;
     /* wake sleepers */
-    for (int i = 0; i < HEARTOS_MAX_TASKS; ++i) {
+    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
         _hrt_tcb_t *t = hrt__tcb(i);
         if (!t) continue;
         if (t->state == HRT_SLEEP) {
@@ -40,7 +40,7 @@ void hrt__tick_isr(void) {
     /* RR time-slice accounting for the currently running task.
        Note: Ports must not context-switch from ISR; we only pend a switch. */
     const int cur = hrt__get_current();
-    if (cur < 0 || cur >= HEARTOS_MAX_TASKS) {
+    if (cur < 0 || cur >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     }else {
         _hrt_tcb_t *ct = hrt__tcb(cur);
@@ -73,7 +73,7 @@ void hrt_tick_from_isr(void) {
     if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
         // Defensive: ignore if called while the port owns SysTick
         // Optional: log or blink an LED if you want debug visibility
-        //Todo Set global variable possibly heartos status code
+        //Todo Set global variable possibly hardrt status code
         // for when the system exits it can be checked for error code?
         return;
     }

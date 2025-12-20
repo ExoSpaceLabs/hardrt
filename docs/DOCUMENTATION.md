@@ -1,6 +1,6 @@
 # API documentation & Doxygen
 
-HeaRTOS documents its public API directly in headers under `inc/` using Doxygen comment blocks.
+HardRT documents its public API directly in headers under `inc/` using Doxygen comment blocks.
 
 ## Where the docs live
 - Public API: declarations in `inc/` headers include `/** ... */` blocks.
