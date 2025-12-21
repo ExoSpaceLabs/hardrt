@@ -7,7 +7,9 @@
 #include "hardrt_port_int.h"
 #include <string.h>
 
-#define HRT_STALL_ON_ERROR 1
+#ifndef HRT_STALL_ON_ERROR
+    #define HRT_STALL_ON_ERROR 0
+#endif
 
 
 /* Globals */
