@@ -127,6 +127,12 @@ uint32_t hrt_port_get_core_hz(void) {
 static inline void _set_BASEPRI(uint32_t v){ __asm volatile ("msr BASEPRI, %0" :: "r"(v) : "memory"); }
 static inline uint32_t _get_BASEPRI(void){ uint32_t v; __asm volatile ("mrs %0, BASEPRI" : "=r"(v)); return v; }
 
+static inline void _hrt_port_barrier(void) {
+    __asm volatile ("dsb 0xF" ::: "memory");
+    __asm volatile ("isb 0xF" ::: "memory");
+}
+
+
 static uint32_t g_basepri_prev = 0;
 static volatile uint32_t g_cs_nest = 0; /* critical section nesting counter */
 
@@ -136,7 +142,8 @@ void hrt_port_crit_enter(void){
     if (g_cs_nest == 0u) {
         g_basepri_prev = prev;            /* save only on outermost enter */
         _set_BASEPRI(0x80);               /* raise BASEPRI threshold */
-        __asm volatile("dsb sy\nisb");  /* ensure mask takes effect before critical work */
+        //__asm volatile("dsb sy\nisb");  /* ensure mask takes effect before critical work */
+        _hrt_port_barrier();
     }
     g_cs_nest++;
 }
@@ -150,7 +157,8 @@ void hrt_port_crit_exit(void){
     if (g_cs_nest == 0u) {
         /* restore previous threshold on outermost exit */
         _set_BASEPRI(g_basepri_prev);
-        __asm volatile("dsb sy\nisb");
+        //__asm volatile("dsb sy\nisb");
+        _hrt_port_barrier();
     }
 }
 
@@ -206,7 +214,8 @@ static inline void _pend_pendsv(void){
     dbg_basperi = _get_BASEPRI();
     dbg_pend_calls++;
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk; /* set PendSV pending */
-    __asm volatile("dsb sy\nisb");
+    //__asm volatile("dsb sy\nisb");
+    _hrt_port_barrier();
 }
 
 void hrt__pend_context_switch(void){
@@ -215,7 +224,7 @@ void hrt__pend_context_switch(void){
 
 /* Voluntary hop: just pend a switch; handler will do the rest on exception return */
 void hrt_port_yield_to_scheduler(void){
-    // _pend_pendsv();
+    _pend_pendsv();
     /* execution continues; the switch happens at exception return */
 }
 
