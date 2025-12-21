@@ -27,7 +27,7 @@ This roadmap outlines the evolution of HardRT from its current v0.2.x stage to t
 
 ## ⚙️ v0.4.0 — *Synchronization & Mutexes*
 - Counting semaphores
-- Mutex wrapper with basic priority inheritance
+- `Mutex wrapper with basic priority inheritance` < semaphores might be enough.
 - Immediate handoff optimization on semaphore give
 - Expanded unit tests (POSIX)
 

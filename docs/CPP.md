@@ -1,10 +1,10 @@
 # C++ wrapper (optional)
->Note: Not  implemented yet. will be included in later versions.
+>Note: Not implemented yet. Will be included in later versions.
 
 HardRT provides an optional, header-only C++17 convenience layer over the C API.
 
 ## Enabling
-Enable the C++ wrapper target at configure time:
+Enable the C++ wrapper target at configuration time:
 ```bash
 cmake -DHARDRT_ENABLE_CPP=ON ..
 ```

@@ -11,6 +11,6 @@ Current components and their status.
 
 Notes
 - Priority enum provides 12 levels (`HRT_PRIO0..HRT_PRIO11`); effective range is `0..HARDRT_MAX_PRIO-1` per build config.
-- Max task/priority sizing is controlled at configure time; see docs/BUILD.md for `HARDRT_CFG_MAX_TASKS` and `HARDRT_CFG_MAX_PRIO`.
+- Max task/priority sizing is controlled at configured time; see docs/BUILD.md for `HARDRT_CFG_MAX_TASKS` and `HARDRT_CFG_MAX_PRIO`.
 
 Current version: `0.2.0` (see `hrt_version_string()` and `hrt_version_u32()`).

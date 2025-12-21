@@ -38,7 +38,7 @@ cmake --build /home/dev/Works/hardrt/cmake-build-debug --target hardrt_tests -j 
 ctest --test-dir /home/dev/Works/hardrt/cmake-build-debug -V
 ```
 
-Prerequisites at configure time:
+Prerequisites at configured time:
 - `-DHARDRT_PORT=posix`
 - `-DHARDRT_BUILD_TESTS=ON` (default ON)
 

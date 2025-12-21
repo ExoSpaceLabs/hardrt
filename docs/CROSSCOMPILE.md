@@ -1,6 +1,6 @@
 # Cross Compile
 
-To compile the library for a different architecture use the following instructions:
+To compile the library for a different architecture, use the following instructions:
 
 ## ARM BAREMETAL
 
@@ -97,7 +97,7 @@ b SysTick_Handler            # PendSV_Handler
 c
 
 ```
-Alternatively, run a gdb script that prepares all required breakpoints and outputs. see example scripts under
+Alternatively, run a gdb script that prepares all required breakpoints and outputs. See example scripts under
 scripts/gdb/  
 
 commands
@@ -108,7 +108,7 @@ gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -b
 This example script sets breakpoints for taskA and taskB with additional information like ticks and execution count.
 
 
-### include in your project as follows:
+### include it in your project as follows:
 #### CMake
 
 #### Others?

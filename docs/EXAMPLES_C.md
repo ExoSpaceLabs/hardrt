@@ -64,76 +64,37 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 ## Visualizing scheduling
 
 ### Round‑robin within one priority (Sequence at tick times)
-> Note: timing needs to be fixed. And possibly moved to dedicated file. explaining policy.
+> Note: Possibly moved to a dedicated file. Explaining policy.
  
 ![policy_RR.png](images/policy_RR.png)
 
 Caption:
 - Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
-- Two READY tasks with `timeslice=5 ms`. Handoffs occur exactly at T5, T10, T15, ...
+- Two READY tasks with `timeslice=1 ms`. Handoffs occur exactly at every tick...
 - Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
+
+![two_tick_RR.png](images/two_tick_RR.png)
+Caption:
+- Identical example with `timeslice=2 ms` is shown below, in essence handoffs occur every two ticks.
+
+each task is executed in order.
 
 ### Priority preemption (Sequence at tick times)
-> Note: this diagram will be replaced with a draw io version.
-```mermaid
-sequenceDiagram
-  autonumber
-  participant B as Task B (lower)
-  participant A as Task A (higher)
 
+![preempt.png](images/preempt.png)
 
-  B->>B: T0 running
-  B->>B: T1 running
-  B->>B: T2 running
-  B->>B: T3 running
-  B->>B: T4 running
-  B->>B: T5 running
-  B->>B: T6 running
-  B->>B: T7 running
-  B->>B: T8 running
-  B->>B: T9 running
-  B->>B: T10 running
-  B->>B: T11 running
-
-  B-->>A: preempt at T12 (higher priority READY)
-
-  A->>A: T13 running
-  A->>A: T14 running
-  A->>A: T15 running
-  A->>A: T16 running
-  A-->>B: yield at T18 (resume lower)
-
-  B->>B: T19 running
-  B->>B: T20 running
-  B->>B: T21 running
-  B->>B: T22 running
-  B->>B: T23 running
-  B->>B: T24 running
-  B->>B: T25 running
-  B->>B: T26 running
-  B->>B: T27 running
-  B->>B: T28 running
-  B->>B: T29 running
-
-  B-->>A: preempt at T30 (higher priority READY)
-
-  A->>A: T31 running
-  A->>A: T32 running
-  A->>A: T33 running
-  A->>A: T34 running
-  A-->>B: yield at T36 (resume lower)
-
-  B->>B: T37 running
-  B->>B: T38 running
-  B->>B: T39 running
-  B->>B: T40 running
-  B->>B: T41 running
-  B->>B: T42 running
-```
 Caption:
-- Two preemption events are shown explicitly: at T12 and T30 when A arrives (higher priority preempts B).
-- A yields/completes at T18 and T36, allowing B to resume.
+- this example shows four tasks with different priorities.
+- D the lowest priority task running continuously.
+- D is interrupted at T6 by Task A lasting one tick and resumes Task D.
+- D is interrupted once again by higher priority task C at T10 lasting three ticks.
+- C as well is interrupted by Task B (an even higher task) at T11 lasting two ticks.
+- B returns to C, which finishes the remaining work (two more ticks); and returns to D.
 - Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
+
+
+
+> RR with preemption allows the usage of both policies within the same context.
 
 ---
 
