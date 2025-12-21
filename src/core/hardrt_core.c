@@ -224,6 +224,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 
 void hrt_start(void) {
     /* Let the port take over and run the scheduler loop */
+    hrt__pend_context_switch();
     hrt_port_enter_scheduler();
 
 }
