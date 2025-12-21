@@ -25,7 +25,7 @@ void hrt_port_enter_scheduler(void) {
     /* No scheduler in null port; hrt_start() returns immediately. */
 }
 
-void hrt_port_start_systick(uint32_t tick_hz) {
+void hrt_port_start_systick(const uint32_t tick_hz) {
     (void) tick_hz;
     /* No timer. Real ports will start a tick source and call hrt_tick_from_isr(). */
 }
@@ -50,8 +50,8 @@ void hrt__task_trampoline(void) {
 
 /* Prepare an initial stack frame for a task.
    Null port stores nothing; core keeps metadata only. */
-void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t *stack_base, size_t words) {
+void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                 uint32_t *stack_base, const size_t words) {
     (void) id;
     (void) tramp;
     (void) stack_base;
@@ -67,7 +67,7 @@ void hrt_port_crit_enter(void) {
 void hrt_port_crit_exit(void) {
     /* no-op */
 }
-void hrt_port_sp_valid(uint32_t sp)
+void hrt_port_sp_valid(const uint32_t sp)
 {
     (void)sp;
 }

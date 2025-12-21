@@ -20,11 +20,11 @@ typedef struct {
 } hrt_sem_t;
 
 /**
- * @brief Initialize a binary semaphore.
+ * @brief Initialize binary semaphore.
  * @param s Semaphore object to initialize.
  * @param init Initial count: 0 (empty) or 1 (available).
  */
-static inline void hrt_sem_init(hrt_sem_t *s, unsigned init) {
+static inline void hrt_sem_init(hrt_sem_t *s, const unsigned init) {
     s->count = (init ? 1u : 0u);
     s->head = s->tail = s->count_wait = 0;
 }
@@ -38,13 +38,13 @@ int hrt_sem_take(hrt_sem_t *s);
 
 /**
  * @brief Try to take the semaphore without blocking.
- * @param s Semaphore to try take.
+ * @param s Semaphore to try to take.
  * @return 0 on success, -1 if not available.
  */
 int hrt_sem_try_take(hrt_sem_t *s);
 
 /**
- * @brief Give (release) the semaphore from task context.
+ * @brief Give (release) the semaphore from the task context.
  * @param s Semaphore to release.
  * @return 0.
  */

@@ -270,8 +270,8 @@ void hrt_port_start_systick(uint32_t tick_hz){
  */
 extern void hrt__task_trampoline(void);
 
-void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t* stack_base, size_t words)
+void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                 uint32_t* stack_base, const size_t words)
 {
     (void)tramp;
     uint32_t *stack_end = stack_base + words;

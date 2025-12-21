@@ -54,14 +54,14 @@ static sigset_t g_sigalrm_set;
      g_switch_pending = 1;
  }
  
- /* Idle counter helpers (tests may inspect liveness) */
+ /* Idle counter-helpers (tests may inspect liveness) */
  void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
  unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
  
  /* Fast-forward ticks for wraparound tests: mask SIGALRM and call core tick. */
  void hrt__test_fast_forward_ticks(uint32_t delta) {
      sigset_t old;
-     /* block SIGALRM directly to avoid re-entrancy during synthetic ticks */
+     /* block SIGALRM directly to avoid reentrancy during synthetic ticks */
      sigprocmask(SIG_BLOCK, &g_sigalrm_set, &old);
      for (uint32_t i = 0; i < delta; ++i) { hrt__tick_isr(); }
      sigprocmask(SIG_SETMASK, &old, NULL);
@@ -101,14 +101,14 @@ void hrt__task_trampoline(void) {
 }
 
 /* Prepare ucontext for the task using the provided stack */
-void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t *stack_base, size_t words) {
+void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                 uint32_t *stack_base, const size_t words) {
     (void) tramp; /* we use hrt__task_trampoline directly */
     const size_t bytes = words * sizeof(uint32_t);
     getcontext(&g_ctxs[id].ctx);
     g_ctxs[id].ctx.uc_stack.ss_sp = (void *) stack_base;
     g_ctxs[id].ctx.uc_stack.ss_size = bytes;
-    g_ctxs[id].ctx.uc_link = &g_sched_ctx; /* return to scheduler if task exits */
+    g_ctxs[id].ctx.uc_link = &g_sched_ctx; /* return to scheduler if a task exits */
     makecontext(&g_ctxs[id].ctx, hrt__task_trampoline, 0);
     g_ctxs[id].stk_ptr = (void *) stack_base;
     g_ctxs[id].stk_bytes = bytes;
@@ -116,7 +116,7 @@ void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
 }
 
 /* Tick handler: only set a flag; do not swap here */
-static void _tick_sighandler(int signo) {
+static void _tick_sighandler(const int signo) {
     (void) signo;
     hrt__tick_isr();
     g_switch_pending = 1;
@@ -124,13 +124,14 @@ static void _tick_sighandler(int signo) {
 
 /* Start periodic SIGALRM at the requested Hz */
 void hrt_port_start_systick(const uint32_t tick_hz) {
-    /* If external tick is selected, do not start SIGALRM timer. */
+    /* If an external tick is selected, do not start the SIGALRM timer. */
     if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
         return;
     }
     sigemptyset(&g_sigalrm_set);
     sigaddset(&g_sigalrm_set, SIGALRM);
 
+    //todo check if memset can be replaced with 0 initialization of it
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = _tick_sighandler;
@@ -138,9 +139,10 @@ void hrt_port_start_systick(const uint32_t tick_hz) {
     sa.sa_flags = SA_RESTART;
     sigaction(SIGALRM, &sa, NULL);
 
+    //todo check if memset can be replaced with 0 initialization of it
     struct itimerval it;
     memset(&it, 0, sizeof it);
-    long usec = (tick_hz ? (1000000L / (long) tick_hz) : 1000L);
+    const long usec = (tick_hz ? (1000000L / (long) tick_hz) : 1000L);
     it.it_value.tv_sec = 0;
     it.it_value.tv_usec = usec;
     it.it_interval = it.it_value;
@@ -199,10 +201,10 @@ void hrt_port_enter_scheduler(void) {
         }
 
         hrt__set_current(next);
-        /* Jump from scheduler to task; task will swap back when it yields/sleeps */
+        /* Jump from scheduler to task; a task will swap back when it yields/sleeps */
         swapcontext(&g_sched_ctx, &g_ctxs[next].ctx);
 
-        /* We are back in scheduler context with SIGALRM still masked. */
+        /* We are back in the scheduler context with SIGALRM still masked. */
         hrt__on_scheduler_entry();
 
         unblock_sigalrm(&old);
@@ -213,7 +215,7 @@ void hrt_port_enter_scheduler(void) {
 void hrt_port_crit_enter(void) {
     if (g_crit_depth++ == 0) {
         /* Block SIGALRM; we don't attempt to restore an arbitrary previous mask here.
-           Critical sections are short; on final exit we simply unmask SIGALRM. */
+           Critical sections are short; on the final exit we simply unmask SIGALRM. */
         sigprocmask(SIG_BLOCK, &g_sigalrm_set, NULL);
     }
 }

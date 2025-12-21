@@ -25,9 +25,9 @@ namespace hardrt {
          * int id = Task::create(worker, nullptr, stackA, 256, HRT_PRIO1, 5);
          * @endcode
          */
-        static int create(hrt_task_fn fn, void* arg, uint32_t* stack, size_t words,
-                          hrt_prio_t prio, uint16_t slice) {
-            hrt_task_attr_t a{ prio, slice };
+        static int create(const hrt_task_fn fn, void* arg, uint32_t* stack, const size_t words,
+                          const hrt_prio_t prio, const uint16_t slice) {
+            const hrt_task_attr_t a{ prio, slice };
             return hrt_create_task(fn, arg, stack, words, &a);
         }
     };

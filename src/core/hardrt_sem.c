@@ -25,7 +25,7 @@ void hrt_port_crit_enter(void);
 void hrt_port_crit_exit(void);
 
 /* Internal: enqueue/dequeue waiter (FIFO) */
-static void _waitq_push(hrt_sem_t *s, uint8_t id) {
+static void _waitq_push(hrt_sem_t *s, const uint8_t id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     };
@@ -37,7 +37,7 @@ static void _waitq_push(hrt_sem_t *s, uint8_t id) {
 
 static int _waitq_pop(hrt_sem_t *s) {
     if (!s->count_wait) return -1;
-    int id = s->q[s->head];
+    const int id = s->q[s->head];
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     };
@@ -77,7 +77,7 @@ int hrt_sem_take(hrt_sem_t *s) {
         return 0;
     }
 
-    /* Put current into semaphore wait queue and mark blocked */
+    /* Put current into the semaphore wait queue and mark blocked */
     _waitq_push(s, (uint8_t) me);
 #if DEBUG
     printf("[sem] take: task %d queued, waiters=%u\n", me, (unsigned) s->count_wait);
@@ -86,7 +86,7 @@ int hrt_sem_take(hrt_sem_t *s) {
     if (!t){hrt_error(ERR_TCB_NULL);}
     t->state = HRT_BLOCKED;
 
-    /* Request reschedule and yield to scheduler from task context */
+    /* Request rescheduling and yield to scheduler from the task context */
     extern void hrt_port_yield_to_scheduler(void);
 
     hrt_port_crit_exit();
@@ -108,7 +108,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
         /* Wake exactly one waiter */
         _hrt_tcb_t *tw = hrt__tcb(waiter);
         if (!tw) {hrt_error(ERR_TCB_NULL);}
-        /* Do not pre-set state here; hrt__make_ready() will set state to READY
+        /* Do not pre-set the state here; hrt__make_ready() will set state to READY
          * and push the task into the ready queue. */
         hrt__make_ready(waiter);
         woken = 1;
@@ -133,7 +133,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
         }
     } else {
         if (woken) {
-            /* Requeue current task appropriately and yield, similar to hrt_yield().
+            /* Requeue the current task appropriately and yield, similar to hrt_yield().
              * This ensures the giver is placed back on its ready queue while
              * allowing the (potentially higher-priority) woken waiter to run. */
             hrt_yield();

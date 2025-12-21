@@ -51,7 +51,7 @@ void hrt__tick_isr(void) {
                 if (ct->slice_left > 0) {
                     ct->slice_left--;
                     if (ct->slice_left == 0) {
-                        /* Time slice expired: request reschedule. The actual
+                        /* Time slice expired: request rescheduling. The actual
                            requeue happens when the task yields/sleeps (safe ctx). */
 
                         triggerPendSV = 1;
@@ -61,7 +61,7 @@ void hrt__tick_isr(void) {
         }
     }
 
-    /* Also wake-driven changes may require a re-schedule; ports decide when to switch */
+    /* Also, wake-driven changes may require a re-schedule; ports decide when to switch */
     if (triggerPendSV != 0) {
         dbg_pend_from_tick++;
         hrt__pend_context_switch();

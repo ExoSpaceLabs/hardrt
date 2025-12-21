@@ -191,7 +191,7 @@ int hrt_init(const hrt_config_t *cfg);
  * @note The buffer pointed to by stack_words must remain valid for the task lifetime.
  * @code
  * static uint32_t stackA[256];
- * void worker(void* arg) { // task body }
+ * void worker (void* arg) { // task body }
  * int id = hrt_create_task(worker, NULL, stackA, 256, NULL);
  * @endcode
  */
@@ -231,7 +231,7 @@ void hrt_set_policy(hrt_policy_t p);
 
 /**
  * @brief Change the default round-robin timeslice used when creating tasks.
- * @param t Timeslice in ticks; 0 disables RR for tasks without explicit slice.
+ * @param t Timeslice in ticks; 0 disables RR for tasks without an explicit slice.
  */
 void hrt_set_default_timeslice(uint16_t t);
 
@@ -257,12 +257,12 @@ void hrt__pend_context_switch(void); /* request a switch (e.g., PendSV) */
 
 /**
  * @brief Architecture-specific trampoline that enters the task function.
- * @note Provided by the port; sets up call to the user task entry and handles return.
+ * @note Provided by the port; sets up a call to the user task entry and handles return.
  */
 void hrt__task_trampoline(void); /* arch-specific entry trampoline */
 
 /**
- * @brief Prepare initial stack frame/context for a new task.
+ * @brief Prepare an initial stack frame / context for a new task.
  * @param id Task id.
  * @param tramp Entry trampoline to start execution.
  * @param stack_base Base of the stack buffer (array of 32-bit words).

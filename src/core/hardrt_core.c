@@ -259,7 +259,7 @@ void hrt_sleep(const uint32_t ms){
     t->wake_tick = g_tick + ticks;    // wrap-safe checked in the tick hook
     t->state     = HRT_SLEEP;
 
-    // Request reschedule; then voluntarily hop to scheduler for immediate handoff.
+    // Request rescheduling; then voluntarily hop to scheduler for immediate handoff.
     dbg_pend_from_core++;
     hrt__pend_context_switch();
     hrt_port_yield_to_scheduler();
@@ -313,7 +313,7 @@ void hrt__make_ready(const int id) {
     (void)dbg_make_ready_state;
 
     t->state = HRT_READY;
-    /* Reset slice strictly to task's configured value; 0 means cooperative */
+    /* Reset slice strictly to the task's configured value; 0 means cooperative */
     t->slice_left = t->timeslice_cfg;
     rq_push(t->prio, (uint8_t) id);
 
@@ -341,12 +341,7 @@ int hrt__pick_next_ready(void)
     int id = -1;
 
     for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
-        int candidate = rq_pop((uint8_t)p);
-
-        if (candidate >= HARDRT_MAX_TASKS) {
-            hrt_error(ERR_INVALID_ID);
-            candidate = -1;
-        }
+        const int candidate = rq_pop((uint8_t)p);
 
         if (candidate >= 0) {
             id = candidate;
@@ -414,7 +409,7 @@ void hrt__on_scheduler_entry(void) {
     const hrt_policy_t pol = g_policy;
     if ((pol == HRT_SCHED_RR || pol == HRT_SCHED_PRIORITY_RR) && t->timeslice_cfg > 0) {
         if (t->slice_left == 0) {
-            /* Time slice expired: move running task to tail and refresh its quantum */
+            /* Time slice expired: move a running task to tail and refresh its quantum */
             t->slice_left = t->timeslice_cfg;
             rq_push(t->prio, (uint8_t) g_current);
         }
@@ -442,14 +437,14 @@ uint32_t hrt__test_get_tick(void) { return g_tick; }
 
 
 uint32_t hrt__schedule(const uint32_t old_sp) {
-    // Save current context if this isn't the first switch
+    // Save the current context if this isn't the first switch
     if (g_current >= 0 && g_current < HARDRT_MAX_TASKS) {
         _hrt_tcb_t *cur = hrt__tcb(g_current);
         if (!cur) {
             hrt_error(ERR_TCB_NULL);
         } else {
             _set_sp(g_current, (uint32_t*)old_sp);
-            // If the task is still READY, put it back into the runqueue (RR etc.).
+            // If the task is still READY, put it back into the run queue (RR etc.).
             if (cur->state == HRT_READY) {
                 rq_push(cur->prio, g_current);
             }
@@ -458,13 +453,13 @@ uint32_t hrt__schedule(const uint32_t old_sp) {
     dbg_id_save = g_current;
     dbg_sp_save = old_sp;
     (void)dbg_sp_save; (void)dbg_id_save;
-    // Pick next task to run
+    // Pick the next task to run
     const int next_id = hrt__pick_next_ready();   // returns -1 if none
     dbg_pick = next_id;
     (void)dbg_pick;
 
     if (next_id < 0) {
-        // No runnable tasks: stay with current context (return 0 to ASM)
+        // No runnable tasks: stay with the current context (return 0 to ASM)
         hrt__set_current(HRT_IDLE_ID);
         dbg_pick = HRT_IDLE_ID;
         return (uint32_t)_get_sp(HRT_IDLE_ID);

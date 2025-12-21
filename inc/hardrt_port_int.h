@@ -15,7 +15,7 @@ extern "C" {
     uint32_t hrt__load_next_sp_and_set_current(int next_id); // set current=next, return next->sp
     int  hrt__get_current(void);
     int  hrt__pick_next_ready(void);
-    uint32_t hrt__schedule(const uint32_t old_sp);
+    uint32_t hrt__schedule(uint32_t old_sp);
 
 
     /**
