@@ -173,6 +173,9 @@ void hrt_port_yield_to_scheduler(void) {
 
 /* Scheduler loop: pick and switch, with SIGALRM masked during critical sections */
 void hrt_port_enter_scheduler(void) {
+    //todo analyse if it has to be done in hrt_start method instead with calling
+    // of pend context switch. For now it works with all examples.
+    g_switch_pending = 1;
     for (;;) {
 #ifdef HARDRT_TEST_HOOKS
         if (g_test_stop) {
