@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "[INFO] HardRT   : $HARDRT_DIR"
+echo "[INFO] HardRT    : $HARDRT_DIR"
 echo "[INFO] App       : $APP_DIR"
 echo "[INFO] Toolchain : $TC_FILE"
 echo "[INFO] STM32H7   : $STM32CUBE_H7_ROOT"
@@ -72,7 +72,7 @@ HARDRT_LIB="$(find "$PWD" -name 'libhardrt.a' | head -n 1 || true)"
 HARDRT_INC="$INSTALL_DIR/include"
 HARDRT_PKG_DIR="$INSTALL_DIR/lib/cmake/HardRT"
 
-echo "[INFO] libhardrt.a : ${HARDRT_LIB:-NOT FOUND}"
+echo "[INFO] libhardrt.a  : ${HARDRT_LIB:-NOT FOUND}"
 echo "[INFO] include dir  : $HARDRT_INC"
 echo "[INFO] package dir  : $HARDRT_PKG_DIR"
 

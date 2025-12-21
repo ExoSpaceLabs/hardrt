@@ -7,8 +7,8 @@ To compile the library for a different architecture use the following instructio
 ### Pre-requisites
 
 #### prepare your projects:
-navigate to `Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/` from the `STM32CubeH7` repo and move your device
-specific system, startup and linker files to their dedicated folder.
+navigate to `Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/` from the `STM32CubeH7` repo and move your 
+device-specific system, startup and linker files to their dedicated folder.
 
 install gcc by version 
 
@@ -19,8 +19,6 @@ Debian/Ubuntu names shown; use your distro equivalents
 sudo apt-get install gcc-arm-none-eabi gdb-multiarch openocd stlink-tools
 
 ```
-
-
 
 ### Build
 
@@ -39,8 +37,6 @@ cmake --install build-mcu --prefix "$PWD/install"
 
 > **NOTE:** This example builds for `cortex-m7`, if you are building for a different processor update it accordingly. 
 
-
-
 ### Flashing the stm32
 
 give st-link access to usb
@@ -57,7 +53,7 @@ probe the existence of the board
 lsusb | grep -i st
 
 ```
-ask package manager where the configuration scripts are located.
+ask the package manager where the configuration scripts are located.
 
 ```bash
 dpkg -L openocd | grep '/scripts$'
@@ -68,7 +64,7 @@ check for st file existence.
 ls $(dpkg -L openocd | grep '/scripts$')/interface/stlink.cfg
 ls $(dpkg -L openocd | grep '/scripts$')/target/stm32h7x_dual_bank.cfg
 ```
-if they are shown the board can be flashed.
+if they are shown, the board can be flashed.
 run the following openocd command to flash board:
 ```bash
 
@@ -79,7 +75,7 @@ openocd -s /usr/share/openocd/scripts   -f scripts/openocd_h755_clean.cfg   -c "
       reset halt; shutdown"
 
 ```
-if no errors pop up we can try and debug using dbg and 2 terminals:
+if no errors pop up, we can try and debug using dbg and two terminals:
 
 Terminal A:
 ```bash
@@ -101,14 +97,15 @@ b SysTick_Handler            # PendSV_Handler
 c
 
 ```
+Alternatively, run a gdb script that prepares all required breakpoints and outputs. see example scripts under
+scripts/gdb/  
 
 commands
 ```bash
-gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -batch -x scripts/gdb/sp_check.gdb
 
-
+gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -batch -x scripts/gdb/tasks.gdb
 ```
-
+This example script sets breakpoints for taskA and taskB with additional information like ticks and execution count.
 
 
 ### include in your project as follows:
