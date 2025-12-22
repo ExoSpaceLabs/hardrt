@@ -28,7 +28,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (excerpt on POSIX):
 ```
-HardRT version: 0.2.0 (0x000200), port: posix (id=1)
+HardRT version: 0.3.0 (0x000300), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 ...
@@ -56,7 +56,7 @@ For details, see docs/TESTS_POSIX.md.
 Constraints and notes:
 - Priority levels have a physical cap of 12 in this release (`HRT_PRIO0..HRT_PRIO11`).
 - There is no hard cap on the number of tasks in the source; practical limits depend on your system/memory.
-- CMake validates at configure time: `HARDRT_CFG_MAX_PRIO` must be in [1, 12] and `HARDRT_CFG_MAX_TASKS >= HARDRT_CFG_MAX_PRIO` (and `>= 1`).
+- CMake validates at configuration time: `HARDRT_CFG_MAX_PRIO` must be in [1, 12] and `HARDRT_CFG_MAX_TASKS >= HARDRT_CFG_MAX_PRIO` (and `>= 1`).
 
 Examples:
 ```bash

@@ -1,7 +1,7 @@
 
 ## 🧠 API Overview (C)
 
-This page summarizes the public C API available in HardRT v0.2.0. See `inc/hardrt.h` for authoritative declarations.
+This page summarizes the public C API available in HardRT v0.3.0. See `inc/hardrt.h` for authoritative declarations.
 
 ### Types
 
@@ -39,7 +39,7 @@ typedef struct {
 ### Version and port identity
 
 ```c
-const char* hrt_version_string(void);  /* e.g. "0.2.0" */
+const char* hrt_version_string(void);  /* e.g. "0.3.0" */
 unsigned    hrt_version_u32(void);     /* (maj<<16)|(min<<8)|patch */
 const char* hrt_port_name(void);       /* e.g. "posix" or "null" */
 int         hrt_port_id(void);         /* 0=null, 1=posix, ... */

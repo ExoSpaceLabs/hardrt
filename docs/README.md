@@ -1,6 +1,6 @@
 # 📘 Documentation Summary
 
-This documentation set is synchronized with HardRT v0.2.x and forward-compatible with v1.0.0 planning.
+This documentation set is synchronized with HardRT v0.3.x and forward-compatible with v1.0.0 planning.
 
 ## Main Docs
 | File                                    | Purpose                                       |

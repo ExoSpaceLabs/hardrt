@@ -12,7 +12,7 @@ cmake --build . --target two_tasks -j
 ```
 Expected output (program exits immediately; no live scheduling):
 ```
-HardRT version: 0.2.0 (0x000200), port: null (id=0)
+HardRT version: 0.3.0 (0x000300), port: null (id=0)
 ```
 Notes:
 - The null port doesn’t start a tick or switch contexts; `hrt_start()` returns.
@@ -26,7 +26,7 @@ cmake --build . --target two_tasks -j
 ```
 Expected output (excerpt; continues indefinitely):
 ```terminaloutput
-HardRT version: 0.2.0 (0x000200), port: posix (id=1)
+HardRT version: 0.3.0 (0x000300), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 [A] tick count [1]
