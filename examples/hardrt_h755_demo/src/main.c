@@ -5,24 +5,6 @@
 #include "stm32h7xx.h"
 #include "stm32h7xx_hal.h"
 
-// static void KillWWDG(void)
-// {
-//     NVIC_DisableIRQ(WWDG_IRQn);
-//     NVIC_ClearPendingIRQ(WWDG_IRQn);
-//
-//     __HAL_RCC_WWDG1_CLK_ENABLE();
-//     if (WWDG1->SR) {
-//         WWDG1->SR = 0;
-//         __DSB(); __ISB();
-//     }
-//     __HAL_RCC_WWDG1_CLK_DISABLE();  // this is the only part that truly “turns it off”
-// }
-// bringup interfaces...
-// void board_enable_uart3_irq(void){
-//     // clocks + GPIO setup omitted for brevity
-//     NVIC_SetPriority(USART3_IRQn, 0x80);
-//     NVIC_EnableIRQ(USART3_IRQn);
-// }
 
 #define HRT_STACK_SIZE 1024
 
