@@ -131,17 +131,13 @@ void hrt_port_start_systick(const uint32_t tick_hz) {
     sigemptyset(&g_sigalrm_set);
     sigaddset(&g_sigalrm_set, SIGALRM);
 
-    //todo check if memset can be replaced with 0 initialization of it
-    struct sigaction sa;
-    memset(&sa, 0, sizeof sa);
+    struct sigaction sa = {0};
     sa.sa_handler = _tick_sighandler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     sigaction(SIGALRM, &sa, NULL);
 
-    //todo check if memset can be replaced with 0 initialization of it
-    struct itimerval it;
-    memset(&it, 0, sizeof it);
+    struct itimerval it = {0};
     const long usec = (tick_hz ? (1000000L / (long) tick_hz) : 1000L);
     it.it_value.tv_sec = 0;
     it.it_value.tv_usec = usec;

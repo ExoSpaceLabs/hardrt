@@ -146,7 +146,7 @@ static void hrt_idle_task(void *arg) {
 
 void hrt__init_idle_task(void)
 {
-    memset(&g_idle_tcb, 0, sizeof(g_idle_tcb));
+    g_idle_tcb = (_hrt_tcb_t){0};
 
     g_idle_tcb.state         = HRT_READY;        // always logically runnable
     g_idle_tcb.prio          = 0;                // irrelevant if not in rq
