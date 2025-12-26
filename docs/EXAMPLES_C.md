@@ -61,43 +61,6 @@ You should see `T1` and `T2` alternate over time as their slices expire.
 
 ---
 
-## Visualizing scheduling
-
-### Round‑robin within one priority (Sequence at tick times)
-> Note: Possibly moved to a dedicated file. Explaining policy.
- 
-![policy_RR.png](images/policy_RR.png)
-
-Caption:
-- Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
-- Two READY tasks with `timeslice=1 ms`. Handoffs occur exactly at every tick...
-- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
-
-![two_tick_RR.png](images/two_tick_RR.png)
-Caption:
-- Identical example with `timeslice=2 ms` is shown below, in essence handoffs occur every two ticks.
-
-each task is executed in order.
-
-### Priority preemption (Sequence at tick times)
-
-![preempt.png](images/preempt.png)
-
-Caption:
-- this example shows four tasks with different priorities.
-- D the lowest priority task running continuously.
-- D is interrupted at T6 by Task A lasting one tick and resumes Task D.
-- D is interrupted once again by higher priority task C at T10 lasting three ticks.
-- C as well is interrupted by Task B (an even higher task) at T11 lasting two ticks.
-- B returns to C, which finishes the remaining work (two more ticks); and returns to D.
-- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
-
-
-
-> RR with preemption allows the usage of both policies within the same context.
-
----
-
 ### External tick example (two_tasks_external)
 
 This example is like `two_tasks` but HardRT time advances only when the application calls `hrt_tick_from_isr()` — here driven by a small POSIX thread that sleeps one tick and calls the API every loop.
