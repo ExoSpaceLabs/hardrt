@@ -166,7 +166,7 @@ uint32_t *_get_sp(const int id) {
         hrt_error(ERR_TCB_NULL);
     }
     uint32_t *sp = hrt__tcb(id)->sp;
-    hrt_port_sp_valid((uint32_t) sp);
+    hrt_port_sp_valid((uintptr_t) sp);
     return hrt__tcb(id)->sp;
 }
 void _set_sp(const int id, uint32_t *sp) {
@@ -175,7 +175,7 @@ void _set_sp(const int id, uint32_t *sp) {
     if (!hrt__tcb(id)) {
         hrt_error(ERR_TCB_NULL);
     }
-    hrt_port_sp_valid((uint32_t) sp);
+    hrt_port_sp_valid((uintptr_t) sp);
     hrt__tcb(id)->sp = sp;
 }
 
@@ -243,7 +243,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
 #if HARDRT_BDG_VARIABLES == 1
     dbg_ct_id = id;
-    dbg_ct_sp = (uint32_t)(t->sp);
+    dbg_ct_sp = (uintptr_t)(t->sp);
     (void)dbg_ct_id; (void)dbg_ct_sp;
 #endif
     t->state = HRT_READY;
@@ -271,7 +271,7 @@ static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_h
     t /= 1000ULL;
     if (t == 0) t = 1;               // paranoia; ms>0 so ensure progress
     if (t > UINT32_MAX) t = UINT32_MAX;
-    return (uint32_t)t;
+    return (uintptr_t)t;
 }
 
 void hrt_sleep(const uint32_t ms){
@@ -429,7 +429,7 @@ uint32_t hrt__load_next_sp_and_set_current(const int next_id){
 
     //__asm volatile ("mrs %0, psp" : "=r"(cur_sp));
 
-    const uint32_t sp = (uint32_t)(_get_sp(next_id));
+    const uint32_t sp = (uintptr_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 
 #if HARDRT_BDG_VARIABLES == 1
@@ -511,11 +511,11 @@ uint32_t hrt__schedule(const uint32_t old_sp) {
 #if HARDRT_BDG_VARIABLES == 1
         dbg_pick = HRT_IDLE_ID;
 #endif
-        return (uint32_t)_get_sp(HRT_IDLE_ID);
+        return (uintptr_t)_get_sp(HRT_IDLE_ID);
     }
 
     hrt__set_current(next_id);
-    const uint32_t sp_new = (uint32_t)_get_sp(next_id);
+    const uint32_t sp_new = (uintptr_t)_get_sp(next_id);
 #if HARDRT_BDG_VARIABLES == 1
     dbg_id_load = next_id;
     dbg_sp_load = sp_new;

@@ -64,7 +64,6 @@ typedef enum {
     ERR_DUP_READY = 15
 }hrt_err;
 
-
 /**
  * @brief Scheduler policy.
  * - HRT_SCHED_PRIORITY: strict fixed-priority, cooperative within a class.
