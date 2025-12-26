@@ -3,10 +3,15 @@
 #include "hardrt_port_int.h"
 #include "hardrt_time.h"
 
+#ifndef HARDRT_BDG_VARIABLES
+    #define HARDRT_BDG_VARIABLES 0
+#endif
+
 /* Core-private accessors from hardrt_core.c */
 
+#if HARDRT_BDG_VARIABLES == 1
 volatile uint32_t dbg_pend_from_tick  = 0;
-
+#endif
 void hrt__make_ready(int id);
 
 void hrt__requeue_noreset(int id);
@@ -63,7 +68,9 @@ void hrt__tick_isr(void) {
 
     /* Also, wake-driven changes may require a re-schedule; ports decide when to switch */
     if (triggerPendSV != 0) {
+#if HARDRT_BDG_VARIABLES == 1
         dbg_pend_from_tick++;
+#endif
         hrt__pend_context_switch();
     }
 }

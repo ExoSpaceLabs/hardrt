@@ -12,6 +12,7 @@ option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF
 option(HARDRT_BUILD_EXAMPLES "Build examples" ON)
 option(HARDRT_BUILD_TESTS "Build test suite (POSIX port)" ON)
 option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)" OFF)
+option(HARDRT_BDG_VARIABLES "Enable debug variables" OFF)
 
 # ---- Kernel sizing knobs (public compile definitions) ----
 # These control the number of concurrent tasks and the number of priority classes.
@@ -19,13 +20,13 @@ option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)
 set(HARDRT_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
 set(HARDRT_CFG_MAX_PRIO  4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
 
-
 message("-- Definitions --")
 message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
 message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
 message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
+message("-- HARDRT_BDG_VARIABLES         : ${HARDRT_BDG_VARIABLES}")
 message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS}")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
@@ -73,6 +74,12 @@ else()
   set(HARDRT_PORT_ID -1)
 endif()
 
+if(HARDRT_BDG_VARIABLES)
+  set(HARDRT_BDG_VARIABLES 1)
+else ()
+  set(HARDRT_BDG_VARIABLES 0)
+endif ()
+
 configure_file(
         "${CMAKE_SOURCE_DIR}/inc/hardrt_port.h.in"
         "${CMAKE_BINARY_DIR}/generated/hardrt_port.h"
@@ -109,7 +116,8 @@ target_compile_definitions(${LIB_NAME}
         PUBLIC
         HARDRT_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
         HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
-        HRT_STALL_ON_ERROR=${HRT_STALL_ON_ERROR}
+        HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
+        HARDRT_BDG_VARIABLES=${HARDRT_BDG_VARIABLES}
 )
 
 target_include_directories(${LIB_NAME}

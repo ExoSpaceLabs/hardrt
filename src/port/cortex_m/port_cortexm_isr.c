@@ -4,12 +4,15 @@
 #include "hardrt.h"
 #include "hardrt_port_int.h"
 
+#ifndef HARDRT_BDG_VARIABLES
+    #define HARDRT_BDG_VARIABLES 0
+#endif
 
 /* Core-private hooks */
-
+#if HARDRT_BDG_VARIABLES == 1
 volatile uint8_t dbg_tasks_returned = 0;
 volatile uint8_t dbg_pend_from_tramp = 0;
-
+#endif
 extern void hrt__pend_context_switch(void);
 extern _hrt_tcb_t *hrt__tcb(int id);
 
@@ -34,12 +37,15 @@ void hrt__task_trampoline(void) {
 
     /* r0 arg is ignored on entry; call real entry now */
     t->entry(t->arg);
-
+#if HARDRT_BDG_VARIABLES == 1
     dbg_tasks_returned++;
     (void)dbg_tasks_returned;
+#endif
     /* If task returns, yield forever */
     for (;;) {
+#if HARDRT_BDG_VARIABLES == 1
         dbg_pend_from_tramp++;
+#endif
         hrt__pend_context_switch();
         __asm volatile ("wfi");
     }

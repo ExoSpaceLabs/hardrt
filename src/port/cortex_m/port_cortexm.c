@@ -4,8 +4,12 @@
 #include "hardrt.h"
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
-/* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
 
+#ifndef HARDRT_BDG_VARIABLES
+    #define HARDRT_BDG_VARIABLES 0
+#endif
+
+/* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
 
 typedef struct {
     volatile uint32_t CTRL;
@@ -45,23 +49,26 @@ extern uint8_t __RAM_END__;
 #define SYSTICK_TICKINT          (1UL << 1)
 #define SYSTICK_ENABLE           (1UL << 0)
 
-
-//TODO REMOVE DEBUG VARIABLES
+/* debug variables */
+#if HARDRT_BDG_VARIABLES == 1
 volatile uint32_t dbg_curr_sp;
 volatile uint32_t dbg_pend_calls;
 volatile uint32_t dbg_pend_from_cortexm = 0;
 volatile uint32_t dbg_basperi;
+#endif
+
 
 /* -------- Core-private hooks we call from the port -------- */
 extern void hrt__tick_isr(void);
 extern _hrt_tcb_t* hrt__tcb(int id);
 
 void hrt_port_sp_valid(const uint32_t sp) {
+#if HARDRT_BDG_VARIABLES == 1
     dbg_curr_sp = sp;
     (void)dbg_curr_sp;
-
-    const uint32_t ram_lo = (uint32_t)&__RAM_START__;
-    const uint32_t ram_hi = (uint32_t)&__RAM_END__;
+#endif
+    const uint32_t ram_lo = (uintptr_t)&__RAM_START__;
+    const uint32_t ram_hi = (uintptr_t)&__RAM_END__;
     const uint32_t frame_bytes = HRT_SP_FRAME_BYTES;
     if (sp == 0) {
         hrt_error(ERR_SP_NULL);
@@ -111,7 +118,6 @@ void hrt_port_crit_enter(void){
     if (g_cs_nest == 0u) {
         g_basepri_prev = prev;            /* save only on outermost enter */
         _set_BASEPRI(0x80);               /* raise BASEPRI threshold */
-        //__asm volatile("dsb sy\nisb");  /* ensure mask takes effect before critical work */
         _hrt_port_barrier();
     }
     g_cs_nest++;
@@ -180,8 +186,10 @@ void hrt__init_idle_task(void)
 
 /* -------- Trigger a context switch (PendSV) -------- */
 static inline void _pend_pendsv(void){
+#if HARDRT_BDG_VARIABLES == 1
     dbg_basperi = _get_BASEPRI();
     dbg_pend_calls++;
+#endif
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk; /* set PendSV pending */
     //__asm volatile("dsb sy\nisb");
     _hrt_port_barrier();
@@ -275,14 +283,14 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 void hrt_port_enter_scheduler(void){
 
     __asm volatile ("cpsie i");
+#if HARDRT_BDG_VARIABLES == 1
     dbg_pend_from_cortexm++;
+#endif
     hrt__pend_context_switch();
     for(;;) { hrt_port_idle_wait(); }
 }
 
 /* -------- SysTick handler: tick + request reschedule -------- */
 void SysTick_Handler(void){
-    // __asm volatile("bkpt #0");
     hrt__tick_isr();
-
 }

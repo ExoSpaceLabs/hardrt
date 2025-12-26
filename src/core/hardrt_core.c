@@ -11,6 +11,10 @@
     #define HARDRT_STALL_ON_ERROR 0
 #endif
 
+#ifndef HARDRT_BDG_VARIABLES
+    #define HARDRT_BDG_VARIABLES 0
+#endif
+
 
 /* Globals */
 static _hrt_tcb_t g_tcbs[HARDRT_MAX_TASKS];
@@ -24,6 +28,7 @@ static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
 volatile hrt_err g_error = NONE;
 
 //TODO REMOVE DEBUG VARIABLES.
+#if HARDRT_BDG_VARIABLES == 1
 volatile int dbg_pick;
 volatile int dbg_id_save;
 volatile uint32_t dbg_sp_save;
@@ -36,7 +41,7 @@ volatile uint32_t dbg_tsk_q= 0;
 volatile uint32_t dbg_make_ready_id;
 volatile uint32_t dbg_make_ready_state;
 volatile uint32_t dbg_pend_from_core;
-
+#endif
 /* Ready queues per priority (store task indices) */
 typedef struct {
     uint8_t q[HARDRT_MAX_TASKS];
@@ -62,16 +67,21 @@ void hrt_port_yield_to_scheduler(void);
 static void rq_push(const uint8_t p, const int id) {
     /* Validate priority */
     if (p >= HARDRT_MAX_PRIO) {
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = 5000;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_INVALID_PRIO);
         return;
     }
 
     /* Validate task id BEFORE storing it into the queue */
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
+
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = 1000;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_INVALID_ID);
         return;
     }
@@ -80,8 +90,10 @@ static void rq_push(const uint8_t p, const int id) {
 
     /* Hard fail on overflow in debug; in release you could drop or overwrite */
     if (q->count >= HARDRT_MAX_TASKS) {
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = q->count;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_RQ_OVERFLOW);
         return;
     }
@@ -89,43 +101,60 @@ static void rq_push(const uint8_t p, const int id) {
     q->q[q->tail] = (uint8_t)id;
     q->tail = (uint8_t)((q->tail + 1u) % HARDRT_MAX_TASKS);
     q->count++;
+
+#if HARDRT_BDG_VARIABLES == 1
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
+#endif
 }
 
 static int rq_pop(const uint8_t p) {
     if (p >= HARDRT_MAX_PRIO) {
+
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = p;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_INVALID_PRIO);
         return -1;
     }
 
     prio_q_t *q = &g_rq[p];
     if (q->count == 0) {
+
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = 0;
         (void)dbg_tsk_q;
+#endif
         return -1;
     }
     /* Hard fail on overflow in debug; in release you could drop or overwrite */
     if (q->count < 0) {
+
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = q->count;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_RQ_UNDERFLOW);
         return -1000;
     }
 
     const int id = q->q[q->head];
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
+#if HARDRT_BDG_VARIABLES == 1
         dbg_tsk_q = -2000;
         (void)dbg_tsk_q;
+#endif
         hrt_error(ERR_INVALID_ID_FROM_RQ);
         return -1;
     }
     q->head = (uint8_t)((q->head + 1u) % HARDRT_MAX_TASKS);
     q->count--;
+
+#if HARDRT_BDG_VARIABLES == 1
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
+#endif
 
     return id;
 }
@@ -212,9 +241,11 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     t->stack_words = n_words;
 
     hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
+#if HARDRT_BDG_VARIABLES == 1
     dbg_ct_id = id;
     dbg_ct_sp = (uint32_t)(t->sp);
     (void)dbg_ct_id; (void)dbg_ct_sp;
+#endif
     t->state = HRT_READY;
     /* timeslice_cfg already holds the effective slice (default applied if attr==NULL) */
     t->slice_left = t->timeslice_cfg;
@@ -260,7 +291,10 @@ void hrt_sleep(const uint32_t ms){
     t->state     = HRT_SLEEP;
 
     // Request rescheduling; then voluntarily hop to scheduler for immediate handoff.
+
+#if HARDRT_BDG_VARIABLES == 1
     dbg_pend_from_core++;
+#endif
     hrt__pend_context_switch();
     hrt_port_yield_to_scheduler();
 }
@@ -280,7 +314,9 @@ void hrt_yield(void) {
         t->slice_left = t->timeslice_cfg;
         rq_push(t->prio, (uint8_t) g_current);
     }
+#if HARDRT_BDG_VARIABLES == 1
     dbg_pend_from_core++;
+#endif
     hrt__pend_context_switch(); /* request reschedule */
     hrt_port_yield_to_scheduler(); /* hop to scheduler */
 }
@@ -307,10 +343,12 @@ void hrt__make_ready(const int id) {
         return;
     }
 
+#if HARDRT_BDG_VARIABLES == 1
     dbg_make_ready_id = id;
     dbg_make_ready_state = t->state;
     (void)dbg_make_ready_id;
     (void)dbg_make_ready_state;
+#endif
 
     t->state = HRT_READY;
     /* Reset slice strictly to the task's configured value; 0 means cooperative */
@@ -349,8 +387,10 @@ int hrt__pick_next_ready(void)
         }
     }
 
+#if HARDRT_BDG_VARIABLES == 1
     dbg_pick = id;
     (void)dbg_pick;
+#endif
     return id;                 // -1 only if *all* priorities were empty
 }
 
@@ -377,22 +417,27 @@ void hrt__save_current_sp(const uint32_t sp)
 
     _set_sp(cur, (uint32_t*)sp);
 
+#if HARDRT_BDG_VARIABLES == 1
     dbg_id_save = cur;
     dbg_sp_save = sp;
     (void)dbg_sp_save; (void)dbg_id_save;
+#endif
 }
 
 uint32_t hrt__load_next_sp_and_set_current(const int next_id){
-    dbg_id_load = next_id;
-    (void)dbg_id_load;
+
 
     //__asm volatile ("mrs %0, psp" : "=r"(cur_sp));
 
     const uint32_t sp = (uint32_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 
+#if HARDRT_BDG_VARIABLES == 1
+    dbg_id_load = next_id;
     dbg_sp_load = sp;
+    (void)dbg_id_load;
     (void)dbg_sp_load;
+#endif
 
     return sp;
 }
@@ -450,28 +495,32 @@ uint32_t hrt__schedule(const uint32_t old_sp) {
             }
         }
     }
+
+    // Pick the next task to run
+    const int next_id = hrt__pick_next_ready();   // returns -1 if none
+#if HARDRT_BDG_VARIABLES == 1
     dbg_id_save = g_current;
     dbg_sp_save = old_sp;
     (void)dbg_sp_save; (void)dbg_id_save;
-    // Pick the next task to run
-    const int next_id = hrt__pick_next_ready();   // returns -1 if none
     dbg_pick = next_id;
     (void)dbg_pick;
-
+#endif
     if (next_id < 0) {
         // No runnable tasks: stay with the current context (return 0 to ASM)
         hrt__set_current(HRT_IDLE_ID);
+#if HARDRT_BDG_VARIABLES == 1
         dbg_pick = HRT_IDLE_ID;
+#endif
         return (uint32_t)_get_sp(HRT_IDLE_ID);
     }
 
     hrt__set_current(next_id);
     const uint32_t sp_new = (uint32_t)_get_sp(next_id);
-
+#if HARDRT_BDG_VARIABLES == 1
     dbg_id_load = next_id;
     dbg_sp_load = sp_new;
     (void)dbg_sp_load;(void)dbg_id_load;
-
+#endif
     return sp_new;
 
 }

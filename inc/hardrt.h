@@ -50,19 +50,18 @@ typedef enum {
     ERR_INVALID_ID = 1,
     ERR_INVALID_NEXT_ID = 2,
     ERR_SP_NULL = 3,
-    //ERR_NEXT_SP_NULL = 4,
-    ERR_TCB_NULL = 5,
-    ERR_INVALID_TASK = 6,
-    ERR_NO_TASKS = 7,
-    ERR_INVALID_PRIO = 8,
-    ERR_RQ_OVERFLOW = 9,
+    ERR_TCB_NULL = 4,
+    ERR_INVALID_TASK = 5,
+    ERR_NO_TASKS = 6,
+    ERR_INVALID_PRIO = 7,
+    ERR_RQ_OVERFLOW = 8,
+    ERR_RQ_UNDERFLOW = 9,
     ERR_INVALID_ID_FROM_RQ = 10,
     ERR_STACK_UNDERFLOW_INIT = 11,
     ERR_STACK_RANGE = 12,
     ERR_STACK_ALIGN = 13,
     ERR_INVALID_RAM_RANGE = 14,
-    ERR_DUP_READY = 15,
-    ERR_RQ_UNDERFLOW = 9
+    ERR_DUP_READY = 15
 }hrt_err;
 
 
@@ -122,7 +121,7 @@ typedef struct {
     uint16_t timeslice; /**< 0 = cooperative within class; otherwise ticks per slice */
 } hrt_task_attr_t;
 
-/* -------- Mirror TCB so we can prep initial stack -------- */
+/* -------- Mirror TCB for stack initialization -------- */
 typedef struct {
     uint32_t *sp;
     uint32_t *stack_base;
@@ -138,19 +137,31 @@ typedef struct {
 
 _hrt_tcb_t *hrt__tcb(int id);
 
-    // sp helpers
-uint32_t *_get_sp(const int id);
-void _set_sp(const int id, uint32_t *sp);
+/** @brief Stack pointer helper, retrieves the stack pointer for the specified task id.
+ *
+ * @param id
+ * @return
+ */
+uint32_t *_get_sp(int id);
 
+/** @brief Stack pointer helper, sets the stack pointer for the specified task id.
+ *
+ * @param id
+ * @param sp
+ */
+void _set_sp(int id, uint32_t *sp);
 
+/**
+ *  idle task specification
+ */
 #define HRT_IDLE_ID   (HARDRT_MAX_TASKS - 1)
 #define HARDRT_IDLE_STACK_WORDS 64
 static _hrt_tcb_t   g_idle_tcb;
-static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS];
+static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned(8)));
 
 /**
  * @brief Get the semantic version string of HardRT at runtime.
- * @return NUL-terminated string, e.g. "0.2.0".
+ * @return NUL-terminated string, e.g. "0.3.0".
  */
 const char *hrt_version_string(void);
 
