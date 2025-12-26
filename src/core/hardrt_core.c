@@ -7,8 +7,8 @@
 #include "hardrt_port_int.h"
 #include <string.h>
 
-#ifndef HRT_STALL_ON_ERROR
-    #define HRT_STALL_ON_ERROR 0
+#ifndef HARDRT_STALL_ON_ERROR
+    #define HARDRT_STALL_ON_ERROR 0
 #endif
 
 
@@ -229,7 +229,7 @@ void hrt_start(void) {
 
 }
 
-static inline uint32_t hrt__ms_to_ticks(uint32_t ms, uint32_t tick_hz){
+static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_hz){
     if (ms == 0 || tick_hz == 0) {
         // RTOS-friendly semantics: sleep(0) == sleep(1 tick)
         // Misconfiguration: no notion of time. Fallback to 1 tick so callers don't spin forever.
@@ -421,7 +421,7 @@ void hrt_error(const hrt_err code) {
     g_error = code;
     (void)g_error;
     //__asm volatile("bkpt #0");
-#if HRT_STALL_ON_ERROR == 1
+#if HARDRT_STALL_ON_ERROR == 1
     for (;;) {}
 #endif
 }

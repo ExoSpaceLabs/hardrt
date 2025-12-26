@@ -46,37 +46,6 @@ extern uint8_t __RAM_END__;
 #define SYSTICK_ENABLE           (1UL << 0)
 
 
-
-/* -------- Enter scheduler (Cortex-M flavor)
- * Enable IRQs, pend the first switch, then idle forever.
- */
-#if HARDRT_OWN_VTOR
-extern uint32_t g_pfnVectors;
-static void hardrt_set_vtor(void){
-    (*(volatile uint32_t*)0xE000ED08u) = (uint32_t)&g_pfnVectors;
-}
-#endif
-
-#if HARDRT_SILENCE_NVIC
-#define NVIC_BASE (0xE000E100UL)
-typedef struct {
-    volatile uint32_t ISER[16]; uint32_t _r0[16];
-    volatile uint32_t ICER[16]; uint32_t _r1[16];
-    volatile uint32_t ISPR[16]; uint32_t _r2[16];
-    volatile uint32_t ICPR[16]; uint32_t _r3[16];
-    volatile uint32_t IABR[16]; uint32_t _r4[16];
-    volatile uint8_t  IP[240];  uint32_t _r5[644];
-    volatile uint32_t STIR;
-} NVIC_Type;
-#define NVIC ((NVIC_Type*)NVIC_BASE)
-static void hardrt_disable_all_external_irqs(void){
-    for (int i = 0; i < 16; ++i) {
-        NVIC->ICER[i] = 0xFFFFFFFFu;
-        NVIC->ICPR[i] = 0xFFFFFFFFu;
-    }
-}
-#endif
-
 //TODO REMOVE DEBUG VARIABLES
 volatile uint32_t dbg_curr_sp;
 volatile uint32_t dbg_pend_calls;
@@ -231,14 +200,10 @@ void hrt_port_yield_to_scheduler(void){
 /* -------- Start SysTick at requested Hz -------- */
 void hrt_port_start_systick(uint32_t tick_hz){
     if (!tick_hz) return;
-#if HARDRT_OWN_VTOR
-    //hardrt_set_vtor();
-#endif
-#if HARDRT_SILENCE_NVIC
-    // hardrt_disable_all_external_irqs();
-#endif
-
     /* If you later add an EXTERNAL tick mode, bypass here in that case. */
+    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
+        return;
+    }
 
     const uint32_t core_hz = hrt_port_get_core_hz();
     if (!core_hz) return;
@@ -304,6 +269,9 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
     _set_sp(id, stk);
 }
 
+/* -------- Enter scheduler (Cortex-M flavor)
+ * Enable IRQs, pend the first switch, then idle forever.
+ */
 void hrt_port_enter_scheduler(void){
 
     __asm volatile ("cpsie i");

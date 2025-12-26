@@ -11,12 +11,7 @@ set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
 option(HARDRT_BUILD_EXAMPLES "Build examples" ON)
 option(HARDRT_BUILD_TESTS "Build test suite (POSIX port)" ON)
-
-
-# ---- Port Cortex-m specific
-option(HARDRT_OWN_VTOR "Port sets VTOR at bring-up" ON)
-option(HARDRT_SILENCE_NVIC "Port disables/clears all external NVIC IRQs at bring-up" ON)
-option(HARDRT_DEFAULT_WEAK_HANDLERS "Startup maps all unused IRQs to Default_Handler" ON)
+option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)" OFF)
 
 # ---- Kernel sizing knobs (public compile definitions) ----
 # These control the number of concurrent tasks and the number of priority classes.
@@ -30,9 +25,7 @@ message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
 message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
 message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
-message("-- HARDRT_OWN_VTOR              : ${HARDRT_OWN_VTOR}") #TODO REMOVE and associated
-message("-- HARDRT_SILENCE_NVIC          : ${HARDRT_SILENCE_NVIC}") #TODO REMOVE
-message("-- HARDRT_DEFAULT_WEAK_HANDLERS : ${HARDRT_DEFAULT_WEAK_HANDLERS}") #TODO REMOVE
+message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
 message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS}")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
@@ -70,6 +63,10 @@ if(HARDRT_PORT STREQUAL "null")
   set(HARDRT_PORT_ID 0)
 elseif(HARDRT_PORT STREQUAL "posix")
   set(HARDRT_PORT_ID 1)
+  if(HARDRT_STALL_ON_ERROR)
+    message(WARNING "HRT_STALL_ON_ERROR is disabled for posix port.")
+    set(HRT_STALL_ON_ERROR 0)
+  endif()
 elseif(HARDRT_PORT STREQUAL "cortex_m")
   set(HARDRT_PORT_ID 2)
 else()
@@ -112,12 +109,7 @@ target_compile_definitions(${LIB_NAME}
         PUBLIC
         HARDRT_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
         HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
-)
-
-target_compile_definitions(hardrt PRIVATE
-        $<$<BOOL:${HARDRT_OWN_VTOR}>:HARDRT_OWN_VTOR=1>
-        $<$<BOOL:${HARDRT_SILENCE_NVIC}>:HARDRT_SILENCE_NVIC=1>
-        $<$<BOOL:${HARDRT_DEFAULT_WEAK_HANDLERS}>:HARDRT_DEFAULT_WEAK_HANDLERS=1>
+        HRT_STALL_ON_ERROR=${HRT_STALL_ON_ERROR}
 )
 
 target_include_directories(${LIB_NAME}
