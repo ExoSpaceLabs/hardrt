@@ -100,6 +100,19 @@ uint32_t hrt_port_get_core_hz(void) {
 }
 
 /* -------- Critical sections via BASEPRI (M3/M4/M7) -------- */
+#ifndef HARDRT_NVIC_PRIO_BITS
+#define HARDRT_NVIC_PRIO_BITS 4u
+#endif
+
+#ifndef HARDRT_MAX_SYSCALL_IRQ_PRIO
+#define HARDRT_MAX_SYSCALL_IRQ_PRIO  5u
+#endif
+
+static inline uint32_t _prio_to_basepri(uint32_t prio)
+{
+    /* Convert logical priority (0.(2^__NVIC_PRIO_BITS-1)) to 8-bit field */
+    return (prio << (8u - (uint32_t)HARDRT_NVIC_PRIO_BITS)) & 0xFFu;
+}
 static inline void _set_BASEPRI(uint32_t v){ __asm volatile ("msr BASEPRI, %0" :: "r"(v) : "memory"); }
 static inline uint32_t _get_BASEPRI(void){ uint32_t v; __asm volatile ("mrs %0, BASEPRI" : "=r"(v)); return v; }
 
@@ -114,10 +127,10 @@ static volatile uint32_t g_cs_nest = 0; /* critical section nesting counter */
 
 void hrt_port_crit_enter(void){
     /* Mask preempting interrupts (including SysTick/PendSV). Priority 0x80 is a sane mid level. */
-    uint32_t prev = _get_BASEPRI();
+    const uint32_t prev = _get_BASEPRI();
     if (g_cs_nest == 0u) {
         g_basepri_prev = prev;            /* save only on outermost enter */
-        _set_BASEPRI(0x80);               /* raise BASEPRI threshold */
+        _set_BASEPRI(_prio_to_basepri(HARDRT_MAX_SYSCALL_IRQ_PRIO));               /* raise BASEPRI threshold */
         _hrt_port_barrier();
     }
     g_cs_nest++;
@@ -191,7 +204,6 @@ static inline void _pend_pendsv(void){
     dbg_pend_calls++;
 #endif
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk; /* set PendSV pending */
-    //__asm volatile("dsb sy\nisb");
     _hrt_port_barrier();
 }
 
@@ -208,8 +220,10 @@ void hrt_port_yield_to_scheduler(void){
 /* -------- Start SysTick at requested Hz -------- */
 void hrt_port_start_systick(uint32_t tick_hz){
     if (!tick_hz) return;
-    /* If you later add an EXTERNAL tick mode, bypass here in that case. */
+    /* If EXTERNAL tick mode, bypass here in that case. */
     if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
+        SCB->SHPR[10] = 0xF0; /* PendSV lowest (effective on CM7) */
+        __asm volatile ("cpsie i");
         return;
     }
 
@@ -292,5 +306,7 @@ void hrt_port_enter_scheduler(void){
 
 /* -------- SysTick handler: tick + request reschedule -------- */
 void SysTick_Handler(void){
-    hrt__tick_isr();
+    if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
+        hrt__tick_isr();
+    }
 }

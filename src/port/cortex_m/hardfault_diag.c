@@ -6,6 +6,10 @@ volatile unsigned g_r0,g_r1,g_r2,g_r3,g_r12,g_lr,g_pc,g_psr;
 volatile uint32_t g_psp_at_fault;
 volatile uint32_t g_msp_at_fault;
 
+// print values in dbg
+// printf "CFSR=%#x HFSR=%#x BFAR=%#x AFSR=%#x PC=%#x LR=%#x xPSR=%#x PSP=%#x MSP=%#x\n", (unsigned int)g_cfsr, (unsigned int)g_hfsr, (unsigned int)g_bfar, (unsigned int)g_afsr, (unsigned int)g_pc, (unsigned int)g_lr, (unsigned int)g_psr, (unsigned int)g_psp_at_fault, (unsigned int)g_msp_at_fault
+
+
 __attribute__((naked)) void HardFault_Handler(void)
 {
     __asm volatile(

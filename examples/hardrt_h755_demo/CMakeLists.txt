@@ -50,7 +50,7 @@ add_executable(${PROJECT_NAME}.elf
 )
 
 target_include_directories(${PROJECT_NAME}.elf PRIVATE ${STM32CUBE_INCLUDE_DIRS})
-target_compile_definitions(hardrt_cm7_demo.elf PRIVATE ${STM32_DEVICE} ${STM32_CORE})
+target_compile_definitions(${PROJECT_NAME}.elf PRIVATE ${STM32_DEVICE} ${STM32_CORE})
 
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
         ${MCU_OPTS} -Os -ffreestanding -fno-builtin -ffunction-sections -fdata-sections
@@ -60,7 +60,7 @@ target_link_options(${PROJECT_NAME}.elf PRIVATE
         ${MCU_OPTS}
         -T${CMAKE_SOURCE_DIR}/linker/stm32h755xx_flash_CM7.ld
         -Wl,--gc-sections
-        -Wl,-Map=hardrt_cm7_demo.map
+        -Wl,-Map=${PROJECT_NAME}.map
         -specs=nano.specs
         -specs=nosys.specs
         -nostartfiles

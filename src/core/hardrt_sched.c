@@ -11,6 +11,7 @@
 
 #if HARDRT_BDG_VARIABLES == 1
 volatile uint32_t dbg_pend_from_tick  = 0;
+volatile uint32_t ipsr;
 #endif
 void hrt__make_ready(int id);
 
@@ -77,6 +78,11 @@ void hrt__tick_isr(void) {
 
 void hrt_tick_from_isr(void) {
     // Only allow tick advancement when using EXTERNAL mode
+#if HARDRT_BDG_VARIABLES
+    __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
+    (void)ipsr;
+#endif
+
     if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
         // Defensive: ignore if called while the port owns SysTick
         // Optional: log or blink an LED if you want debug visibility
