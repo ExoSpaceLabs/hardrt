@@ -1,0 +1,91 @@
+# HardRT timing helper for STM32H755 (OpenOCD)
+# Works even if GDB can't resolve struct types.
+
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting enable
+monitor reset halt
+
+# Optional fatal stop (comment if symbols not present)
+break hrt_error
+commands
+  silent
+  printf "\n*** hrt_error hit ***\n"
+  printf "g_error = "
+  p/x (unsigned)g_error
+  printf "g_tick  = "
+  p   (unsigned)g_tick
+  bt
+end
+
+break timing_target_reached
+commands
+  silent
+  printf "\n--- Target reached ---\n"
+
+  set $hz = (unsigned int)SystemCoreClock
+  printf "SystemCoreClock=%u Hz\n", $hz
+
+  # ------------------ helper: read stats struct by offsets ------------------
+  # layout:
+  #  +0  min   (u32)
+  #  +4  max   (u32)
+  #  +8  avg   (u32)
+  # +12  count (u32)
+  # +16  sum   (u64)  [low word at +16, high at +20]
+
+  # ----- TICK -> TASK -----
+  set $tbase = (unsigned int)&g_tick_stats
+  set $tmin  = *(unsigned int*)($tbase + 0)
+  set $tmax  = *(unsigned int*)($tbase + 4)
+  set $tavg  = *(unsigned int*)($tbase + 8)
+  set $tcnt  = *(unsigned int*)($tbase + 12)
+  set $tsum  = ((unsigned long long)*(unsigned int*)($tbase + 16)) | (((unsigned long long)*(unsigned int*)($tbase + 20)) << 32)
+
+  printf "\n[TICK -> TASK]\n"
+  printf "count=%u\n", $tcnt
+  printf "min=%u cycles, avg=%u cycles (sum/count=%u), max=%u cycles\n", \
+         $tmin, $tavg, (unsigned int)($tsum / ($tcnt ? $tcnt : 1)), $tmax
+
+  printf "min=%u us, avg=%u us, max=%u us (approx)\n", \
+         (unsigned int)(($tmin * 1000000ull) / $hz), \
+         (unsigned int)(($tavg * 1000000ull) / $hz), \
+         (unsigned int)(($tmax * 1000000ull) / $hz)
+
+  printf "min=%u ns, avg=%u ns, max=%u ns\n", \
+         (unsigned int)(($tmin * 1000000000ull) / $hz), \
+         (unsigned int)(($tavg * 1000000000ull) / $hz), \
+         (unsigned int)(($tmax * 1000000000ull) / $hz)
+
+  # ----- SEM GIVE -> TASK TAKE -----
+  set $sbase = (unsigned int)&g_sem_stats
+  set $smin  = *(unsigned int*)($sbase + 0)
+  set $smax  = *(unsigned int*)($sbase + 4)
+  set $savg  = *(unsigned int*)($sbase + 8)
+  set $scnt  = *(unsigned int*)($sbase + 12)
+  set $ssum  = ((unsigned long long)*(unsigned int*)($sbase + 16)) | (((unsigned long long)*(unsigned int*)($sbase + 20)) << 32)
+
+  printf "\n[SEM GIVE -> TASK TAKE]\n"
+  printf "count=%u\n", $scnt
+  printf "min=%u cycles, avg=%u cycles (sum/count=%u), max=%u cycles\n", \
+         $smin, $savg, (unsigned int)($ssum / ($scnt ? $scnt : 1)), $smax
+
+  printf "min=%u us, avg=%u us, max=%u us (approx)\n", \
+         (unsigned int)(($smin * 1000000ull) / $hz), \
+         (unsigned int)(($savg * 1000000ull) / $hz), \
+         (unsigned int)(($smax * 1000000ull) / $hz)
+
+  printf "min=%u ns, avg=%u ns, max=%u ns\n", \
+         (unsigned int)(($smin * 1000000000ull) / $hz), \
+         (unsigned int)(($savg * 1000000000ull) / $hz), \
+         (unsigned int)(($smax * 1000000000ull) / $hz)
+
+  detach
+  quit
+end
+
+continue
