@@ -1,38 +1,119 @@
-name: CI (POSIX)
+name: Linux
 
 on:
   push:
-    branches: [ "**" ]
+    branches:
+      - main
+      - develop
+    tags: [ '*.*.*' ]
   pull_request:
+    branches:
+      - main
+      - develop
 
 permissions:
   contents: read
 
 jobs:
-  build-and-test-posix:
-    runs-on: ubuntu-latest
-
+  build-and-test:
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Release, Debug]
+        os: [ubuntu-latest, ubuntu-24.04, ubuntu-22.04]
+        build_type: [Release]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure (POSIX)
-        run: >
-          cmake -S . -B build-posix
-          -G Ninja
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DHARDRT_PORT=posix
-          -DHARDRT_BUILD_TESTS=ON
-          -DHARDRT_BUILD_EXAMPLES=OFF
+      - name: Install base build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build make g++
 
-      - name: Build
-        run: cmake --build build-posix --parallel
+      # --------------------------
+      # POSIX build + tests
+      # --------------------------
+      - name: Configure & build (POSIX)
+        run: |
+          cmake -S . -B build-posix -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF
+          cmake --build build-posix --parallel
 
-      - name: Test (ctest)
-        run: ctest --test-dir build-posix --output-on-failure
+      - name: Run tests (POSIX)
+        run: |
+          ctest --test-dir build-posix --output-on-failure
 
+      # --------------------------
+      # Cortex-M library build (no Cube, no board, just the library)
+      # Only on ubuntu-22.04 (same pattern as your CCSDSPack workflow)
+      # --------------------------
+      - name: Install ARM bare-metal toolchain (22.04 only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Configure & build (Cortex-M library, 22.04 only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cmake -S . -B build-cortex_m -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=cortex_m \
+            -DHARDRT_BUILD_TESTS=OFF \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
+          cmake --build build-cortex_m --parallel
+
+      # --------------------------
+      # Packaging (only on tags, only from ubuntu-22.04)
+      # Produces:
+      #  - hardrt-posix-<tag>.tar.gz
+      #  - hardrt-cortexm-<tag>.tar.gz
+      #  - hardrt-bundle-<tag>.tar.gz (both in one)
+      # --------------------------
+      - name: Install (POSIX + Cortex-M) and create tarballs (tag builds, 22.04 only)
+        if: matrix.os == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euxo pipefail
+          rm -rf packages install-posix install-cortexm
+          mkdir -p packages
+
+          # POSIX install
+          cmake --install build-posix --prefix install-posix
+
+          # Cortex-M install (library + headers + CMake package files)
+          cmake --install build-cortex_m --prefix install-cortexm
+
+          # Create separate tarballs
+          tar -C install-posix   -czf packages/hardrt-posix-${{ github.ref_name }}.tar.gz .
+          tar -C install-cortexm -czf packages/hardrt-cortexm-${{ github.ref_name }}.tar.gz .
+
+          # Combined bundle
+          mkdir -p bundle
+          rm -rf bundle/*
+          mkdir -p bundle/posix bundle/cortex_m
+          cp -a install-posix/*   bundle/posix/
+          cp -a install-cortexm/* bundle/cortex_m/
+          tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
+
+          ls -la packages
+
+      - name: Upload package artifact (tag builds, 22.04 only)
+        if: matrix.os == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardrt-tarballs-${{ github.ref_name }}
+          path: packages/*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release (tag builds, 22.04 only)
+        if: matrix.os == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*.tar.gz
