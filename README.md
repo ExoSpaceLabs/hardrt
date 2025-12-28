@@ -163,7 +163,7 @@ Task-level yield/sleep:
 HardRT v0.3.0 demonstrates:
 - Deterministic priority-based scheduling
 - Predictable and explainable latency behavior under contention
-- Event → task latencies on the order of **~30–40 µs average** on Cortex-M7 @ 64 MHz under debug-attached conditions
+- Event → task latencies on the order of **~19–25 µs average** on Cortex-M7 @ 64 MHz under debug-attached conditions
 
 See [STATISTICS.md](docs/STATISTICS.md) for detailed information on timing and tests.
 

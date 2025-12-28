@@ -12,11 +12,7 @@
 #endif
 
 #ifndef HARDRT_DEBUG
-    #define HARDRT_BDG_VARIABLES 0
-    #define HARDRT_VALIDATION 0
-#else
-    #define HARDRT_BDG_VARIABLES 1
-    #define HARDRT_VALIDATION 1
+    #define HARDRT_DEBUG 0
 #endif
 
 
@@ -31,8 +27,7 @@ static uint32_t g_core_hz = 0;
 static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
 volatile hrt_err g_error = NONE;
 
-//TODO REMOVE DEBUG VARIABLES.
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
 volatile int dbg_pick;
 volatile int dbg_id_save;
 volatile uint32_t dbg_sp_save;
@@ -55,13 +50,11 @@ typedef struct {
 static prio_q_t g_rq[HARDRT_MAX_PRIO];
 _hrt_tcb_t *hrt__tcb(const int id) {
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) return NULL;
 #endif
     return &g_tcbs[id];
 }
-
-
 
 void hrt__init_idle_task(void);
 
@@ -73,23 +66,22 @@ void hrt_port_yield_to_scheduler(void);
 /* ------------- Queue helpers ------------- */
 static void rq_push(const uint8_t p, const int id) {
     /* Validate priority */
-#if HARDRT_VALIDATION == 1
+
     if (p >= HARDRT_MAX_PRIO) {
-#if HARDRT_BDG_VARIABLES == 1
-        dbg_tsk_q = 5000;
+#if HARDRT_DEBUG == 1
+        dbg_tsk_q = p;
         (void)dbg_tsk_q;
 #endif
         hrt_error(ERR_INVALID_PRIO);
         return;
     }
-
+#if HARDRT_DEBUG == 1
     /* Validate task id BEFORE storing it into the queue */
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
 
-#if HARDRT_BDG_VARIABLES == 1
-        dbg_tsk_q = 1000;
+        dbg_tsk_q = id;
         (void)dbg_tsk_q;
-#endif
+
         hrt_error(ERR_INVALID_ID);
         return;
     }
@@ -98,21 +90,20 @@ static void rq_push(const uint8_t p, const int id) {
 
     /* Hard fail on overflow in debug; in release you could drop or overwrite */
 
-#if HARDRT_VALIDATION == 1
+
     if (q->count >= HARDRT_MAX_TASKS) {
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = q->count;
         (void)dbg_tsk_q;
 #endif
         hrt_error(ERR_RQ_OVERFLOW);
         return;
     }
-#endif
     q->q[q->tail] = (uint8_t)id;
     q->tail = (uint8_t)((q->tail + 1u) % HARDRT_MAX_TASKS);
     q->count++;
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
 #endif
@@ -120,10 +111,10 @@ static void rq_push(const uint8_t p, const int id) {
 
 static int rq_pop(const uint8_t p) {
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (p >= HARDRT_MAX_PRIO) {
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = p;
         (void)dbg_tsk_q;
 #endif
@@ -134,17 +125,17 @@ static int rq_pop(const uint8_t p) {
     prio_q_t *q = &g_rq[p];
     if (q->count == 0) {
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = 0;
         (void)dbg_tsk_q;
 #endif
         return -1;
     }
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     /* Hard fail on overflow in debug; in release you could drop or overwrite */
     if (q->count < 0) {
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = q->count;
         (void)dbg_tsk_q;
 #endif
@@ -154,9 +145,9 @@ static int rq_pop(const uint8_t p) {
 #endif
     const int id = q->q[q->head];
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = -2000;
         (void)dbg_tsk_q;
 #endif
@@ -167,7 +158,7 @@ static int rq_pop(const uint8_t p) {
     q->head = (uint8_t)((q->head + 1u) % HARDRT_MAX_TASKS);
     q->count--;
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
     (void)dbg_tsk_q;
 #endif
@@ -177,7 +168,7 @@ static int rq_pop(const uint8_t p) {
 
 /* Helper to fetch/store SP for a given task id */
 uint32_t *_get_sp(const int id) {
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     // if (id < 0 || id >= HARDRT_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
     // if (!hrt__tcb(id)) {
     //     hrt_error(ERR_TCB_NULL);
@@ -189,7 +180,7 @@ uint32_t *_get_sp(const int id) {
 }
 void _set_sp(const int id, uint32_t *sp) {
     if (sp == NULL) { hrt_error(ERR_SP_NULL); }
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     // if (id < 0 || id >= HARDRT_MAX_TASKS) { hrt_error(ERR_INVALID_ID); }
     // if (!hrt__tcb(id)) {
     //     hrt_error(ERR_TCB_NULL);
@@ -261,7 +252,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     t->stack_words = n_words;
 
     hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_ct_id = id;
     dbg_ct_sp = (uintptr_t)(t->sp);
     (void)dbg_ct_id; (void)dbg_ct_sp;
@@ -296,7 +287,7 @@ static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_h
 
 void hrt_sleep(const uint32_t ms){
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (g_current < 0) {
         hrt_error(ERR_INVALID_ID);
         return;
@@ -305,7 +296,7 @@ void hrt_sleep(const uint32_t ms){
 
     _hrt_tcb_t* t = hrt__tcb(g_current);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (t ==NULL) {
         hrt_error(ERR_TCB_NULL);
         return;
@@ -318,7 +309,7 @@ void hrt_sleep(const uint32_t ms){
 
     // Request rescheduling; then voluntarily hop to scheduler for immediate handoff.
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
     hrt__pend_context_switch();
@@ -326,7 +317,7 @@ void hrt_sleep(const uint32_t ms){
 }
 
 void hrt_yield(void) {
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (g_current < 0) {
         hrt_error(ERR_INVALID_ID);
         return;
@@ -334,7 +325,7 @@ void hrt_yield(void) {
 #endif
     _hrt_tcb_t *t = hrt__tcb(g_current);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (t ==NULL) {
         hrt_error(ERR_TCB_NULL);
         return;
@@ -345,7 +336,7 @@ void hrt_yield(void) {
         t->slice_left = t->timeslice_cfg;
         rq_push(t->prio, (uint8_t) g_current);
     }
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
     hrt__pend_context_switch(); /* request reschedule */
@@ -360,7 +351,7 @@ void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 /* ------------- Internal helpers used by sched/time ------------- */
 void hrt__make_ready(const int id) {
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
@@ -368,7 +359,7 @@ void hrt__make_ready(const int id) {
 #endif
     _hrt_tcb_t *t = hrt__tcb(id);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (t ==NULL) {
         hrt_error(ERR_TCB_NULL);
         return;
@@ -379,7 +370,7 @@ void hrt__make_ready(const int id) {
     }
 
 #endif
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_make_ready_id = id;
     dbg_make_ready_state = t->state;
     (void)dbg_make_ready_id;
@@ -396,7 +387,7 @@ void hrt__make_ready(const int id) {
 /* Requeue a READY task to the tail without modifying its slice/state. */
 void hrt__requeue_noreset(const int id) {
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
@@ -404,7 +395,7 @@ void hrt__requeue_noreset(const int id) {
 #endif
     const _hrt_tcb_t *t = hrt__tcb(id);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (t ==NULL) {
         hrt_error(ERR_TCB_NULL);
         return;
@@ -429,7 +420,7 @@ int hrt__pick_next_ready(void)
         }
     }
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_pick = id;
     (void)dbg_pick;
 #endif
@@ -440,7 +431,7 @@ int hrt__pick_next_ready(void)
 int hrt__get_current(void) { return g_current; }
 void hrt__set_current(const int id) {
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
@@ -462,7 +453,7 @@ void hrt__save_current_sp(const uint32_t sp)
 
     _set_sp(cur, (uint32_t*)sp);
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_id_save = cur;
     dbg_sp_save = sp;
     (void)dbg_sp_save; (void)dbg_id_save;
@@ -477,7 +468,7 @@ uint32_t hrt__load_next_sp_and_set_current(const int next_id){
     const uint32_t sp = (uintptr_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_id_load = next_id;
     dbg_sp_load = sp;
     (void)dbg_id_load;
@@ -491,7 +482,7 @@ uint32_t hrt__load_next_sp_and_set_current(const int next_id){
 /* Called by the port when re-entering the scheduler from a task context. */
 void hrt__on_scheduler_entry(void) {
     _hrt_tcb_t *t = hrt__tcb(g_current);
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (t == NULL) {
         hrt_error(ERR_TCB_NULL);
         return;
@@ -533,14 +524,14 @@ uint32_t hrt__schedule(const uint32_t old_sp)
 
     /* Save current only if this is not the first switch */
     if (old_sp) {
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
         if ((unsigned)g_current >= (unsigned)HARDRT_MAX_TASKS) {
             hrt_error(ERR_INVALID_ID);
         }
 #endif
         _hrt_tcb_t * const cur = hrt__tcb(g_current);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
         if (!cur) { hrt_error(ERR_TCB_NULL); }
 #endif
 
@@ -553,13 +544,13 @@ uint32_t hrt__schedule(const uint32_t old_sp)
 
     const int next_id = hrt__pick_next_ready();
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_id_save = g_current;
     dbg_sp_save = old_sp;
     dbg_pick    = next_id;
 #endif
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if ((unsigned)next_id >= (unsigned)HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_NEXT_ID);
     }
@@ -569,7 +560,7 @@ uint32_t hrt__schedule(const uint32_t old_sp)
 
     const uint32_t sp_new = (uint32_t)(uintptr_t)_get_sp(next_id);
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_id_load = next_id;
     dbg_sp_load = sp_new;
 #endif

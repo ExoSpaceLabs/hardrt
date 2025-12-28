@@ -6,11 +6,7 @@
 #include "hardrt_port_int.h"
 
 #ifndef HARDRT_DEBUG
-    #define HARDRT_BDG_VARIABLES 0
-    #define HARDRT_VALIDATION 0
-#else
-    #define HARDRT_BDG_VARIABLES 1
-    #define HARDRT_VALIDATION 1
+    #define HARDRT_DEBUG 0
 #endif
 
 /* -------- Minimal CMSIS-like register defs (no HAL required) -------- */
@@ -54,7 +50,7 @@ extern uint8_t __RAM_END__;
 #define SYSTICK_ENABLE           (1UL << 0)
 
 /* debug variables */
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
 volatile uint32_t dbg_curr_sp;
 volatile uint32_t dbg_pend_calls;
 volatile uint32_t dbg_pend_from_cortexm = 0;
@@ -67,7 +63,7 @@ extern void hrt__tick_isr(void);
 extern _hrt_tcb_t* hrt__tcb(int id);
 
 void hrt_port_sp_valid(const uint32_t sp) {
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_curr_sp = sp;
     (void)dbg_curr_sp;
 #endif
@@ -203,7 +199,7 @@ void hrt__init_idle_task(void)
 
 /* -------- Trigger a context switch (PendSV) -------- */
 static inline void _pend_pendsv(void){
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_basperi = _get_BASEPRI();
     dbg_pend_calls++;
 #endif
@@ -301,7 +297,7 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 void hrt_port_enter_scheduler(void){
 
     __asm volatile ("cpsie i");
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
     dbg_pend_from_cortexm++;
 #endif
     hrt__pend_context_switch();

@@ -78,10 +78,10 @@ else()
   set(HARDRT_PORT_ID -1)
 endif()
 
-if(HARDRT_BDG_VARIABLES)
-  set(HARDRT_BDG_VARIABLES 1)
+if(HARDRT_DEBUG)
+  set(HARDRT_DEBUG 1)
 else ()
-  set(HARDRT_BDG_VARIABLES 0)
+  set(HARDRT_DEBUG 0)
 endif ()
 
 configure_file(

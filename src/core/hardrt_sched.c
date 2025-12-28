@@ -4,16 +4,12 @@
 #include "hardrt_time.h"
 
 #ifndef HARDRT_DEBUG
-    #define HARDRT_BDG_VARIABLES 0
-    #define HARDRT_VALIDATION 0
-#else
-    #define HARDRT_BDG_VARIABLES 1
-    #define HARDRT_VALIDATION 1
+    #define HARDRT_DEBUG 0
 #endif
 
 /* Core-private accessors from hardrt_core.c */
 
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
 volatile uint32_t dbg_pend_from_tick  = 0;
 volatile uint32_t ipsr;
 #endif
@@ -73,7 +69,7 @@ void hrt__tick_isr(void) {
 
     /* Also, wake-driven changes may require a re-schedule; ports decide when to switch */
     if (triggerPendSV != 0) {
-#if HARDRT_BDG_VARIABLES == 1
+#if HARDRT_DEBUG == 1
         dbg_pend_from_tick++;
 #endif
         hrt__pend_context_switch();
@@ -82,7 +78,7 @@ void hrt__tick_isr(void) {
 
 void hrt_tick_from_isr(void) {
     // Only allow tick advancement when using EXTERNAL mode
-#if HARDRT_BDG_VARIABLES
+#if HARDRT_DEBUG == 1
     __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
     (void)ipsr;
 #endif

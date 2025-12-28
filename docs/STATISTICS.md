@@ -85,14 +85,14 @@ Both tasks are woken via ISR-signaled semaphores.
 
 ### Summary Table
 
-| Test | Task Priorities                 | Metric       | Min (cycles) | Avg (cycles) | Max (cycles) | Min (µs) | Avg (µs) |  Max (µs) |
-|-----:|---------------------------------|--------------|-------------:|-------------:|-------------:|---------:|---------:|----------:|
-|    0 | Tick **PRIO0**, Event **PRIO0** | Tick → Task  |         1884 |         2141 |         3121 |       29 |       33 |        48 |
-|    0 | Tick **PRIO0**, Event **PRIO0** | Event → Task |         1921 |         2332 |         4008 |       30 |       36 |        62 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Tick → Task  |         1876 |         2025 |         2521 |       29 |       31 |        39 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Event → Task |         2023 |         2454 |         4234 |       31 |       38 |        66 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Tick → Task  |         1897 |         2536 |         4879 |       29 |       39 |        76 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Event → Task |         1831 |         1909 |         1933 |       28 |       29 |        30 |
+| Test | Task Priorities                 | Metric       | Min (cycles) | Avg (cycles) | Max (cycles) | Min (µs) | Avg (µs) | Max (µs) |
+|-----:|---------------------------------|--------------|-------------:|-------------:|-------------:|---------:|---------:|---------:|
+|    0 | Tick **PRIO0**, Event **PRIO0** | Tick → Task  |         1164 |         1411 |         2138 |       18 |       22 |       33 |
+|    0 | Tick **PRIO0**, Event **PRIO0** | Event → Task |         1190 |         1549 |         2910 |       18 |       24 |       45 |
+|    1 | Tick **PRIO0**, Event **PRIO1** | Tick → Task  |         1164 |         1342 |         1824 |       18 |       20 |       28 |
+|    1 | Tick **PRIO0**, Event **PRIO1** | Event → Task |         1304 |         1617 |         2950 |       20 |       25 |       46 |
+|    2 | Tick **PRIO1**, Event **PRIO0** | Tick → Task  |         1258 |         1729 |         3485 |       19 |       27 |       54 |
+|    2 | Tick **PRIO1**, Event **PRIO0** | Event → Task |         1208 |         1255 |         1313 |       18 |       19 |       20 |
 
 ---
 

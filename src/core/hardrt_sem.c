@@ -7,11 +7,7 @@
 #define HRT_SEM_DEBUG 0
 
 #ifndef HARDRT_DEBUG
-    #define HARDRT_BDG_VARIABLES 0
-    #define HARDRT_VALIDATION 0
-#else
-    #define HARDRT_BDG_VARIABLES 1
-    #define HARDRT_VALIDATION 1
+    #define HARDRT_DEBUG 0
 #endif
 
 
@@ -35,7 +31,7 @@ void hrt_port_crit_exit(void);
 
 /* Internal: enqueue/dequeue waiter (FIFO) */
 static void _waitq_push(hrt_sem_t *s, const uint8_t id) {
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     }
@@ -50,7 +46,7 @@ static int _waitq_pop(hrt_sem_t *s) {
     if (!s->count_wait) return -1;
     const int id = s->q[s->head];
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
     };
@@ -79,7 +75,7 @@ int hrt_sem_take(hrt_sem_t *s) {
     /* Block current task */
     int me = hrt__get_current();
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (me < 0 || me >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return -1;
@@ -102,7 +98,7 @@ int hrt_sem_take(hrt_sem_t *s) {
 #endif
     _hrt_tcb_t *t = hrt__tcb(me);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
     if (!t){hrt_error(ERR_TCB_NULL);}
 #endif
 
@@ -130,7 +126,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
         /* Wake exactly one waiter */
         _hrt_tcb_t *tw = hrt__tcb(waiter);
 
-#if HARDRT_VALIDATION == 1
+#if HARDRT_DEBUG == 1
         if (!tw) {hrt_error(ERR_TCB_NULL);}
 #endif
         /* Do not pre-set the state here; hrt__make_ready() will set state to READY
