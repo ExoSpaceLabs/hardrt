@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hardrt_cm7_demo LANGUAGES C ASM)
+project(hardrt_h755_blinky LANGUAGES C ASM)
 
 
 # -----------------------------
@@ -24,6 +24,9 @@ set(STM32CUBE_INCLUDE_DIRS
         ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Core/Include
         ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Device/ST/STM32H7xx/Include
         ${STM32CUBE_H7_ROOT}/Drivers/STM32H7xx_HAL_Driver/Inc
+        ${STM32CUBE_H7_ROOT}/Drivers/STM32H7xx_HAL_Driver/Inc/Legacy
+        ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Device/ST/STM32H7xx/Include
+        ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Include
         inc
 )
 
