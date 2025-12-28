@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # build HardRT and hardrt_h755_dwt_timing application
-$(pwd)/scripts/build-lib-stm32h7xx.sh --app $(pwd)/examples/hardrt_h755_dwt_timing
+$(pwd)/scripts/build-lib-stm32h7xx.sh --app $(pwd)/examples/hardrt_h755_dwt_timing --build-type Release
 
 # flash stm32h755
 openocd -s /usr/share/openocd/scripts   -f scripts/openocd_h755_clean.cfg   -c "init; reset halt; \

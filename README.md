@@ -36,6 +36,10 @@ The Architecture is mainly divided into three layers:
   - **HardRT Port**: Wraps the hardware-specific methods.
 - **Hardware Layer**: Hardware specific methods, registers, primitives, etc.
 
+> “Event-to-task latency in HardRT depends on task priority. When multiple tasks are woken concurrently, 
+> the highest-priority task consistently achieves minimal latency, while lower-priority tasks incur bounded 
+> additional delay.”
+
 ### Task State Machine
 ![task_state_machine.png](docs/images/task_state_machine.png)
 
@@ -150,9 +154,19 @@ Task-level yield/sleep:
 - hrt__pend_context_switch()
 - hrt_port_yield_to_scheduler() (safe handoff from task ctx)
 
-
 ---
 
+## Statistics
 
+HardRT v0.3.0 demonstrates:
+- Deterministic priority-based scheduling
+- Predictable and explainable latency behavior under contention
+- Event → task latencies on the order of **~30–40 µs average** on Cortex-M7 @ 64 MHz under debug-attached conditions
+
+See [STATISTICS.md](docs/STATISTICS.md) for detailed information on timing and tests.
+
+These results provide a solid baseline for further optimization and for documenting real-time behavior guarantees.
+
+---
 ## 📜 License
 Apache License 2.0 — see [LICENSE](LICENSE).

@@ -7,7 +7,7 @@ set print pretty on
 set mem inaccessible-by-default off
 
 target extended-remote :3333
-monitor arm semihosting enable
+monitor arm semihosting disable
 monitor reset halt
 
 # Optional fatal stop (comment if symbols not present)
