@@ -84,6 +84,10 @@ commands
          (unsigned int)(($savg * 1000000000ull) / $hz), \
          (unsigned int)(($smax * 1000000000ull) / $hz)
 
+  printf "\n[TIMER CFG]\n"
+  printf "TIM2: PSC=%u ARR=%u us period\n", *(unsigned int*)&tim2_psc_dbg, *(unsigned int*)&tim2_arr_dbg
+  printf "TIM3: PSC=%u ARR=%u us period\n", *(unsigned int*)&tim3_psc_dbg, *(unsigned int*)&tim3_arr_dbg
+
   detach
   quit
 end
