@@ -12,7 +12,7 @@ option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF
 option(HARDRT_BUILD_EXAMPLES "Build examples" ON)
 option(HARDRT_BUILD_TESTS "Build test suite (POSIX port)" ON)
 option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)" OFF)
-option(HARDRT_BDG_VARIABLES "Enable debug variables" OFF)
+option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable ASan/UBSan on POSIX tests" OFF)
 
@@ -30,7 +30,7 @@ message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
 message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
-message("-- HARDRT_BDG_VARIABLES         : ${HARDRT_BDG_VARIABLES}")
+message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
 message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS}")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
@@ -121,7 +121,7 @@ target_compile_definitions(${LIB_NAME}
         HARDRT_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
         HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
         HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
-        HARDRT_BDG_VARIABLES=${HARDRT_BDG_VARIABLES}
+        HARDRT_DEBUG=${HARDRT_DEBUG}
 )
 
 target_include_directories(${LIB_NAME}

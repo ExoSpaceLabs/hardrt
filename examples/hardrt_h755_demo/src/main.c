@@ -11,7 +11,9 @@
 extern void SystemInit(void);
 extern uint32_t SystemCoreClock;
 
-static uint32_t stackA[1024], stackB[1024];
+#define STACK_WORDS 512
+static uint32_t stackA[STACK_WORDS] __attribute__((aligned(8)));
+static uint32_t stackB[STACK_WORDS] __attribute__((aligned(8)));
 
 volatile uint32_t dbg_counterA = 0;
 volatile uint32_t dbg_counterB = 0;
@@ -23,7 +25,7 @@ static void TaskA(void* arg) {
     for(;;) {
         dbg_counterA++;
         (void)dbg_counterA;
-        hrt_sleep(5000);
+        hrt_sleep(500);
         dbg_exit_counterA++;
         (void)dbg_exit_counterA;
     }
@@ -33,7 +35,7 @@ static void TaskB(void* arg) {
     for(;;) {
         dbg_counterB++;
         (void)dbg_counterB;
-        hrt_sleep(10000);
+        hrt_sleep(1000);
         dbg_exit_counterB++;
         (void)dbg_exit_counterB;
     }

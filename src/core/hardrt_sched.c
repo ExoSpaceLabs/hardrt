@@ -3,8 +3,12 @@
 #include "hardrt_port_int.h"
 #include "hardrt_time.h"
 
-#ifndef HARDRT_BDG_VARIABLES
+#ifndef HARDRT_DEBUG
     #define HARDRT_BDG_VARIABLES 0
+    #define HARDRT_VALIDATION 0
+#else
+    #define HARDRT_BDG_VARIABLES 1
+    #define HARDRT_VALIDATION 1
 #endif
 
 /* Core-private accessors from hardrt_core.c */

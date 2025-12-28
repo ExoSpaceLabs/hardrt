@@ -4,8 +4,12 @@
 #include "hardrt.h"
 #include "hardrt_port_int.h"
 
-#ifndef HARDRT_BDG_VARIABLES
+#ifndef HARDRT_DEBUG
     #define HARDRT_BDG_VARIABLES 0
+    #define HARDRT_VALIDATION 0
+#else
+    #define HARDRT_BDG_VARIABLES 1
+    #define HARDRT_VALIDATION 1
 #endif
 
 /* Core-private hooks */
@@ -27,13 +31,18 @@ void PendSV_Handler(void);
 
 void hrt__task_trampoline(void) {
     int id = hrt__get_current();
+
+#if HARDRT_VALIDATION == 1
     if (id < 0) {
         hrt_error(ERR_INVALID_ID);
     }
+#endif
     _hrt_tcb_t *t = hrt__tcb(id);
+#if HARDRT_VALIDATION == 1
     if (t == NULL) {
         hrt_error(ERR_TCB_NULL);
     }
+#endif
 
     /* r0 arg is ignored on entry; call real entry now */
     t->entry(t->arg);

@@ -279,9 +279,9 @@ int main(void)
     hrt_sem_init(&sem_tick, 0);
     hrt_sem_init(&sem_evt, 0);
 
-    /* Latency tasks should be highest priority */
+    /* Latency tasks should be the highest priority */
     hrt_task_attr_t p_tick = { .priority = HRT_PRIO0, .timeslice = 0 };
-    hrt_task_attr_t p_evt  = { .priority = HRT_PRIO0, .timeslice = 0 };
+    hrt_task_attr_t p_evt  = { .priority = HRT_PRIO1, .timeslice = 0 };
 
     hrt_create_task(TaskTickLatency, 0, stackTick, (uint32_t)(sizeof(stackTick)/sizeof(stackTick[0])), &p_tick);
     hrt_create_task(TaskEventLatency, 0, stackEvt, (uint32_t)(sizeof(stackEvt)/sizeof(stackEvt[0])), &p_evt);
