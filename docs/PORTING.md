@@ -1,45 +1,221 @@
-# Porting HardRT
+# HardRT Porting Guide
 
-This document explains what a port must implement and the rules for interacting with the core scheduler and time subsystem.
+This document describes how to port **HardRT** to a new architecture or execution environment.
+HardRT is intentionally split into a *portable core* and a *thin port layer*. The port layer is
+responsible only for time, interrupts, and context switching.
 
-## Required hooks (implemented by the port)
+If porting is performed on HardRT, **read this entire document before writing code**.
 
-- `void hrt_port_start_systick(uint32_t hz);`
-  - Start a periodic tick at `hz` and, on each tick, call `hrt_tick_from_isr()` from the timer ISR/thread.
-- `void hrt_port_idle_wait(void);`
-  - Optional low-power or sleep while idle. It may be a short sleep on hosted ports.
-- `void hrt__pend_context_switch(void);`
-  - Request a context switch from an ISR-safe context. Do not perform the switch here; set a flag or trigger a deferred mechanism (e.g., PendSV on Cortex-M).
-- `void hrt__task_trampoline(void);`
-  - Architecture-specific entry trampoline is used as the first function for new tasks.
-- `void hrt_port_prepare_task_stack(int id, void (*tramp)(void), uint32_t* stack_base, size_t words);`
-  - Lay out the initial stack/context for task `id` so that switching to it will execute `tramp`.
+---
 
-Additionally, a port that implements an actual scheduler loop must provide:
+## 1. Design Philosophy
 
-- `void hrt_port_enter_scheduler(void);`
-  - The main scheduler loop that picks the next READY task and switches to it.
-- `void hrt_port_yield_to_scheduler(void);`
-  - A task-context function that switches back into the scheduler loop.
+HardRT follows these rules:
 
-## Core-provided internal helpers a port may call
+- The **core scheduler is architecture-agnostic**
+- The **port owns all preemption and context switching**
+- ISRs must be **short, bounded, and defer work**
+- The scheduler **never blocks inside an ISR**
+- Context switches are **requested**, never forced
 
-- `void hrt_tick_from_isr(void);`
-  - Called by the port on every tick. It advances time, wakes sleepers, and performs time-slice accounting for the currently running task. It is ISR-safe and must not perform a context switch.
-- `void hrt__on_scheduler_entry(void);`
-  - Call this right after returning from a task back to the scheduler context (with interrupts/tick masked as needed). It rotates a time-slice-expired task to the tail of its ready queue and refreshes its quantum.
-- `int hrt__pick_next_ready(void);`
-  - Pick the next READY task according to the current scheduling policy (RR/PRIORITY/PRIORITY_RR).
-- `void hrt__set_current(int id);`
-  - Inform the core which task is now running.
+If the port violates these, it may appear to work but will fail under load.
 
-## Important rules
+---
 
-- Do not context-switch from an ISR or signal handler. From the tick ISR, only call `hrt_tick_from_isr()` and then request a rescheduling via `hrt__pend_context_switch()`.
-- Mask/disable the tick around raw context switches if your platform can receive ticks during a swap to avoid reentrancy.
-- For round-robin policies, invoke `hrt__on_scheduler_entry()` upon re-entering the scheduler from a task to apply time-slice rotation safely.
+## 2. Required Port Hooks
 
-## Reference ports
+Every port must implement the following hooks.
 
-- `posix` (Linux hosted): uses `setitimer` + `SIGALRM` for ticks and `ucontext` for cooperative switching. The signal handler calls `hrt_tick_from_isr()` and sets a rescheduling flag. Rotation is applied in the scheduler loop via `hrt__on_scheduler_entry()` with SIGALRM masked.
-- `null`: a stub that provides the required hooks but does not start a tick or switch context. Useful for build-time validation only.
+### 2.1 Initialization
+
+#### `void hrt_port_init(void);`
+
+- **Called by**: `hrt_init()`
+- **Context**: Thread
+- **ISR-safe**: No
+- **Purpose**:
+  - Initialize port state
+  - Prepare context switch mechanism
+  - Set interrupt priorities if required
+
+Must not enable periodic ticks.
+
+---
+
+### 2.2 Tick Start
+
+#### `void hrt_port_start_tick(uint32_t tick_hz);`
+
+- **Called by**: `hrt_start()`
+- **Context**: Thread
+- **ISR-safe**: No
+- **Purpose**:
+  - Start the system tick source
+  - Configure interrupt priorities
+
+Notes:
+- In **external tick mode**, this function must still configure PendSV (or equivalent).
+- Must enable global interrupts before returning.
+
+---
+
+### 2.3 Yield / Preemption
+
+#### `void hrt_port_yield(void);`
+
+- **Called by**: Scheduler and APIs like `hrt_sleep()`
+- **Context**: Thread
+- **ISR-safe**: No
+- **Purpose**:
+  - Request a context switch
+
+This must **not** perform the context switch directly.
+It must defer to the port’s preemption mechanism.
+
+---
+
+#### `void hrt_port_pend_sv(void);`
+
+- **Called by**: Core scheduler
+- **Context**: Thread or ISR
+- **ISR-safe**: Yes
+- **Purpose**:
+  - Mark that a context switch is pending
+
+Examples:
+- Cortex-M: set `SCB->ICSR.PENDSVSET`
+- POSIX: set a signal flag
+
+Must be safe to call multiple times.
+
+---
+
+## 3. Tick Handling
+
+### 3.1 Internal Tick
+
+If the port owns the tick source:
+
+- The tick ISR must call:
+  ```c
+  hrt__tick_isr();
+  ```
+
+- The ISR **must not schedule directly**
+- The ISR may request a context switch via `hrt_port_pend_sv()`
+
+---
+
+### 3.2 External Tick
+
+If using an external tick source:
+
+- The ISR must call:
+  ```c
+  hrt_tick_from_isr();
+  ```
+
+- The port must ensure:
+  - Correct interrupt priority
+  - No reentrancy into the scheduler
+
+---
+
+## 4. Critical Sections
+
+#### `void hrt_port_crit_enter(void);`
+#### `void hrt_port_crit_exit(void);`
+
+- **Called by**: Core scheduler
+- **Context**: Thread
+- **ISR-safe**: No
+
+Requirements:
+- Must be nestable
+- Must block preemption
+- Must not mask faults
+
+Typical implementations:
+- Cortex-M: BASEPRI
+- POSIX: signal masking
+
+---
+
+## 5. Context Switching
+
+HardRT assumes **cooperative saving** of callee-saved registers.
+
+### Requirements
+
+- Save and restore:
+  - r4–r11 (or equivalent)
+- Switch stack pointer correctly
+- Resume in thread mode
+- Ensure 8-byte stack alignment
+
+### First Switch
+
+On first context switch:
+- No task context exists yet
+- Scheduler returns initial task stack pointer
+- Port must transition to task context cleanly
+
+---
+
+## 6. Task Return Semantics
+
+If a task function returns:
+
+- The task is considered **terminated**
+- It is **not re-queued**
+- No further guarantees are made
+
+Current behavior:
+- **Cortex-M**: task yields forever
+- **POSIX**: context exits
+
+**Recommendation**: tasks should never return.
+
+---
+
+## 7. POSIX Port Notes
+
+The POSIX reference port:
+
+- Uses `ucontext` (glibc/Linux only)
+- Uses `SIGALRM` as tick source
+- Masks the tick signal during scheduling
+- Uses `sig_atomic_t` for ISR-to-thread flags
+
+Limitations:
+- Not portable to musl or macOS
+- Intended for simulation and CI only
+
+---
+
+## 8. Validation Checklist
+
+Before submitting a new port:
+
+- [ ] Preemption works under load
+- [ ] Tick ISR never schedules directly
+- [ ] Nested critical sections work
+- [ ] Tasks resume correctly after yield
+- [ ] No stack corruption under stress
+- [ ] All hooks documented
+
+---
+
+## 9. Reference Ports
+
+Use these as templates:
+
+- `port/posix/`
+- `port/cortex_m/`
+
+If the port deviates, document why.
+
+---
+
+**HardRT Porting Rule:**  
+If it works only when interrupts are slow, it is broken.

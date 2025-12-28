@@ -18,6 +18,8 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 - **Generated metadata** — version and port headers at build time.
 - **Optional C++17 wrapper** — header-only interface target when enabled (WIP).
 
+Please refer to [PORTING.md](docs/PORTING.md) for additional port inclusion.
+
 > The POSIX port is for logic verification, not timing accuracy. ucontext is used and supported on Linux/glibc.
 
 > “On Cortex-M, the max time from tick to running the next highest priority ready task is bounded by: ISR tail + PendSV latency + context save/restore”
