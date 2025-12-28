@@ -47,7 +47,7 @@ jobs:
 
       - name: Run tests (POSIX)
         run: |
-          ctest --test-dir build-posix --output-on-failure
+          ctest -V --test-dir build-posix --output-on-failure
 
       # --------------------------
       # Cortex-M library build (no Cube, no board, just the library)
