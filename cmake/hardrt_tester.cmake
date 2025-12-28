@@ -36,7 +36,17 @@ if(HARDRT_PORT STREQUAL "posix")
   target_compile_features(hardrt_tests PRIVATE c_std_11)
   # Ensure test sources also see HARDRT_TEST_HOOKS to enable hook-dependent cases
   target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
+  if(HARDRT_SANITIZE)
+    message(STATUS "POSIX sanitizers enabled (ASan + UBSan)")
 
+      target_compile_options(hardrt_tests PRIVATE
+              -fsanitize=address,undefined
+              -fno-omit-frame-pointer
+      )
+      target_link_options(hardrt_tests PRIVATE
+              -fsanitize=address,undefined
+      )
+  endif()
   add_test(NAME hardrt_tests COMMAND hardrt_tests)
 else()
   message(STATUS "Tests are enabled but HARDRT_PORT=${HARDRT_PORT} has no runtime scheduler; skipping test target")

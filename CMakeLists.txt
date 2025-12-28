@@ -13,6 +13,8 @@ option(HARDRT_BUILD_EXAMPLES "Build examples" ON)
 option(HARDRT_BUILD_TESTS "Build test suite (POSIX port)" ON)
 option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)" OFF)
 option(HARDRT_BDG_VARIABLES "Enable debug variables" OFF)
+option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
+option(HARDRT_SANITIZE "Enable ASan/UBSan on POSIX tests" OFF)
 
 # ---- Kernel sizing knobs (public compile definitions) ----
 # These control the number of concurrent tasks and the number of priority classes.
@@ -22,6 +24,8 @@ set(HARDRT_CFG_MAX_PRIO  4 CACHE STRING "Number of priority classes (0..N-1; 0 i
 
 message("-- Definitions --")
 message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
+message("-- HARDRT_STRICT                : ${HARDRT_STRICT}")
+message("-- HARDRT_SANITIZE              : ${HARDRT_SANITIZE}")
 message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
 message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
@@ -129,7 +133,23 @@ target_include_directories(${LIB_NAME}
         ${INCLUDE_DIR}    # so ports can include hardrt_port_int.h
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
+
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
+
+if(HARDRT_PORT STREQUAL "posix" AND HARDRT_STRICT)
+  message(STATUS "HARDRT_STRICT enabled (POSIX warnings on)")
+
+  set(HARDRT_STRICT_WARNINGS
+          -Wall
+          -Wextra
+          -Wpedantic
+          -Wconversion
+          -Wcast-qual
+          -Wshadow
+  )
+
+  add_compile_options(${HARDRT_STRICT_WARNINGS})
+endif ()
 
 # Mark library version (handy if you ever switch to SHARED)
 set_target_properties(${LIB_NAME} PROPERTIES

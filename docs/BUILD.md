@@ -45,15 +45,17 @@ cmake --build . --target hardrt_tests -j && ./hardrt_tests
 For details, see docs/TESTS_POSIX.md.
 
 ## CMake options
-| Option                   | Default   | Description                                                                                       |
-|--------------------------|-----------|---------------------------------------------------------------------------------------------------|
-| `HARDRT_PORT`            | `null`    | Select build port: `null`, `posix`, or `cortex_m`                                                 |
-| `HARDRT_ENABLE_CPP`      | `OFF`     | Build C++17 header-only wrapper (`hardrtpp`)                                                      |
-| `HARDRT_BUILD_EXAMPLES`  | `ON`      | Build bundled demo projects                                                                       |
-| `HARDRT_STALL_ON_ERROR`  | `OFF`     | Stalls in an infinite loop if an error occurs.                                                    |
-| `HARDRT_BDG_VARIABLES`   | `OFF`     | Enables the declaration and settings of debug variables (see [debub bariables](#Debug-variables). |
-| `HARDRT_CFG_MAX_TASKS`   | `8`       | Maximum number of concurrent tasks supported by the kernel (maps to `HARDRT_MAX_TASKS`)           |
-| `HARDRT_CFG_MAX_PRIO`    | `4`       | Number of scheduler priority classes (0..N-1; maps to `HARDRT_MAX_PRIO`)                          |
+| Option                  | Default | Description                                                                                        |
+|-------------------------|---------|----------------------------------------------------------------------------------------------------|
+| `HARDRT_PORT`           | `null`  | Select build port: `null`, `posix`, or `cortex_m`                                                  |
+| `HARDRT_ENABLE_CPP`     | `OFF`   | Build C++17 header-only wrapper (`hardrtpp`)                                                       |
+| `HARDRT_BUILD_EXAMPLES` | `ON`    | Build bundled demo projects                                                                        |
+| `HARDRT_STRICT`         | `OFF`   | Enable strict warnings on POSIX builds                                                             |
+| `HARDRT_SANITIZE`       | `OFF`   | Enable ASan/UBSan on POSIX tests                                                                   |
+| `HARDRT_STALL_ON_ERROR` | `OFF`   | Stalls in an infinite loop if an error occurs.                                                     |
+| `HARDRT_BDG_VARIABLES`  | `OFF`   | Enables the declaration and settings of debug variables (see [debub bariables](#Debug-variables).  |
+| `HARDRT_CFG_MAX_TASKS`  | `8`     | Maximum number of concurrent tasks supported by the kernel (maps to `HARDRT_MAX_TASKS`)            |
+| `HARDRT_CFG_MAX_PRIO`   | `4`     | Number of scheduler priority classes (0..N-1; maps to `HARDRT_MAX_PRIO`)                           |
 
 Constraints and notes:
 - Priority levels have a physical cap of 12 in this release (`HRT_PRIO0..HRT_PRIO11`).

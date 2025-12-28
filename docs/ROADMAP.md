@@ -16,7 +16,7 @@ This roadmap outlines the evolution of HardRT from its current v0.2.x stage to t
 
 ---
 
-## 🔧 v0.3.0 — *Cortex‑M Foundation*
+## ✅ v0.3.0 — *Cortex‑M Foundation*
 - Cortex‑M port: context switching, SysTick, PendSV
 - STM32H7 compilation target
 - Tick + timeslice enforcement
