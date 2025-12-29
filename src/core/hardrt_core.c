@@ -462,9 +462,6 @@ void hrt__save_current_sp(const uint32_t sp)
 
 uint32_t hrt__load_next_sp_and_set_current(const int next_id){
 
-
-    //__asm volatile ("mrs %0, psp" : "=r"(cur_sp));
-
     const uint32_t sp = (uintptr_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 

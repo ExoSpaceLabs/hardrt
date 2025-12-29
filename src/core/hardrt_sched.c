@@ -78,10 +78,7 @@ void hrt__tick_isr(void) {
 
 void hrt_tick_from_isr(void) {
     // Only allow tick advancement when using EXTERNAL mode
-#if HARDRT_DEBUG == 1
-    __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
-    (void)ipsr;
-#endif
+
 
     if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
         // Defensive: ignore if called while the port owns SysTick

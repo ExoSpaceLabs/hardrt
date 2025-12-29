@@ -162,7 +162,7 @@ void hrt__pend_context_switch(void) {
 /* Task-context only: hop into the scheduler with SIGALRM masked */
 void hrt_port_yield_to_scheduler(void) {
     const int cur = hrt__get_current();
-    if (cur < 0 || !g_ctxs[cur].valid) return;
+    if (cur < 0 || cur == HRT_IDLE_ID || !g_ctxs[cur].valid) return;
     sigset_t old;
     block_sigalrm(&old);
     swapcontext(&g_ctxs[cur].ctx, &g_sched_ctx);
@@ -190,7 +190,7 @@ void hrt_port_enter_scheduler(void) {
         block_sigalrm(&old);
 
         const int next = hrt__pick_next_ready();
-        if (next < 0) {
+        if (next < 0 || next == HRT_IDLE_ID) {
             unblock_sigalrm(&old);
             hrt_port_idle_wait();
             continue;

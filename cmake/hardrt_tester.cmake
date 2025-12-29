@@ -37,15 +37,12 @@ if(HARDRT_PORT STREQUAL "posix")
   # Ensure test sources also see HARDRT_TEST_HOOKS to enable hook-dependent cases
   target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
   if(HARDRT_SANITIZE)
-    message(STATUS "POSIX sanitizers enabled (ASan + UBSan)")
+    # UBSan is generally fine
+    add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=undefined -fno-omit-frame-pointer)
 
-      target_compile_options(hardrt_tests PRIVATE
-              -fsanitize=address,undefined
-              -fno-omit-frame-pointer
-      )
-      target_link_options(hardrt_tests PRIVATE
-              -fsanitize=address,undefined
-      )
+    message(STATUS "POSIX sanitizers enabled: UBSan")
+    message(STATUS "ASan disabled: ucontext (makecontext/swapcontext) is not ASan-safe")
   endif()
   add_test(NAME hardrt_tests COMMAND hardrt_tests)
 else()
