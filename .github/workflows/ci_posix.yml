@@ -78,7 +78,7 @@ jobs:
       #  - hardrt-bundle-<tag>.tar.gz (both in one)
       # --------------------------
       - name: Install (POSIX + Cortex-M) and create tarballs (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/*')
+        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/v*')
         run: |
           set -euxo pipefail
           rm -rf packages install-posix install-cortexm bundle
@@ -103,7 +103,7 @@ jobs:
           ls -la packages
 
       - name: Upload package artifact (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/*')
+        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/v*')
         uses: actions/upload-artifact@v4
         with:
           name: hardrt-tarballs-${{ github.ref_name }}
@@ -111,7 +111,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to GitHub Release (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/*')
+        if: matrix.os == 'ubuntu-22.04' && success() && startsWith(github.ref, 'refs/tags/v*')
         uses: softprops/action-gh-release@v2
         with:
           files: packages/*.tar.gz
