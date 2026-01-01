@@ -30,6 +30,8 @@ Please refer to [PORTING.md](docs/PORTING.md) for additional port inclusion.
 
 ### Architecture
 
+> the architecture requires to be updated. Diagram shows project name prior re-branding.
+
 ![architecture](docs/images/Architecture.png)
 
 The Architecture is mainly divided into three layers:
