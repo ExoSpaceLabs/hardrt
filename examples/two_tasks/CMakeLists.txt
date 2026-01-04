@@ -9,6 +9,6 @@ if (TARGET hardrt)
     target_include_directories(two_tasks PRIVATE ${CMAKE_SOURCE_DIR}/inc ${CMAKE_BINARY_DIR}/generated)
 else()
     # Out-of-tree (after install) usage
-    find_package(HardRT 0.1 REQUIRED)
+    find_package(HardRT 0.3 REQUIRED)
     target_link_libraries(two_tasks PRIVATE HardRT::hardrt)
 endif()

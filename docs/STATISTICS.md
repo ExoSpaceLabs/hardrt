@@ -57,15 +57,15 @@ SystemCoreClock=64000000 Hz
 
 [TICK -> TASK]
 count=10000
-min=1884 cycles, avg=2141 cycles (sum/count=2141), max=3121 cycles
-min=29 us, avg=33 us, max=48 us (approx)
-min=29437 ns, avg=33453 ns, max=48765 ns
+min=1258 cycles, avg=1729 cycles (sum/count=1729), max=3485 cycles
+min=19 us, avg=27 us, max=54 us (approx)
+min=19656 ns, avg=27015 ns, max=54453 ns
 
 [SEM GIVE -> TASK TAKE]
 count=10000
-min=1921 cycles, avg=2332 cycles (sum/count=2332), max=4008 cycles
-min=30 us, avg=36 us, max=62 us (approx)
-min=30015 ns, avg=36437 ns, max=62625 ns
+min=1208 cycles, avg=1255 cycles (sum/count=1255), max=1313 cycles
+min=18 us, avg=19 us, max=20 us (approx)
+min=18875 ns, avg=19609 ns, max=20515 ns
 
 [TIMER CFG]
 TIM2: PSC=31 ARR=999 us period

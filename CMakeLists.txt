@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- Project ----
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.3.0 LANGUAGES C CXX ASM)
+project(${LIB_NAME} VERSION 0.3.1 LANGUAGES C CXX ASM)
 
 # ---- Options ----
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
@@ -178,14 +178,15 @@ endif()
 # ---- Optional C++ wrappers (header-only) ----
 if(HARDRT_ENABLE_CPP)
   add_library(${LIB_NAME_CPP} INTERFACE)
-  target_sources(${LIB_NAME_CPP} INTERFACE cpp/hardrtpp.hpp)
   target_link_libraries(${LIB_NAME_CPP} INTERFACE ${LIB_NAME})
   target_compile_features(${LIB_NAME_CPP} INTERFACE cxx_std_17)
   target_include_directories(${LIB_NAME_CPP} INTERFACE
+          $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/cpp>
           $<BUILD_INTERFACE:${INCLUDE_DIR}>
           $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
           $<INSTALL_INTERFACE:include>
   )
+
 endif()
 
 # ---- Install / export package (find_package support) ----
@@ -195,6 +196,12 @@ install(TARGETS ${LIB_NAME}
         EXPORT HardRTTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+# Install/export the interface target so downstream can link HardRT::hardrtpp
+if(HARDRT_ENABLE_CPP)
+  install(TARGETS ${LIB_NAME_CPP}
+          EXPORT HardRTTargets
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif ()
 
 # public + generated headers
 
@@ -204,6 +211,12 @@ install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         PATTERN "hardrt_port_int.h" EXCLUDE)
 
 install(DIRECTORY "${CMAKE_BINARY_DIR}/generated/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+if(HARDRT_ENABLE_CPP)
+  # Install the wrapper header
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/cpp/"
+          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif ()
 
 # Package config
 include(CMakePackageConfigHelpers)
@@ -233,6 +246,10 @@ if(HARDRT_BUILD_EXAMPLES)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_external)
+  if(HARDRT_ENABLE_CPP)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic_cpp)
+  endif()
 endif()
 
 # ---- Tests (POSIX only) ----

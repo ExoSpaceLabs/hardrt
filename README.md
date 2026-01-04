@@ -16,15 +16,13 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 - **Static tasks** — stacks and TCBS supplied by the application.
 - **CMake package** — install and consume via `find_package(HardRT)`.
 - **Generated metadata** — version and port headers at build time.
-- **Optional C++17 wrapper** — header-only interface target when enabled (WIP).
+- **Optional C++17 wrapper** — header-only interface target when enabled. See [C++ Guide](docs/CPP.md).
 
 Please refer to [PORTING.md](docs/PORTING.md) for additional port inclusion.
 
 > The POSIX port is for logic verification, not timing accuracy. ucontext is used and supported on Linux/glibc.
 
 > “On Cortex-M, the max time from tick to running the next highest priority ready task is bounded by: ISR tail + PendSV latency + context save/restore”
-
-> The C++17 wrapper is not yet implemented. It shall be provided in future releases
 
 ---
 
@@ -60,7 +58,7 @@ hardrt/
 ├── src/                    # Core + port implementations
 │   ├── core/               # Kernel internals
 │   └── port/               # Architecture-specific backends (null, posix, cortex_m)
-├── cpp/                    # Optional C++17 interface (WIP)
+├── cpp/                    # Optional C++17 interface
 ├── cmake/                  # additional cmake files and toolchains
 ├── examples/               # Example applications
 ├── tests/                  # POSIX test harness
