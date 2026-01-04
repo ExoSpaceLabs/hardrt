@@ -4,7 +4,7 @@
 A tiny, portable, modular real-time operating system written in C.  
 Minimal footprint, predictable behavior, and zero hardware dependencies in its core.
 
-**Version:** `0.3.0`
+**Version:** `0.3.1`
 
 ---
 
