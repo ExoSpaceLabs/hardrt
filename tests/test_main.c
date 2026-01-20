@@ -44,6 +44,8 @@ int main(void) {
     append_group(g, n, registry, &total);
     g = get_tests_semaphore(&n);
     append_group(g, n, registry, &total);
+    g = get_tests_queue(&n);
+    append_group(g, n, registry, &total);
     g = get_tests_external_tick(&n);
     append_group(g, n, registry, &total);
 

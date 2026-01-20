@@ -128,7 +128,7 @@ int hrt_queue_send(hrt_queue_t *q, const void *item) {
         /* Fast path */
         if (hrt_queue_try_send(q, item) == 0) return 0;
 
-        /* Full: block current task on TX waiters */
+        /* Full: block the current task on TX waiters */
         const int me = hrt__get_current();
 
         hrt_port_crit_enter();
@@ -211,7 +211,7 @@ int hrt_queue_recv(hrt_queue_t *q, void *out) {
         /* Fast path */
         if (hrt_queue_try_recv(q, out) == 0) return 0;
 
-        /* Empty: block current task on RX waiters */
+        /* Empty: block the current task on RX waiters */
         const int me = hrt__get_current();
 
         hrt_port_crit_enter();

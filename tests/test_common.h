@@ -139,6 +139,8 @@ const test_case_t *get_tests_idle_behavior(int *out_count);
 
 const test_case_t *get_tests_semaphore(int *out_count);
 
+const test_case_t *get_tests_queue(int *out_count);
+
 /* External tick tests */
 const test_case_t *get_tests_external_tick(int *out_count);
 
