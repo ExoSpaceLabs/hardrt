@@ -11,6 +11,7 @@ This roadmap outlines the evolution of HardRT from its current v0.2.x stage to t
 - Core scheduler (static tasks)
 - Null and POSIX ports (simulation / verification tester application)
 - Binary semaphores (ISR-safe give)
+
 - Version + port metadata via CMake
 - Example: `two_tasks` and `sem_basic`
 
@@ -22,19 +23,17 @@ This roadmap outlines the evolution of HardRT from its current v0.2.x stage to t
 - Tick + timeslice enforcement
 - Port abstraction cleanup (`hrt_port_yield_to_scheduler`)
 - Example: Blinky & C++ wrapper usage
+- Expanded unit tests (POSIX)
 
 ---
 
 ## ⚙️ v0.4.0 — *Synchronization & Queues*
 - Counting semaphores
-- Queues for data exchange.
 - Immediate handoff optimization on semaphore give
-- Expanded unit tests (POSIX)
-
+- Message Queues (fixed-size, copy-based)
 ---
 
-## 📬 v0.5.0 — *Queues & Events*
-- Message queues (SPSC → MPMC)
+## 📬 v0.5.0 — *Synchronization Improvements & Events*
 - Event flags (bitmask groups)
 - Task notification API
 - Timeout variants of IPC (`hrt_sem_take_timeout`, etc.)

@@ -48,6 +48,8 @@ int main(void) {
     append_group(g, n, registry, &total);
     g = get_tests_external_tick(&n);
     append_group(g, n, registry, &total);
+    g = get_tests_idle_behavior(&n);
+    append_group(g, n, registry, &total);
 
     int tests_failed = 0;
     int tests_passed = 0;

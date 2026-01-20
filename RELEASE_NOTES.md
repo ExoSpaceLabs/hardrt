@@ -1,4 +1,6 @@
 Added
+- Message Queues: fixed-size, copy-based FIFO with blocking, non-blocking and ISR support.
+- Comprehensive test suite for queues and idle behavior.
 - C++ wrapper API (hardrtpp.hpp) providing idiomatic C++ access to HardRT
 - C++ example applications demonstrating mixed C/C++ usage
 

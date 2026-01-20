@@ -67,6 +67,39 @@ void MY_IRQ_Handler(void) {
 }
 ```
 
+### Handling Large Data
+
+If you need to transmit large payloads, avoid enqueuing the data directly. Instead, enqueue a structure containing a pointer to the data and its length. This minimizes `memcpy` overhead and critical section time.
+
+```c
+typedef struct {
+    void    *p_data;
+    size_t   length;
+} my_large_msg_t;
+
+/* Send a pointer to a large buffer */
+void producer(void) {
+    static char big_buffer[1024];
+    my_large_msg_t msg = {
+        .p_data = big_buffer,
+        .length = sizeof(big_buffer)
+    };
+    
+    /* Enqueue the small struct containing the pointer */
+    hrt_queue_send(&my_queue, &msg);
+}
+
+void consumer(void) {
+    my_large_msg_t msg;
+    
+    /* Dequeue the small struct */
+    hrt_queue_recv(&my_queue, &msg);
+    
+    /* Process data via pointer */
+    printf("Received %zu bytes at %p\n", msg.length, msg.p_data);
+}
+```
+
 ## Implementation Details
 
 ### Data Structure

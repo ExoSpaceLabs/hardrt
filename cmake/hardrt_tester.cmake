@@ -31,6 +31,7 @@ if(HARDRT_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_semaphore.c
           ${CMAKE_SOURCE_DIR}/tests/test_queue.c
           ${CMAKE_SOURCE_DIR}/tests/test_external_tick.c
+          ${CMAKE_SOURCE_DIR}/tests/test_idle_behavior.c
   )
 
   target_link_libraries(hardrt_tests PRIVATE ${LIB_NAME})

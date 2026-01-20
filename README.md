@@ -13,6 +13,7 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 - **Portable ports** — currently: null, posix, cortex-m.
 - **Scheduler** — priority, round-robin, or hybrid; RR currently rotates on yield/sleep.
 - **Binary semaphores** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up.
+- **Message Queues** — fixed-size, copy-based FIFO, blocking/non-blocking and ISR support.
 - **Static tasks** — stacks and TCBS supplied by the application.
 - **CMake package** — install and consume via `find_package(HardRT)`.
 - **Generated metadata** — version and port headers at build time.
@@ -137,6 +138,10 @@ Caption:
 ### Semaphores (binary)
 - `hrt_sem_init`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
 - Use as a mutex substitute or an event signal. For mutex-like use, enabling immediate handoff on give is recommended (see roadmap).
+
+### Message Queues
+- `hrt_queue_init`, `hrt_queue_send`, `hrt_queue_recv`, `hrt_queue_try_send`, `hrt_queue_try_recv`.
+- Fixed-size items, copy-based FIFO. See [QUEUES.md](docs/QUEUES.md).
 
 ### Scheduling Flow
 ![scheduling_flow.png](docs/images/scheduling_flow.png)
