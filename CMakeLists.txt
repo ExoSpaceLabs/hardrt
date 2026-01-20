@@ -109,6 +109,7 @@ set(LIBRARY_SOURCES
         "${SOURCE_CORE_DIR}/hardrt_version.c"
         "${SOURCE_CORE_DIR}/hardrt_portinfo.c"   # provides hrt_port_name()/hrt_port_id()
         "${SOURCE_CORE_DIR}/hardrt_sem.c"
+        "${SOURCE_CORE_DIR}/hardrt_queue.c"
 )
 
 # ---- Library target ----
@@ -244,10 +245,12 @@ install(EXPORT HardRTTargets
 if(HARDRT_BUILD_EXAMPLES)
   # Examples have their own CMakeLists.txt; include them directly
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_external)
   if(HARDRT_ENABLE_CPP)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix_cpp)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic_cpp)
   endif()
 endif()

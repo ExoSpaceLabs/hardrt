@@ -21,13 +21,13 @@ This roadmap outlines the evolution of HardRT from its current v0.2.x stage to t
 - STM32H7 compilation target
 - Tick + timeslice enforcement
 - Port abstraction cleanup (`hrt_port_yield_to_scheduler`)
-- Example: Blinky / UART echo demo
+- Example: Blinky & C++ wrapper usage
 
 ---
 
-## ⚙️ v0.4.0 — *Synchronization & Mutexes*
+## ⚙️ v0.4.0 — *Synchronization & Queues*
 - Counting semaphores
-- `Mutex wrapper with basic priority inheritance` < semaphores might be enough.
+- Queues for data exchange.
 - Immediate handoff optimization on semaphore give
 - Expanded unit tests (POSIX)
 
