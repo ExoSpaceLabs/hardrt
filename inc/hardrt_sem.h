@@ -14,7 +14,8 @@ extern "C" {
  * @details Waiters are queued FIFO; per-priority round-robin is handled by the core scheduler.
  */
 typedef struct {
-    volatile uint8_t count; /**< 0 or 1 */
+    volatile uint8_t count;      /**< Current token count (0..max_count). */
+    uint8_t max_count;           /**< Maximum token count (1 => binary semantics). */
     uint8_t q[HARDRT_MAX_TASKS]; /**< Wait queue (task ids) */
     uint8_t head, tail, count_wait; /**< Queue indices and length */
 } hrt_sem_t;
@@ -25,9 +26,18 @@ typedef struct {
  * @param init Initial count: 0 (empty) or 1 (available).
  */
 static inline void hrt_sem_init(hrt_sem_t *s, const unsigned init) {
+    s->max_count = 1u;
     s->count = (init ? 1u : 0u);
     s->head = s->tail = s->count_wait = 0;
 }
+
+/**
+ * @brief Initialize counting semaphore.
+ * @param s Semaphore object to initialize.
+ * @param init Initial token count (clamped to max_count).
+ * @param max_count Maximum token count (must be >= 1; 1 preserves binary semantics).
+ */
+void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count);
 
 /**
  * @brief Take the semaphore, blocking until available.

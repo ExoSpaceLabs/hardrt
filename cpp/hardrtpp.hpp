@@ -159,11 +159,16 @@ namespace hardrt {
     class Semaphore {
     public:
         /**
-         * @brief Initialize a binary semaphore.
+         * @brief Initialize a semaphore. Binary by default, counting if max_count > 1.
          * @param init Initial state: 1 (available/given), 0 (unavailable/taken).
          */
-        explicit Semaphore(unsigned init = 0) {
-            hrt_sem_init(&_sem, init);
+        explicit Semaphore(unsigned init = 0, uint8_t max_count = 1) {
+            if (max_count <= 1) {
+                // Preserve strict binary semantics
+                hrt_sem_init(&_sem, init);
+            } else {
+                hrt_sem_init_counting(&_sem, init, max_count);
+            }
         }
 
         /**

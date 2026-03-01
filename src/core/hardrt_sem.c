@@ -57,11 +57,20 @@ static int _waitq_pop(hrt_sem_t *s) {
     return id;
 }
 
+void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count) {
+    /* Clamp to sane range. max_count==0 treated as binary. */
+    if (max_count == 0u) max_count = 1u;
+    s->max_count = max_count;
+    if (init > max_count) init = max_count;
+    s->count = (uint8_t)init;
+    s->head = s->tail = s->count_wait = 0;
+}
+
 int hrt_sem_try_take(hrt_sem_t *s) {
     int ok = -1;
     hrt_port_crit_enter();
     if (s->count) {
-        s->count = 0;
+        s->count--;
         ok = 0;
     }
     hrt_port_crit_exit();
@@ -86,7 +95,7 @@ int hrt_sem_take(hrt_sem_t *s) {
 
     /* Re-check after taking CS */
     if (s->count) {
-        s->count = 0;
+        s->count--;
         hrt_port_crit_exit();
         return 0;
     }
@@ -137,10 +146,12 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
         printf("[sem] give: woke waiter %d\n", waiter);
 #endif
     } else {
-        /* No waiter: set binary sem to available */
-        s->count = 1;
+        /* No waiter: store a token, saturating at max_count */
+        if (s->count < s->max_count) {
+            s->count++;
+        }
 #ifdef HARDRT_TEST_HOOKS
-        printf("[sem] give: no waiters, set count=1\n");
+        printf("[sem] give: no waiters, count=%u (max=%u)\n", (unsigned)s->count, (unsigned)s->max_count);
 #endif
     }
 
