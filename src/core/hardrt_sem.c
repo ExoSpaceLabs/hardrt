@@ -142,7 +142,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
          * and push the task into the ready queue. */
         hrt__make_ready(waiter);
         woken = 1;
-#if DEBUG
+#ifdef HARDRT_TEST_HOOKS
         printf("[sem] give: woke waiter %d\n", waiter);
 #endif
     } else {
