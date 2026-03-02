@@ -31,7 +31,7 @@ message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
 message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
-message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS}")
+message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} + 1 for IDLE task")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
 # Validate sizing knobs at configure time (no kernel source changes needed)
@@ -48,6 +48,8 @@ endif()
 if(_HRT_CFG_TASKS LESS 1)
   message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be >= 1. Got ${HARDRT_CFG_MAX_TASKS}.")
 endif()
+
+# this is not actually fatal, but makes no sense to have priority to whom no available task is associated.
 if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
   message(FATAL_ERROR "Invalid configuration: HARDRT_CFG_MAX_TASKS (${HARDRT_CFG_MAX_TASKS}) must be >= HARDRT_CFG_MAX_PRIO (${HARDRT_CFG_MAX_PRIO}).")
 endif()
@@ -117,9 +119,11 @@ add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
 
 # Propagate sizing knobs to all consumers (library PUBLIC interface)
 # so examples/tests and downstream apps see consistent limits.
+# HARDRT_CFG_MAX_TASKS + 1 as the extra task is taken by the idle task.
+math(EXPR HARDRT_MAX_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 target_compile_definitions(${LIB_NAME}
         PUBLIC
-        HARDRT_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
+        HARDRT_MAX_TASKS=${HARDRT_MAX_TASKS_VALUE}
         HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
         HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
         HARDRT_DEBUG=${HARDRT_DEBUG}
