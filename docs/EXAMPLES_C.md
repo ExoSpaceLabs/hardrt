@@ -1,7 +1,7 @@
 
 ## 🧪 Examples (C)
 
-This guide shows how to build and run the bundled `two_tasks` example with both the `null` and `posix` ports, and how to observe round-robin behavior.
+This guide demonstrates how to build and run the bundled `two_tasks` example with both the `null` and `posix` ports, and how to observe round-robin behavior.
 
 ### Build with the null port
 
@@ -57,7 +57,7 @@ int main(void){
     hrt_start();
 }
 ```
-You should see `T1` and `T2` alternate over time as their slices expire.
+`T1` and `T2` alternate over time as their slices expire.
 
 ---
 

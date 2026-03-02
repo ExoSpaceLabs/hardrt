@@ -5,7 +5,7 @@ This page covers configuring, building, installing, and consuming HardRT.
 ## Prerequisites
 - A C compiler (GCC/Clang)
 - CMake ≥ 3.16
-- (Optional) A C++17 compiler if you enable the C++ wrapper
+- (Optional) A C++17 compiler if C++ wrapper is enabled
 
 ## Configure & build (terminal)
 ```bash
@@ -53,15 +53,15 @@ For details, see docs/TESTS_POSIX.md.
 | `HARDRT_STRICT`         | `OFF`   | Enable strict warnings on POSIX builds                                                  |
 | `HARDRT_SANITIZE`       | `OFF`   | Enable ASan/UBSan on POSIX tests                                                        |
 | `HARDRT_STALL_ON_ERROR` | `OFF`   | Stalls in an infinite loop if an error occurs.                                          |
-| `HARDRT_DEBUG`          | `OFF`   | Enables debug settings of debug variables (see [debub bariables](#Debug-variables).     |
+| `HARDRT_DEBUG`          | `OFF`   | Enables debug settings (see [debug variables](#Debug-variables)).              |
 | `HARDRT_CFG_MAX_TASKS`  | `8`     | Maximum number of concurrent tasks supported by the kernel (maps to `HARDRT_MAX_TASKS`) |
 | `HARDRT_CFG_MAX_PRIO`   | `4`     | Number of scheduler priority classes (0..N-1; maps to `HARDRT_MAX_PRIO`)                |
 
 Constraints and notes:
 - Priority levels have a physical cap of 12 in this release (`HRT_PRIO0..HRT_PRIO11`).
-- There is no hard cap on the number of tasks in the source; practical limits depend on your system/memory.
+- There is no hard cap on the number of tasks in the source; practical limits depend on system memory.
 - CMake validates at configuration time: `HARDRT_CFG_MAX_PRIO` must be in [1, 12] and `HARDRT_CFG_MAX_TASKS >= HARDRT_CFG_MAX_PRIO` (and `>= 1`).
-- `HARDRTT_STALL_ON_ERROR` is hard disabled for `posix` port as it breaks ctests.
+- `HARDRT_STALL_ON_ERROR` is disabled for `posix` port as it breaks ctests.
 
 Examples:
 ```bash
@@ -77,7 +77,7 @@ cmake -DHARDRT_PORT=posix -DHARDRT_ENABLE_CPP=ON ..
 ## Install (optional)
 Install the library, headers, and CMake package files to a prefix:
 ```bash
-# from your build directory
+# from the build directory
 cmake --install . --prefix "$PWD/install"
 # or system-wide
 sudo cmake --install .

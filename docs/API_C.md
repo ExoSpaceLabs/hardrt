@@ -84,18 +84,18 @@ void hrt_set_default_timeslice(uint16_t t);
 
 ### Semaphores
 
-The kernel provides a minimal binary semaphore in `hardrt_sem.h`:
+The kernel provides a minimal semaphore primitive in `hardrt_sem.h` (binary by default, counting via an explicit init):
 
 ```c
-/* Binary semaphore type */
-typedef struct { volatile uint8_t count; /* 0/1 */ } hrt_sem_t; /* internal fields omitted */
+void hrt_sem_init(hrt_sem_t* s, unsigned init);                     /* binary (legacy) */
+void hrt_sem_init_counting(hrt_sem_t* s, unsigned init, uint8_t max_count);
 
-void hrt_sem_init(hrt_sem_t* s, unsigned init);
-int  hrt_sem_take(hrt_sem_t* s);          /* blocks until available; 0 on success */
-int  hrt_sem_try_take(hrt_sem_t* s);      /* 0 on success, -1 if not available */
-int  hrt_sem_give(hrt_sem_t* s);          /* wakes exactly one waiter if present */
-int  hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch); /* ISR-safe */
+int  hrt_sem_take(hrt_sem_t* s);                                    /* blocks until available; 0 on success */
+int  hrt_sem_try_take(hrt_sem_t* s);                                /* 0 on success, -1 if not available */
+int  hrt_sem_give(hrt_sem_t* s);                                    /* wakes exactly one waiter if present */
+int  hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch);         /* ISR-safe */
 ```
+
 
 Notes
 - Binary semantics: multiple consecutive `give()` calls do not overflow; one subsequent `take()` will succeed.

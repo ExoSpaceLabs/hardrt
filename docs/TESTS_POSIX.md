@@ -16,7 +16,7 @@ Some tests need additional visibility or control to be deterministic (e.g., stop
 - When building tests via CMake on the POSIX port, `HARDRT_TEST_HOOKS` is REQUIRED and is automatically defined for the library target:
   - `target_compile_definitions(hardrt PRIVATE HARDRT_TEST_HOOKS)`
 - These hooks do not exist in normal (non-test) builds and have no impact on release functionality.
-- In this project’s configuration, POSIX tests are always built with hooks enabled; if you manually disable them, hook-dependent tests will fail fast rather than silently skipping, because they validate essential scheduler behavior.
+- In this project’s configuration, POSIX tests are always built with hooks enabled; if they are manually disabled, hook-dependent tests will fail fast rather than silently skipping, because they validate essential scheduler behavior.
 
 Examples of test-only hooks (POSIX):
 - `hrt__test_stop_scheduler()` / `hrt__test_reset_scheduler_state()` — deterministic start/stop of the scheduler loop.

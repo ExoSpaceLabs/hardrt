@@ -3,7 +3,7 @@
 HardRT can use either a port‑owned periodic tick or an application‑provided (external) tick.
 
 - `HRT_TICK_SYSTICK` (default): the active port starts its own timer and calls `hrt_tick_from_isr()` every tick.
-- `HRT_TICK_EXTERNAL`: your application owns a hardware timer and must call `hrt_tick_from_isr()` from its timer ISR on every tick.
+- `HRT_TICK_EXTERNAL`: the application owns a hardware timer and must call `hrt_tick_from_isr()` from its timer ISR on every tick.
 
 How to select it at init:
 ```c
@@ -18,7 +18,7 @@ int main(void){
 }
 ```
 
-From your timer ISR (external mode):
+From the timer ISR (external mode):
 ```c
 #include "hardrt_time.h"
 

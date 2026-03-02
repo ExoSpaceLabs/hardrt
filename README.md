@@ -11,10 +11,10 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 ## ✨ Features
 - **Pure C core** — no dynamic allocation, no HAL dependencies.
 - **Portable ports** — currently: null, posix, cortex-m.
-- **Scheduler** — priority, round-robin, or hybrid; RR currently rotates on yield/sleep.
-- **Binary semaphores** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up.
+- **Scheduler** — priority, round-robin, or hybrid.
+- **Semaphores (binary + counting)** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up; counting mode via `hrt_sem_init_counting`.
 - **Message Queues** — fixed-size, copy-based FIFO, blocking/non-blocking and ISR support.
-- **Static tasks** — stacks and TCBS supplied by the application.
+- **Static tasks** — stacks and TCBs supplied by the application.
 - **CMake package** — install and consume via `find_package(HardRT)`.
 - **Generated metadata** — version and port headers at build time.
 - **Optional C++17 wrapper** — header-only interface target when enabled. See [C++ Guide](docs/CPP.md).
@@ -37,8 +37,8 @@ The Architecture is mainly divided into three layers:
   - **HardRT Port**: Wraps the hardware-specific methods.
 - **Hardware Layer**: Hardware specific methods, registers, primitives, etc.
 
-> “Event-to-task latency in HardRT depends on task priority. When multiple tasks are woken concurrently, 
-> the highest-priority task consistently achieves minimal latency, while lower-priority tasks incur bounded 
+> “Event-to-task latency in HardRT depends on task priority. When multiple tasks are woken concurrently,
+> the highest-priority task consistently achieves minimal latency, while lower-priority tasks incur bounded
 > additional delay.”
 
 ### Task State Machine
@@ -133,8 +133,8 @@ Caption:
 
 ---
 
-### Semaphores (binary)
-- `hrt_sem_init`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
+### Semaphores (binary + counting)
+- `hrt_sem_init`, `hrt_sem_init_counting`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
 - Use as a mutex substitute or an event signal. For mutex-like use, enabling immediate handoff on give is recommended (see roadmap).
 
 ### Message Queues

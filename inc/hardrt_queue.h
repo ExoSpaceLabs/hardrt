@@ -15,9 +15,9 @@ extern "C" {
 /**
  * @brief Fixed-size message queue (ring buffer) for inter-task communication.
  *
- * Notes (because someone has to write them):
+ * Notes:
  * - The queue copies items into an application-provided storage buffer.
- * - Keep item_size small. If you need to move big payloads, queue pointers or
+ * - Keep item_size small. To move large payloads, queue pointers or
  *   indices into a separate buffer pool.
  * - hrt_queue_send/recv block forever (no timeout yet), matching the current
  *   semaphore feature set.

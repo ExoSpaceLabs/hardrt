@@ -69,7 +69,7 @@ void MY_IRQ_Handler(void) {
 
 ### Handling Large Data
 
-If you need to transmit large payloads, avoid enqueuing the data directly. Instead, enqueue a structure containing a pointer to the data and its length. This minimizes `memcpy` overhead and critical section time.
+When transmitting large payloads, avoid enqueuing the data directly. Instead, enqueue a structure containing a pointer to the data and its length. This minimizes `memcpy` overhead and critical section time.
 
 ```c
 typedef struct {

@@ -40,7 +40,7 @@ int main() {
 ```
 
 #### Manual Stack Management
-If you prefer to manage the stack array yourself, use `hardrt::Task::create_with_stack`.
+To manage the stack array manually, use `hardrt::Task::create_with_stack`.
 
 ```cpp
 static uint32_t my_stack[512];
@@ -65,10 +65,11 @@ hardrt::System::start(); // Never returns
 ```
 
 ### Semaphores
-The `hardrt::Semaphore` class provides an object-oriented interface for binary semaphores.
+The `hardrt::Semaphore` class provides an object-oriented interface for semaphores (binary by default, counting if `max_count > 1`).
 
 ```cpp
-hardrt::Semaphore sem(1); // Initialize with 1 (available)
+hardrt::Semaphore sem(1);      // binary semaphore (available)
+hardrt::Semaphore slots(0, 5); // counting semaphore: 0..5 tokens
 
 void worker(void*) {
     sem.take();

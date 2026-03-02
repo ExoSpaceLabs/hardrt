@@ -17,7 +17,7 @@ HardRT documents its public API directly in headers under `inc/` using Doxygen c
   - `@code` … `@endcode` — for short usage snippets when behavior is non-obvious
 
 ## Minimal Doxygen generation
-If you use Doxygen, a minimal configuration can generate browsable HTML docs from headers:
+A minimal configuration can generate browsable HTML documentation from headers using Doxygen:
 
 ```bash
 # from repo root; assuming doxygen is installed

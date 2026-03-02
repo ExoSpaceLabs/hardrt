@@ -11,7 +11,7 @@ This documentation set is synchronized with HardRT v0.3.x and forward-compatible
 | [API_C.md](API_C.md)                        | Public C API reference                         |
 | [CPP.md](CPP.md)                            | C++ header‑only wrapper reference              |
 | [PORTING.md](PORTING.md)                    | Porting guide for POSIX and Cortex‑M           |
-| [SEMAPHORES.md](SEMAPHORES.md)              | Binary semaphore design and API                |
+| [SEMAPHORES.md](SEMAPHORES.md)              | Semaphore design and API (binary + counting)   |
 | [EXAMPLES_C.md](EXAMPLES_C.md)              | Example applications                           |
 | [MODULE_STATUS.md](MODULE_STATUS.md)        | Current module status matrix                   |
 | [TESTS_POSIX.md](TESTS_POSIX.md)            | POSIX test harness notes                       |
