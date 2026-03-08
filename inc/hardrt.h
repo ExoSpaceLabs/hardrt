@@ -7,8 +7,6 @@
 #ifdef __cplusplus
 extern "C" {
 
-
-
 #endif
 
 /**
@@ -61,7 +59,10 @@ typedef enum {
     ERR_STACK_RANGE = 12,
     ERR_STACK_ALIGN = 13,
     ERR_INVALID_RAM_RANGE = 14,
-    ERR_DUP_READY = 15
+    ERR_DUP_READY = 15,
+    ERR_MUTEX_OWNER = 16,
+    ERR_MUTEX_RECURSIVE = 17,
+    ERR_MUTEX_BAD_CTX = 18
 }hrt_err;
 
 /**

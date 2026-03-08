@@ -112,6 +112,7 @@ set(LIBRARY_SOURCES
         "${SOURCE_CORE_DIR}/hardrt_portinfo.c"   # provides hrt_port_name()/hrt_port_id()
         "${SOURCE_CORE_DIR}/hardrt_sem.c"
         "${SOURCE_CORE_DIR}/hardrt_queue.c"
+        "${SOURCE_CORE_DIR}/hardrt_mutex.c"
 )
 
 # ---- Library target ----

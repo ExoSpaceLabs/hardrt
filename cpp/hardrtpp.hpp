@@ -2,6 +2,7 @@
 #include "hardrt.h"
 #include "hardrt_sem.h"
 #include "hardrt_queue.h"
+#include "hardrt_mutex.h"
 
 #include <array>
 #include <cstddef>
@@ -309,6 +310,28 @@ namespace hardrt {
     private:
         alignas(T) std::array<std::byte, Capacity * sizeof(T)> _storage{};
         hrt_queue_t _q{};
+    };
+
+    class Mutex {
+    public:
+        Mutex() {
+            hrt_mutex_init(&_m);
+        }
+
+        int lock() {
+            return hrt_mutex_lock(&_m);
+        }
+
+        int try_lock() {
+            return hrt_mutex_try_lock(&_m);
+        }
+
+        int unlock() {
+            return hrt_mutex_unlock(&_m);
+        }
+
+    private:
+        hrt_mutex_t _m;
     };
 
 } // namespace hardrt
