@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include "hardrt.h"
 #include "hardrt_sem.h"
 #include "hardrt_time.h"
 

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+
 #include "hardrt_mutex.h"
-#include "hardrt.h"
-#include "hardrt_cfg.h"
 
 /* Core-private hooks */
 int hrt__get_current(void);
@@ -34,15 +33,11 @@ static int _waitq_pop(hrt_mutex_t *m) {
 /*
  * Attempt to acquire the mutex without blocking.
  *
- * Special case: allow locking from main() or similar contexts (me == -1).
+ * MUST be called from a task context (me >= 0).
  */
 int hrt_mutex_try_lock(hrt_mutex_t *m) {
     int me = hrt__get_current();
-    /* If scheduler not yet started (me < 0), we treat it as a special case:
-     * we allow locking from main() or similar contexts.
-     * We'll use a special ID like -1 to represent 'outside task context'.
-     */
-    if (me < -1 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_MUTEX_BAD_CTX);
         return -1;
     }
@@ -51,7 +46,7 @@ int hrt_mutex_try_lock(hrt_mutex_t *m) {
 
     if (!m->locked) {
         m->locked = 1u;
-        m->owner = (int8_t)me;
+        m->owner = me;
         hrt_port_crit_exit();
         return 0;
     }
@@ -86,7 +81,7 @@ int hrt_mutex_lock(hrt_mutex_t *m) {
     /* Re-check under CS */
     if (!m->locked) {
         m->locked = 1u;
-        m->owner = (int8_t)me;
+        m->owner = me;
         hrt_port_crit_exit();
         return 0;
     }
@@ -120,11 +115,11 @@ int hrt_mutex_lock(hrt_mutex_t *m) {
 /*
  * Release a mutex held by the current caller.
  *
- * Can be called from outside a task context if previously locked there.
+ * MUST be called from a task context (me >= 0).
  */
 int hrt_mutex_unlock(hrt_mutex_t *m) {
     int me = hrt__get_current();
-    if (me < -1 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_MUTEX_BAD_CTX);
         return -1;
     }
@@ -142,7 +137,7 @@ int hrt_mutex_unlock(hrt_mutex_t *m) {
     if (waiter >= 0) {
         /* Direct handoff: mutex stays locked, ownership moves to waiter */
         m->locked = 1u;
-        m->owner = (int8_t)waiter;
+        m->owner = waiter;
         hrt__make_ready(waiter);
         hrt_port_crit_exit();
 
@@ -153,7 +148,7 @@ int hrt_mutex_unlock(hrt_mutex_t *m) {
 
     /* Nobody waiting: release */
     m->locked = 0u;
-    m->owner = -1;
+    m->owner = HRT_MUTEX_NO_OWNER;
     hrt_port_crit_exit();
     return 0;
 }

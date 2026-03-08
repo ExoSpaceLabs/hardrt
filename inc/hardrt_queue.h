@@ -9,7 +9,6 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
-#include "hardrt_cfg.h"
 #include "hardrt.h"
 
 /**

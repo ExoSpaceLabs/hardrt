@@ -6,7 +6,6 @@ extern "C" {
 #endif
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
-#include "hardrt_cfg.h"
 #include "hardrt.h"
 
 /**

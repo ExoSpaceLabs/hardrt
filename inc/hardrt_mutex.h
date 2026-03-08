@@ -6,10 +6,13 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "hardrt.h"
+
+#define HRT_MUTEX_NO_OWNER (-1)
 
   typedef struct {
     volatile uint8_t locked;        /* 0 = unlocked, 1 = locked */
-    int8_t owner;                   /* task id of owner, -1 if unlocked */
+    int16_t owner;                  /* task id of owner (uint8), HRT_MUTEX_NO_OWNER if unlocked */
 
     uint8_t q[HARDRT_MAX_TASKS];    /* FIFO waiters */
     uint8_t head;
@@ -19,7 +22,7 @@ extern "C" {
 
   static inline void hrt_mutex_init(hrt_mutex_t *m) {
     m->locked = 0u;
-    m->owner = -1;
+    m->owner = HRT_MUTEX_NO_OWNER;
     m->head = 0u;
     m->tail = 0u;
     m->count_wait = 0u;
@@ -38,7 +41,7 @@ extern "C" {
   /**
    * @brief Attempt to acquire the mutex without blocking.
    *
-   * Can be called from outside a task context (e.g., in main() before hrt_start()).
+   * MUST be called from a task context (current ID >= 0).
    *
    * @param m Pointer to the mutex.
    * @return 0 on success, -1 on failure (already locked or invalid context).
@@ -48,8 +51,7 @@ extern "C" {
   /**
    * @brief Release a mutex held by the current caller.
    *
-   * Can be called from outside a task context if the mutex was previously
-   * acquired outside a task context (e.g., via hrt_mutex_try_lock() in main()).
+   * MUST be called from a task context (current ID >= 0).
    *
    * @param m Pointer to the mutex.
    * @return 0 on success, -1 on failure (not locked, or not the owner).

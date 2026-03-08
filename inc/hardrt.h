@@ -1,9 +1,6 @@
 #ifndef HARDRT_H
 #define HARDRT_H
 
-#include <stdint.h>
-#include <stddef.h>
-
 #ifdef __cplusplus
 extern "C" {
 
@@ -26,6 +23,16 @@ extern "C" {
 #endif
 
 
+#include <stdint.h>
+#include <stddef.h>
+
+#include "hardrt_cfg.h"
+#include "hardrt_time.h"
+#include "hardrt_sem.h"
+#include "hardrt_mutex.h"
+#include "hardrt_queue.h"
+
+
 /**
  * @brief Task entry function signature.
  * @param arg Opaque pointer passed to the task on start.
@@ -38,7 +45,7 @@ typedef void (*hrt_task_fn)(void *);
 typedef enum {
     HRT_READY = 0, /**< Runnable (on ready queue) */
     HRT_SLEEP, /**< Sleeping until a wake tick */
-    HRT_BLOCKED, /**< Blocked on a primitive (future use) */
+    HRT_BLOCKED, /**< Blocked on a primitive */
     HRT_UNUSED /**< Slot not in use */
 } hrt_state_t;
 
