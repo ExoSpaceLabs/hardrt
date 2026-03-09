@@ -1,71 +1,73 @@
-# C++ wrapper (optional)
+# C++ Wrapper (`hardrtpp.hpp`)
 
-HardRT provides an optional, header-only C++17 convenience layer over the C API. It is located in `cpp/hardrtpp.hpp`.
+HardRT provides an optional header-only C++17 wrapper in `cpp/hardrtpp.hpp`.
+It exposes thin, inline wrappers around the C API.
 
-## Enabling
-Enable the C++ wrapper target at configuration time:
-```bash
-cmake -DHARDRT_ENABLE_CPP=ON ..
+## Overview
+
+The wrapper currently provides:
+- `hardrt::System` for kernel init/start and version metadata
+- `hardrt::Task` for task creation and control
+- `hardrt::Semaphore` for binary and counting semaphores
+- `hardrt::Queue<T, Capacity>` for typed fixed-capacity queues
+- `hardrt::Mutex` for owner-tracked mutual exclusion
+
+## System Management
+
+```cpp
+#include <hardrtpp.hpp>
+
+hrt_config_t cfg{
+    .tick_hz = 1000,
+    .policy = HRT_SCHED_PRIORITY_RR,
+    .default_slice = 5,
+    .core_hz = 0,
+    .tick_src = HRT_TICK_SYSTICK,
+};
+
+hardrt::System::init(cfg);
+hardrt::System::start();
 ```
-This exposes the CMake target `hardrtpp` (aliased as `HardRT::hardrtpp`), which depends on the C core.
 
-## Usage
-The wrapper uses the `hardrt` namespace.
+## Task Management
 
-### Task Management
-HardRT provides two ways to manage tasks in C++: using automatic stack management (recommended) or using static methods with manual stack management.
+### Automatic stack management
 
-#### Automatic Stack Management (Recommended)
-The `Task::create<Size, Tag>` method simplifies task creation by automatically allocating a unique static stack for each unique combination of `Size` and `Tag`.
+The `Task::create<Size, Tag>` helper allocates a unique static stack per `<Size, Tag>` combination.
 
 ```cpp
 #include <hardrtpp.hpp>
 
 void worker(void* arg) {
-    for(;;) {
+    (void)arg;
+    for (;;) {
         hardrt::Task::sleep(100);
     }
 }
 
 int main() {
-    // Initialize system...
-    
-    // Create and start the tasks with managed stacks.
-    // Use different tags to ensure each task gets its own stack.
     hardrt::Task::create<1024, 0>(worker, nullptr, HRT_PRIO1);
     hardrt::Task::create<2048, 1>(worker, nullptr, HRT_PRIO0);
-    
-    // Start scheduler...
 }
 ```
 
-#### Manual Stack Management
-To manage the stack array manually, use `hardrt::Task::create_with_stack`.
+### Manual stack management
 
 ```cpp
 static uint32_t my_stack[512];
 hardrt::Task::create_with_stack(my_task, nullptr, my_stack, 512, HRT_PRIO1);
 ```
 
-#### Task Control
-The `hardrt::Task` class provides static methods for controlling the current task.
+### Task control
 
 ```cpp
-hardrt::Task::sleep(500); // Sleep for 500ms
-hardrt::Task::yield();    // Yield CPU
+hardrt::Task::sleep(500);
+hardrt::Task::yield();
 ```
 
-### System Management
-The `hardrt::System` class provides global RTOS control.
+## Semaphores
 
-```cpp
-const hrt_config_t cfg = { ... };
-hardrt::System::init(cfg);
-hardrt::System::start(); // Never returns
-```
-
-### Semaphores
-The `hardrt::Semaphore` class provides an object-oriented interface for semaphores (binary by default, counting if `max_count > 1`).
+The `hardrt::Semaphore` wrapper maps directly to `hrt_sem_t`.
 
 ```cpp
 hardrt::Semaphore sem(1);      // binary semaphore (available)
@@ -73,12 +75,59 @@ hardrt::Semaphore slots(0, 5); // counting semaphore: 0..5 tokens
 
 void worker(void*) {
     sem.take();
-    // Critical section
+    // event/resource synchronization
     sem.give();
 }
 ```
 
+Notes:
+- `give_from_isr()` is available on the wrapper.
+- For critical sections and ownership enforcement, use `hardrt::Mutex`.
+
+## Mutexes
+
+The `hardrt::Mutex` wrapper maps directly to `hrt_mutex_t`.
+
+```cpp
+hardrt::Mutex lock;
+
+void worker(void*) {
+    for (;;) {
+        lock.lock();
+        // critical section
+        lock.unlock();
+        hardrt::Task::sleep(10);
+    }
+}
+```
+
+Semantics:
+- non-recursive
+- owner-tracked
+- task context only
+- no ISR API
+- no timed lock or priority inheritance in the current implementation
+
+## Queues
+
+The `Queue<T, Capacity>` wrapper provides a typed front-end over `hrt_queue_t`.
+
+```cpp
+hardrt::Queue<int, 8> q;
+
+void producer(void*) {
+    int value = 42;
+    q.send(value);
+}
+
+void consumer(void*) {
+    int out{};
+    q.recv(out);
+}
+```
+
 ## Features
-- **Zero Overhead**: Methods are inline and forward directly to the C API.
-- **Strong Typing**: Uses RTOS types like `hrt_prio_t` while providing a cleaner C++ interface.
-- **Convenience**: Internal stack management reduces boilerplate.
+
+- **Zero-overhead shape**: wrappers are inline and call into the C API directly.
+- **Typed convenience**: queue wrapper removes some boilerplate.
+- **No hidden allocation**: still fully static. The cult of heap abuse can stay elsewhere.

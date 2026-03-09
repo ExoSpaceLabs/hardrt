@@ -121,7 +121,7 @@ namespace hardrt {
 
         /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.3.0").
+         * @return Version string (e.g., "0.3.1").
          */
         static const char* version_string() {
             return hrt_version_string();
@@ -193,7 +193,7 @@ namespace hardrt {
         /**
          * @brief Give (release) the semaphore.
          *
-         * Wakes up the highest priority task waiting on this semaphore.
+         * Wakes one waiting task according to the semaphore handoff policy.
          * @return 0 on success.
          */
         int give() {

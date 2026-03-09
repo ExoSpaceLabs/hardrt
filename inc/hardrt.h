@@ -168,7 +168,7 @@ static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned
 
 /**
  * @brief Get the semantic version string of HardRT at runtime.
- * @return NUL-terminated string, e.g. "0.3.0".
+ * @return NUL-terminated string, e.g. "0.3.1".
  */
 const char *hrt_version_string(void);
 

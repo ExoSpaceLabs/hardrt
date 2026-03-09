@@ -1,7 +1,6 @@
-
 ## 🧠 API Overview (C)
 
-This page summarizes the public C API available in HardRT v0.3.0. See `inc/hardrt.h` for authoritative declarations.
+This page summarizes the public C API available in HardRT v0.3.1. See `inc/hardrt.h` for authoritative declarations.
 
 ### Types
 
@@ -24,22 +23,24 @@ typedef enum { HRT_PRIO0=0, HRT_PRIO1, /* ... */ HRT_PRIO11 } hrt_prio_t;
 
 /* Init-time configuration */
 typedef struct {
-    uint32_t     tick_hz;        /* default: 1000 */
-    hrt_policy_t policy;         /* default: PRIORITY_RR */
-    uint16_t     default_slice;  /* RR timeslice in ticks; 0 disables RR by default */
+    uint32_t     tick_hz;
+    hrt_policy_t policy;
+    uint16_t     default_slice;
+    uint32_t     core_hz;
+    hrt_tick_source_t tick_src;
 } hrt_config_t;
 
 /* Per-task attributes passed at creation */
 typedef struct {
-    hrt_prio_t priority;   /* default: HRT_PRIO1 if attr==NULL */
-    uint16_t   timeslice;  /* 0 = cooperative in class; otherwise quantum in ticks */
+    hrt_prio_t priority;
+    uint16_t   timeslice;
 } hrt_task_attr_t;
 ```
 
 ### Version and port identity
 
 ```c
-const char* hrt_version_string(void);  /* e.g. "0.3.0" */
+const char* hrt_version_string(void);  /* e.g. "0.3.1" */
 unsigned    hrt_version_u32(void);     /* (maj<<16)|(min<<8)|patch */
 const char* hrt_port_name(void);       /* e.g. "posix" or "null" */
 int         hrt_port_id(void);         /* 0=null, 1=posix, ... */
@@ -55,16 +56,16 @@ int  hrt_create_task(hrt_task_fn fn, void* arg,
 void hrt_start(void);
 ```
 
-- `hrt_init` starts the port tick using `cfg->tick_hz` (defaults to 1000 Hz if 0). It also sets the scheduler policy and default timeslice.
-- `hrt_create_task` registers a static task using the provided stack buffer. Minimum 64 words are required on hosted platforms (POSIX). If `attr==NULL`, the task inherits `cfg->default_slice` and default priority `HRT_PRIO1`.
-- `hrt_start` enters the scheduler loop (does not return on POSIX; is a no-op on the null port).
+- `hrt_init` initializes the kernel, applies scheduler configuration, and starts the port tick when the selected tick source requires it.
+- `hrt_create_task` registers a static task using the provided stack buffer. Minimum stack constraints depend on the port.
+- `hrt_start` enters the scheduler loop. On the null port it returns immediately.
 
 ### Control and time
 
 ```c
-void     hrt_sleep(uint32_t ms);  /* sleep for ms; wakes on future ticks */
-void     hrt_yield(void);         /* yield to allow others in same class */
-uint32_t hrt_tick_now(void);      /* system tick counter (increments at tick_hz; wraps on overflow) */
+void     hrt_sleep(uint32_t ms);
+void     hrt_yield(void);
+uint32_t hrt_tick_now(void);
 ```
 
 ### Runtime tuning
@@ -74,36 +75,84 @@ void hrt_set_policy(hrt_policy_t p);
 void hrt_set_default_timeslice(uint16_t t);
 ```
 
-- Changing policy or default slice affects scheduling of READY tasks created after the change; existing tasks keep their configured `timeslice`.
+- Changing policy affects scheduling decisions from the next scheduling point onward.
+- Changing the default slice affects tasks created after the change. Existing tasks keep their configured timeslice.
 
 ### Round-robin semantics
 
-- When policy is `HRT_SCHED_RR` or `HRT_SCHED_PRIORITY_RR` and a task has a non-zero `timeslice`, the running task’s quantum (`slice_left`) is decremented every tick.
-- When the quantum reaches zero, a reschedule is pended from the tick ISR, and the actual rotation to the tail of the ready queue occurs when returning to the scheduler (safe context). This is how the POSIX and null ports integrate today.
-- Tasks with `timeslice == 0` are cooperative within their priority class and will not be rotated by time slicing (but they can `hrt_yield()`).
+- When policy is `HRT_SCHED_RR` or `HRT_SCHED_PRIORITY_RR` and a task has a non-zero `timeslice`, the running task’s quantum is decremented on tick accounting.
+- When the quantum reaches zero, the scheduler reschedule path is pended and the actual rotation happens at a safe scheduling point.
+- Tasks with `timeslice == 0` are cooperative within their priority class and will not be rotated by time slicing.
 
 ### Semaphores
 
-The kernel provides a minimal semaphore primitive in `hardrt_sem.h` (binary by default, counting via an explicit init):
+The kernel provides a minimal semaphore primitive in `hardrt_sem.h`.
 
 ```c
-void hrt_sem_init(hrt_sem_t* s, unsigned init);                     /* binary (legacy) */
+void hrt_sem_init(hrt_sem_t* s, unsigned init);
 void hrt_sem_init_counting(hrt_sem_t* s, unsigned init, uint8_t max_count);
 
-int  hrt_sem_take(hrt_sem_t* s);                                    /* blocks until available; 0 on success */
-int  hrt_sem_try_take(hrt_sem_t* s);                                /* 0 on success, -1 if not available */
-int  hrt_sem_give(hrt_sem_t* s);                                    /* wakes exactly one waiter if present */
-int  hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch);         /* ISR-safe */
+int  hrt_sem_take(hrt_sem_t* s);
+int  hrt_sem_try_take(hrt_sem_t* s);
+int  hrt_sem_give(hrt_sem_t* s);
+int  hrt_sem_give_from_isr(hrt_sem_t* s, int* need_switch);
 ```
 
+Notes:
+- Binary semaphores saturate at `1`.
+- Counting semaphores saturate at `max_count`.
+- Waiters are queued FIFO.
+- `hrt_sem_give_from_isr()` is supported.
+- Semaphores are **not owner-tracked**. For mutual exclusion, prefer `hrt_mutex_t`.
 
-Notes
-- Binary semantics: multiple consecutive `give()` calls do not overflow; one subsequent `take()` will succeed.
-- Waiters are queued FIFO; on wake the task is made READY and normal priority/RR scheduling applies.
-- If a waiter is woken from task context, the giver yields so a higher‑priority waiter can run immediately.
-- The ISR variant only pends a context switch and optionally sets `*need_switch=1`.
+See `docs/SEMAPHORES.md` for details.
 
-See `docs/SEMAPHORES.md` for a full guide and examples.
+### Mutexes
+
+The kernel provides a dedicated mutex primitive in `hardrt_mutex.h`.
+
+```c
+#define HRT_MUTEX_NO_OWNER (-1)
+
+typedef struct {
+    volatile uint8_t locked;
+    int16_t owner;
+    uint8_t q[HARDRT_MAX_TASKS];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count_wait;
+} hrt_mutex_t;
+
+void hrt_mutex_init(hrt_mutex_t* m);
+int  hrt_mutex_lock(hrt_mutex_t* m);
+int  hrt_mutex_try_lock(hrt_mutex_t* m);
+int  hrt_mutex_unlock(hrt_mutex_t* m);
+```
+
+Notes:
+- Mutexes are **owner-tracked** and **non-recursive**.
+- `hrt_mutex_lock()` blocks until ownership is acquired.
+- `hrt_mutex_unlock()` may directly hand ownership to the next waiter.
+- Waiters are queued FIFO.
+- Mutex calls are **task-context only**. There is no ISR mutex API.
+- The current implementation does **not** include timed lock, recursive mutexes, or priority inheritance.
+
+See `docs/MUTEXES.md` for full semantics.
+
+### Queues
+
+The kernel provides fixed-size copy-based message queues in `hardrt_queue.h`.
+
+```c
+void hrt_queue_init(hrt_queue_t *q, void *storage, uint16_t capacity, size_t item_size);
+int  hrt_queue_send(hrt_queue_t *q, const void *item);
+int  hrt_queue_try_send(hrt_queue_t *q, const void *item);
+int  hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_switch);
+int  hrt_queue_recv(hrt_queue_t *q, void *out);
+int  hrt_queue_try_recv(hrt_queue_t *q, void *out);
+int  hrt_queue_try_recv_from_isr(hrt_queue_t *q, void *out, int *need_switch);
+uint16_t hrt_queue_count(const hrt_queue_t *q);
+```
 
 ### Minimal example
 
@@ -117,10 +166,16 @@ static void taskA(void*){ for(;;){ hrt_sleep(500); } }
 static void taskB(void*){ for(;;){ hrt_sleep(1000);} }
 
 int main(void){
-    hrt_config_t cfg = { .tick_hz=1000, .policy=HRT_SCHED_PRIORITY_RR, .default_slice=5 };
+    hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = HRT_SCHED_PRIORITY_RR,
+        .default_slice = 5,
+        .core_hz = 0,
+        .tick_src = HRT_TICK_SYSTICK
+    };
     hrt_init(&cfg);
-    hrt_task_attr_t p0 = { .priority=HRT_PRIO0, .timeslice=0 };
-    hrt_task_attr_t p1 = { .priority=HRT_PRIO1, .timeslice=5 };
+    hrt_task_attr_t p0 = { .priority = HRT_PRIO0, .timeslice = 0 };
+    hrt_task_attr_t p1 = { .priority = HRT_PRIO1, .timeslice = 5 };
     hrt_create_task(taskA, 0, stackA, 2048, &p0);
     hrt_create_task(taskB, 0, stackB, 2048, &p1);
     hrt_start();
