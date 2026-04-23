@@ -4,7 +4,7 @@
 A tiny, portable, modular real-time operating system written in C.  
 Minimal footprint, predictable behavior, and zero hardware dependencies in its core.
 
-**Version:** `0.3.1`
+**Version:** `0.4.0`
 
 ---
 
@@ -47,7 +47,7 @@ The Architecture is mainly divided into three layers:
 
 Where each task is executed in accordance with the policy adopted by the scheduler.
 
-> Note: If a task exits, it will yield forever.
+> Note: If a task exits, it is automatically deleted (EXIT) and the scheduler won't requeue it.
 
 see also [Concepts](#-concepts)
 
@@ -84,7 +84,7 @@ cmake --install . --prefix "$PWD/install"
 
 Consume from another CMake project:
 ```cmake
-find_package(HardRT 0.3.1 REQUIRED)
+find_package(HardRT 0.4.0 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```

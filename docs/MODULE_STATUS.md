@@ -19,4 +19,4 @@ Current components and their status.
 - Mutexes are implemented as **non-recursive**, **task-context-only**, and **without priority inheritance** in the current release.
 - Dedicated example applications for mutex in both C and C++ are still pending, but the public API and tests are present.
 
-Current version: `0.3.1` (see `hrt_version_string()` and `hrt_version_u32()`).
+Current version: `0.4.0` (see `hrt_version_string()` and `hrt_version_u32()`).

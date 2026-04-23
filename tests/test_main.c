@@ -50,6 +50,8 @@ int main(void) {
     append_group(g, n, registry, &total);
     g = get_tests_mutex(&n);
     append_group(g, n, registry, &total);
+    g = get_tests_now_ms(&n);
+    append_group(g, n, registry, &total);
     g = get_tests_idle_behavior(&n);
     append_group(g, n, registry, &total);
 

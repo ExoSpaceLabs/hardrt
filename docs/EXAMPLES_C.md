@@ -37,7 +37,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (program exits immediately; no live scheduling):
 ```
-HardRT version: 0.3.1 (0x000301), port: null (id=0)
+HardRT version: 0.4.0 (0x000301), port: null (id=0)
 ```
 
 Notes:
@@ -53,7 +53,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (excerpt; continues indefinitely):
 ```terminaloutput
-HardRT version: 0.3.1 (0x000301), port: posix (id=1)
+HardRT version: 0.4.0 (0x000301), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 [A] tick count [1]

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- Project ----
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.3.1 LANGUAGES C CXX ASM)
+project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C CXX ASM)
 
 # ---- Options ----
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")

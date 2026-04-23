@@ -1,6 +1,6 @@
 # 📘 Documentation Summary
 
-This documentation set is synchronized with HardRT v0.3.1.
+This documentation set is synchronized with HardRT v0.4.0.
 
 ## Main Docs
 | File                                        | Purpose                                         |

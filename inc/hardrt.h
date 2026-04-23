@@ -168,7 +168,7 @@ static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned
 
 /**
  * @brief Get the semantic version string of HardRT at runtime.
- * @return NUL-terminated string, e.g. "0.3.1".
+ * @return NUL-terminated string, e.g. "0.4.0".
  */
 const char *hrt_version_string(void);
 
@@ -235,10 +235,23 @@ void hrt_sleep(uint32_t ms);
 void hrt_yield(void);
 
 /**
+ * @brief Permanently remove the current task from the scheduler.
+ * @note If a task function returns, this is called automatically.
+ *       The task slot is marked as UNUSED and won't be scheduled again.
+ */
+void hrt_task_delete(void);
+
+/**
  * @brief Get the current system tick count (monotonic, wraps on overflow).
  * @return Current tick counter.
  */
 uint32_t hrt_tick_now(void);
+
+/**
+ * @brief Get the elapsed system time in milliseconds since boot.
+ * @return Milliseconds since hrt_init().
+ */
+uint32_t hrt_now_ms(void);
 
 /**
  * @brief Change the scheduler policy at runtime.

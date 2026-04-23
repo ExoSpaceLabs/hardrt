@@ -70,6 +70,13 @@ namespace hardrt {
         static void yield() {
             hrt_yield();
         }
+
+        /**
+         * @brief Permanently remove the current task from the scheduler.
+         */
+        static void delete_current() {
+            hrt_task_delete();
+        }
     };
 
     /* UniqueTask is kept for future reference but currently not recommended for use.
@@ -120,8 +127,16 @@ namespace hardrt {
         }
 
         /**
+         * @brief Get the elapsed system time in milliseconds since boot.
+         * @return Milliseconds since System::init().
+         */
+        static uint32_t now_ms() {
+            return hrt_now_ms();
+        }
+
+        /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.3.1").
+         * @return Version string (e.g., "0.4.0").
          */
         static const char* version_string() {
             return hrt_version_string();
