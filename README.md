@@ -111,7 +111,7 @@ Caption:
 ![two_tick_RR.png](docs/images/two_tick_RR.png)
 
 Caption:
-- Identical example with `timeslice=2 ms` is shown below, in essence handoffs occur every two ticks.
+- Identical example with `timeslice=2 ms` is shown above, in essence handoffs occur every two ticks.
 
 each task is executed in order.
 
