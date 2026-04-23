@@ -15,7 +15,7 @@ static void A(void* arg){
             puts("[A] unlocking mutex");
             hrt_mutex_unlock(&mutex);
         }
-        hrt_sleep(100);
+        hrt_sleep(200);
     }
 }
 
@@ -29,7 +29,7 @@ static void B(void* arg){
         } else {
             puts("[B] mutex busy, waiting");
         }
-        hrt_sleep(200);
+        hrt_sleep(100);
     }
 }
 

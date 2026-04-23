@@ -11,11 +11,11 @@ static void A(void* arg) {
         printf("[A] waiting for mutex\n");
         if (mutex.lock() == 0) {
             printf("[A] locked mutex\n");
-            Task::sleep(300);
+            Task::sleep(200);
             printf("[A] unlocking mutex\n");
             mutex.unlock();
         }
-        Task::sleep(100);
+        Task::sleep(200);
     }
 }
 
@@ -29,7 +29,7 @@ static void B(void* arg) {
         } else {
             printf("[B] mutex busy, waiting\n");
         }
-        Task::sleep(200);
+        Task::sleep(50);
     }
 }
 

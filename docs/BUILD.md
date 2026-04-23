@@ -72,6 +72,10 @@ cmake --build . --target hardrt_tests -j && ./hardrt_tests
 cmake -DHARDRT_PORT=posix -DHARDRT_ENABLE_CPP=ON ..
 ```
 
+## Scripts
+The `scripts/` directory contains helper scripts for development and CI:
+- `scripts/run-all-examples.sh`: Configures, builds, and runs all POSIX-compatible examples under a timeout to verify basic functionality.
+
 ## Install (optional)
 Install the library, headers, and CMake package files to a prefix:
 ```bash

@@ -27,6 +27,10 @@ hrt_config_t cfg{
 
 hardrt::System::init(cfg);
 hardrt::System::start();
+
+// Utilities
+uint32_t now = hardrt::System::now_ms();
+const char* ver = hardrt::System::version();
 ```
 
 ## Task Management
@@ -63,7 +67,10 @@ hardrt::Task::create_with_stack(my_task, nullptr, my_stack, 512, HRT_PRIO1);
 ```cpp
 hardrt::Task::sleep(500);
 hardrt::Task::yield();
+hardrt::Task::delete_current();
 ```
+
+Note: If a task returns from its entry function, it is automatically deleted.
 
 ## Semaphores
 

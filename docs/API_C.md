@@ -70,6 +70,14 @@ uint32_t hrt_tick_now(void);
 uint32_t hrt_now_ms(void);
 ```
 
+- `hrt_sleep` puts the current task to sleep for at least `ms` milliseconds.
+- `hrt_yield` voluntarily gives up the CPU to the next ready task of the same or higher priority.
+- `hrt_task_delete` removes the current task from the scheduler.
+- `hrt_tick_now` returns the current system tick count.
+- `hrt_now_ms` returns the current system time in milliseconds.
+
+**Note:** If a task returns from its entry function, `hrt_task_delete` is called automatically and the task is removed from the scheduler.
+
 ### Runtime tuning
 
 ```c
