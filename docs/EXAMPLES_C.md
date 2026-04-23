@@ -8,6 +8,7 @@ This guide summarizes the bundled examples and includes small usage snippets for
 - `examples/two_tasks`
 - `examples/two_tasks_external`
 - `examples/sem_basic`
+- `examples/mutex_basic`
 - `examples/sem_counting`
 - `examples/queue_posix`
 - `examples/hardrt_h755_blinky`
@@ -17,11 +18,12 @@ This guide summarizes the bundled examples and includes small usage snippets for
 ### C++ examples
 - `examples/two_tasks_cpp`
 - `examples/sem_basic_cpp`
+- `examples/mutex_basic_cpp`
 - `examples/sem_counting_cpp`
 - `examples/queue_posix_cpp`
 - `examples/hardrt_h755_blinky_cpp`
 
-> Dedicated `mutex` example applications in C and C++ are still not present as standalone example folders. The API is implemented and documented below with usage snippets.
+> Dedicated `mutex` example applications in C and C++ are available in `examples/mutex_basic` and `examples/mutex_basic_cpp`. The API is also documented below with usage snippets.
 
 ---
 
