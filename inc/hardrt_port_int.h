@@ -11,11 +11,11 @@ extern "C" {
     hrt_tick_source_t hrt__cfg_tick_src(void);
     uint32_t          hrt__cfg_tick_hz(void);
 
-    void hrt__save_current_sp(uint32_t sp);   // store PSP into current TCB if current>=0
-    uint32_t hrt__load_next_sp_and_set_current(int next_id); // set current=next, return next->sp
+    void hrt__save_current_sp(uintptr_t sp);   // store PSP into current TCB if current>=0
+    uintptr_t hrt__load_next_sp_and_set_current(int next_id); // set current=next, return next->sp
     int  hrt__get_current(void);
     int  hrt__pick_next_ready(void);
-    uint32_t hrt__schedule(uint32_t old_sp);
+    uintptr_t hrt__schedule(uintptr_t old_sp);
 
 
     /**
@@ -23,7 +23,7 @@ extern "C" {
      *
      * @param sp  stack pointer
      */
-    void hrt_port_sp_valid(uint32_t sp);
+    void hrt_port_sp_valid(uintptr_t sp);
 #ifdef __cplusplus
 }
 #endif

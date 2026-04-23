@@ -221,7 +221,7 @@ void hrt_port_crit_exit(void) {
     }
 }
 
-void hrt_port_sp_valid(const uint32_t sp)
+void hrt_port_sp_valid(const uintptr_t sp)
 {
     (void)sp;
     /* POSIX “stacks” are host stacks / malloc etc.; no HW limit. */

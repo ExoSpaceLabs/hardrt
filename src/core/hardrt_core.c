@@ -469,7 +469,7 @@ uint32_t hrt__cfg_core_hz(void) { return g_core_hz; }
 hrt_tick_source_t hrt__cfg_tick_src(void) { return g_tick_src; }
 uint32_t hrt__cfg_tick_hz(void) { return g_tick_hz; }
 
-void hrt__save_current_sp(const uint32_t sp)
+void hrt__save_current_sp(const uintptr_t sp)
 {
     const int cur = hrt__get_current();
 
@@ -482,9 +482,9 @@ void hrt__save_current_sp(const uint32_t sp)
 #endif
 }
 
-uint32_t hrt__load_next_sp_and_set_current(const int next_id){
+uintptr_t hrt__load_next_sp_and_set_current(const int next_id){
 
-    const uint32_t sp = (uintptr_t)(_get_sp(next_id));
+    const uintptr_t sp = (uintptr_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 
 #if HARDRT_DEBUG == 1
@@ -538,7 +538,7 @@ uint32_t hrt__test_get_tick(void) { return g_tick; }
 #endif
 
 
-uint32_t hrt__schedule(const uint32_t old_sp)
+uintptr_t hrt__schedule(const uintptr_t old_sp)
 {
 
     /* Save current only if this is not the first switch */
@@ -577,7 +577,7 @@ uint32_t hrt__schedule(const uint32_t old_sp)
 
     hrt__set_current(next_id);
 
-    const uint32_t sp_new = (uint32_t)(uintptr_t)_get_sp(next_id);
+    const uintptr_t sp_new = (uintptr_t)_get_sp(next_id);
 
 #if HARDRT_DEBUG == 1
     dbg_id_load = next_id;

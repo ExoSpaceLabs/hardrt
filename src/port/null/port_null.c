@@ -74,7 +74,7 @@ void hrt_port_crit_enter(void) {
 void hrt_port_crit_exit(void) {
     /* no-op */
 }
-void hrt_port_sp_valid(const uint32_t sp)
+void hrt_port_sp_valid(const uintptr_t sp)
 {
     (void)sp;
 }
