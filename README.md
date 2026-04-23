@@ -27,6 +27,7 @@ Please refer to [PORTING.md](docs/PORTING.md) for additional port inclusion.
 
 > “On Cortex-M, the max time from tick to running the next highest priority ready task is bounded by: ISR tail + PendSV latency + context save/restore”
 
+> The POSIX port is regularly validated on Ubuntu 22.04, Ubuntu 24.04, and GitHub CI Linux environments. A test-suite failure has been observed on Debian 13 and is currently under investigation.
 ---
 
 ### Architecture

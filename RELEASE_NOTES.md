@@ -14,3 +14,4 @@ Notes
 - C++ support is optional and zero-cost when unused
 - Mutexes are task-context only and currently do not implement priority inheritance
 - ABI/API compatibility with v0.3.0 is preserved
+- Validated on Ubuntu 22.04 / 24.04 / latest / stm32h755zi-q, failure detected on debian 13 (GCC 14 + glibc 2.41).

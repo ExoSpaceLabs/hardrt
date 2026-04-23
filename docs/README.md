@@ -24,4 +24,3 @@ This documentation set is synchronized with HardRT v0.4.0.
 ## Notes
 - The mutex API is now part of the public documented surface.
 - Counting semaphores, mutexes, and queues are implemented in the current codebase.
-- Dedicated repository examples for mutex in both C and C++ are still pending; documentation snippets are provided meanwhile.

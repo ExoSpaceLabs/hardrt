@@ -26,16 +26,17 @@ Examples of test-only hooks (POSIX):
 
 ## Building and running
 
-### With CLion’s Debug profile (recommended here)
+### With CMake (example)
 ```
-cmake --build /home/dev/Works/hardrt/cmake-build-debug --target hardrt_tests -j && \
-/home/dev/Works/hardrt/cmake-build-debug/hardrt_tests
+mkdir build && cd build
+cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_TESTS=ON ..
+cmake --build . --target hardrt_tests
+./hardrt_tests
 ```
 
-Or via CTest (single test target wired in CMake):
+Or via CTest:
 ```
-cmake --build /home/dev/Works/hardrt/cmake-build-debug --target hardrt_tests -j && \
-ctest --test-dir /home/dev/Works/hardrt/cmake-build-debug -V
+ctest --output-on-failure
 ```
 
 Prerequisites at configured time:
