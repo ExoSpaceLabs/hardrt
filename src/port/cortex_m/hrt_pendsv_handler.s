@@ -10,14 +10,8 @@
  * PendSV_Handler - Cortex-M context switch handler for HeartOS
  *
  * Contract with C side:
- *   - hrt__save_current_sp(uint32_t *sp):
- *       Saves the updated PSP (after pushing r4-r11) into the current TCB.
- *
- *   - int hrt__pick_next_ready(void):
- *       Returns the next task id to run.
- *
- *   - uint32_t *hrt__load_next_sp_and_set_current(int id):
- *       Sets the current task id and returns that task's saved SP.
+ *   - uint32_t hrt__schedule(uint32_t old_sp):
+ *       Saves the updated PSP (after pushing r4-r11) into the current TCB ,returns next sp.
  *
  * Stack layout expected when switching OUT of a running task:
  *   [high addr]

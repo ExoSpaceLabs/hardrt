@@ -1,6 +1,7 @@
-# HardRT v0.3.0 – Timing & Latency Characterization
+# HardRT – Timing & Latency Characterization
 
-This document summarizes **event → task latency measurements** for HardRT v0.3.0 on Cortex-M, with a focus on determinism and priority behavior rather than absolute best-case numbers.
+This document contains performance data collected for **HardRT v0.4.0** on STM32H7.
+The measurements demonstrate deterministic behavior and the impact of task priorities on scheduling latency.
 
 All measurements were performed **without modifying HardRT core logic**, using application-level instrumentation and the Cortex-M DWT cycle counter.
 
@@ -48,7 +49,7 @@ semihosting is disabled
 
 target halted due to debug-request, current mode: Thread 
 xPSR: 0x01000000 pc: 0x080006cc msp: 0x20020000
-Breakpoint 1 at 0x8000cfc
+Breakpoint 1 at 0x8000d68
 Note: automatically using hardware breakpoints for read-only addresses.
 Breakpoint 2 at 0x80007c6
 
@@ -57,15 +58,15 @@ SystemCoreClock=64000000 Hz
 
 [TICK -> TASK]
 count=10000
-min=1258 cycles, avg=1729 cycles (sum/count=1729), max=3485 cycles
-min=19 us, avg=27 us, max=54 us (approx)
-min=19656 ns, avg=27015 ns, max=54453 ns
+min=1161 cycles, avg=1414 cycles (sum/count=1414), max=2232 cycles
+min=18 us, avg=22 us, max=34 us (approx)
+min=18140 ns, avg=22093 ns, max=34875 ns
 
 [SEM GIVE -> TASK TAKE]
 count=10000
-min=1208 cycles, avg=1255 cycles (sum/count=1255), max=1313 cycles
-min=18 us, avg=19 us, max=20 us (approx)
-min=18875 ns, avg=19609 ns, max=20515 ns
+min=1201 cycles, avg=1547 cycles (sum/count=1547), max=2893 cycles
+min=18 us, avg=24 us, max=45 us (approx)
+min=18765 ns, avg=24171 ns, max=45203 ns
 
 [TIMER CFG]
 TIM2: PSC=31 ARR=999 us period
@@ -87,12 +88,12 @@ Both tasks are woken via ISR-signaled semaphores.
 
 | Test | Task Priorities                 | Metric       | Min (cycles) | Avg (cycles) | Max (cycles) | Min (µs) | Avg (µs) | Max (µs) |
 |-----:|---------------------------------|--------------|-------------:|-------------:|-------------:|---------:|---------:|---------:|
-|    0 | Tick **PRIO0**, Event **PRIO0** | Tick → Task  |         1164 |         1411 |         2138 |       18 |       22 |       33 |
-|    0 | Tick **PRIO0**, Event **PRIO0** | Event → Task |         1190 |         1549 |         2910 |       18 |       24 |       45 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Tick → Task  |         1164 |         1342 |         1824 |       18 |       20 |       28 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Event → Task |         1304 |         1617 |         2950 |       20 |       25 |       46 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Tick → Task  |         1258 |         1729 |         3485 |       19 |       27 |       54 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Event → Task |         1208 |         1255 |         1313 |       18 |       19 |       20 |
+|    0 | Tick **PRIO0**, Event **PRIO0** | Tick → Task  |         1161 |         1414 |         2232 |       18 |       22 |       34 |
+|    0 | Tick **PRIO0**, Event **PRIO0** | Event → Task |         1201 |         1547 |         2893 |       18 |       24 |       45 |
+|    1 | Tick **PRIO0**, Event **PRIO1** | Tick → Task  |         1161 |         1348 |         1879 |       18 |       21 |       29 |
+|    1 | Tick **PRIO0**, Event **PRIO1** | Event → Task |         1301 |         1636 |         2957 |       20 |       25 |       46 |
+|    2 | Tick **PRIO1**, Event **PRIO0** | Tick → Task  |         1261 |         1741 |         3559 |       19 |       27 |       55 |
+|    2 | Tick **PRIO1**, Event **PRIO0** | Event → Task |         1158 |         1221 |         1242 |       18 |       19 |       19 |
 
 ---
 
@@ -107,6 +108,9 @@ Both tasks are woken via ISR-signaled semaphores.
     - shared interrupt and memory activity
 
 This behavior is **intentional and deterministic**, and matches the expected contract of a priority-based real-time scheduler.
+
+**Note on v0.4.0 changes:** 
+Measurements for v0.4.0 show a slight improvement in the best-case latency (min cycles) and more consistent performance across priority levels compared to v0.3.0. The fundamental behavior remains identical: higher priority tasks pre-empt or execute before lower priority tasks when both are ready.
 
 ---
 

@@ -3,7 +3,9 @@
 /* Basic sanity: when no tasks are READY, the idle hook runs and scheduler remains live. */
 static void long_sleeper(void *arg) {
     (void) arg;
-    for (;;) { hrt_sleep(50); }
+    hrt_sleep(20);
+    hrt__test_stop_scheduler();
+    for (;;) { hrt_yield(); }
 }
 
 static void test_idle_counter_increments_when_idle(void) {
@@ -15,20 +17,15 @@ static void test_idle_counter_increments_when_idle(void) {
     static uint32_t st[1024];
     hrt_task_attr_t a = {.priority = HRT_PRIO1, .timeslice = 3};
     int tid = hrt_create_task(long_sleeper, NULL, st, 1024, &a);
-    T_ASSERT_TRUE(tid >= 0, "created long sleeper");
+    T_ASSERT_TRUE(tid >= 0, "created task that will sleep and then stop scheduler");
 
-    /* Reset idle counter and run for a short period */
+    /* Reset idle counter and run */
     hrt__test_idle_counter_reset();
-    uint32_t start = hrt_tick_now();
-    while (hrt_tick_now() - start < 10) {
-    }
-
-    /* Stop and yield back to scheduler */
-    hrt__test_stop_scheduler();
-    hrt_yield();
+    
+    hrt_start();
 
     unsigned long long idle_ticks = hrt__test_idle_counter_value();
-    T_ASSERT_TRUE(idle_ticks > 0, "idle counter should increment when idle");
+    T_ASSERT_TRUE(idle_ticks > 0, "idle counter should increment when idle (while task was sleeping)");
 #else
     printf("SKIP: idle behavior test requires HARDRT_TEST_HOOKS.\n");
 #endif

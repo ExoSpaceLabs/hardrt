@@ -36,8 +36,35 @@ static void test_task_return_does_not_crash(void) {
     T_ASSERT_TRUE(g_worker_iters >= 10, "worker should have progressed even if another task returned");
 }
 
+static void task_calls_delete_explicitly(void *arg) {
+    (void) arg;
+    hrt_task_delete();
+    /* Should not reach here */
+    for (;;) {
+        hrt_yield();
+    }
+}
+
+static void test_task_explicit_delete(void) {
+    hrt__test_reset_scheduler_state();
+    g_worker_iters = 0;
+    hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 3};
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init should return 0 (task delete)");
+
+    static uint32_t sd[1024], sw[1024];
+    hrt_task_attr_t a = {.priority = HRT_PRIO1, .timeslice = 3};
+    int td = hrt_create_task(task_calls_delete_explicitly, NULL, sd, 1024, &a);
+    int wk = hrt_create_task(worker_task, NULL, sw, 1024, &a);
+    T_ASSERT_TRUE(td>=0 && wk>=0, "created delete-calling and worker tasks");
+
+    hrt_start();
+
+    T_ASSERT_TRUE(g_worker_iters >= 10, "worker should have progressed even if another task deleted itself");
+}
+
 static const test_case_t CASES[] = {
     {"Task: returning entry does not crash scheduler", test_task_return_does_not_crash},
+    {"Task: explicit hrt_task_delete() does not crash scheduler", test_task_explicit_delete},
 };
 
 const test_case_t *get_tests_task_return(int *out_count) {

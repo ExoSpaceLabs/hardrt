@@ -66,12 +66,12 @@ extern "C" int main(void)
     hold_cm4();
     gpio_init();
 
-    const hrt_config_t cfg = {
-        .tick_hz        = 1000,
-        .policy         = HRT_SCHED_PRIORITY_RR,
-        .default_slice  = 5,
-        .core_hz        = SystemCoreClock,
-        .tick_src       = HRT_TICK_SYSTICK
+    hrt_config_t cfg = {
+        1000,
+        HRT_SCHED_PRIORITY_RR,
+        5,
+        SystemCoreClock,
+        HRT_TICK_SYSTICK
     };
 
     System::init(cfg);

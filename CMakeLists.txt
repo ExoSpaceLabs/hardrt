@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- Project ----
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.3.1 LANGUAGES C CXX ASM)
+project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C CXX ASM)
 
 # ---- Options ----
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
@@ -31,7 +31,7 @@ message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
 message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
-message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS}")
+message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} + 1 for IDLE task")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
 # Validate sizing knobs at configure time (no kernel source changes needed)
@@ -48,6 +48,8 @@ endif()
 if(_HRT_CFG_TASKS LESS 1)
   message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be >= 1. Got ${HARDRT_CFG_MAX_TASKS}.")
 endif()
+
+# this is not actually fatal, but makes no sense to have priority to whom no available task is associated.
 if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
   message(FATAL_ERROR "Invalid configuration: HARDRT_CFG_MAX_TASKS (${HARDRT_CFG_MAX_TASKS}) must be >= HARDRT_CFG_MAX_PRIO (${HARDRT_CFG_MAX_PRIO}).")
 endif()
@@ -109,6 +111,8 @@ set(LIBRARY_SOURCES
         "${SOURCE_CORE_DIR}/hardrt_version.c"
         "${SOURCE_CORE_DIR}/hardrt_portinfo.c"   # provides hrt_port_name()/hrt_port_id()
         "${SOURCE_CORE_DIR}/hardrt_sem.c"
+        "${SOURCE_CORE_DIR}/hardrt_queue.c"
+        "${SOURCE_CORE_DIR}/hardrt_mutex.c"
 )
 
 # ---- Library target ----
@@ -116,9 +120,11 @@ add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
 
 # Propagate sizing knobs to all consumers (library PUBLIC interface)
 # so examples/tests and downstream apps see consistent limits.
+# HARDRT_CFG_MAX_TASKS + 1 as the extra task is taken by the idle task.
+math(EXPR HARDRT_MAX_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 target_compile_definitions(${LIB_NAME}
         PUBLIC
-        HARDRT_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
+        HARDRT_MAX_TASKS=${HARDRT_MAX_TASKS_VALUE}
         HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
         HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
         HARDRT_DEBUG=${HARDRT_DEBUG}
@@ -244,11 +250,17 @@ install(EXPORT HardRTTargets
 if(HARDRT_BUILD_EXAMPLES)
   # Examples have their own CMakeLists.txt; include them directly
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/mutex_basic)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_counting)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_external)
   if(HARDRT_ENABLE_CPP)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix_cpp)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/mutex_basic_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_counting_cpp)
   endif()
 endif()
 

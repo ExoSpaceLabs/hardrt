@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "hardrt.h"
+#include "hardrt_port.h"
 #include "hardrt_cfg.h"
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
@@ -343,7 +344,28 @@ void hrt_yield(void) {
     hrt_port_yield_to_scheduler(); /* hop to scheduler */
 }
 
+void hrt_task_delete(void) {
+    const int cur = hrt__get_current();
+    if (cur < 0 || cur == HRT_IDLE_ID) return;
+
+    hrt_port_crit_enter();
+    _hrt_tcb_t *t = hrt__tcb(cur);
+    if (t) {
+        t->state = HRT_UNUSED;
+    }
+    hrt_port_crit_exit();
+
+    hrt__pend_context_switch();
+    hrt_port_yield_to_scheduler();
+}
+
 uint32_t hrt_tick_now(void) { return g_tick; }
+
+uint32_t hrt_now_ms(void) {
+    if (g_tick_hz == 0) return 0;
+    // (ticks * 1000) / tick_hz, 64-bit to avoid overflow
+    return (uint32_t)(((uint64_t)g_tick * 1000ULL) / (uint64_t)g_tick_hz);
+}
 
 void hrt_set_policy(const hrt_policy_t p) { g_policy = p; }
 void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
@@ -447,7 +469,7 @@ uint32_t hrt__cfg_core_hz(void) { return g_core_hz; }
 hrt_tick_source_t hrt__cfg_tick_src(void) { return g_tick_src; }
 uint32_t hrt__cfg_tick_hz(void) { return g_tick_hz; }
 
-void hrt__save_current_sp(const uint32_t sp)
+void hrt__save_current_sp(const uintptr_t sp)
 {
     const int cur = hrt__get_current();
 
@@ -460,9 +482,9 @@ void hrt__save_current_sp(const uint32_t sp)
 #endif
 }
 
-uint32_t hrt__load_next_sp_and_set_current(const int next_id){
+uintptr_t hrt__load_next_sp_and_set_current(const int next_id){
 
-    const uint32_t sp = (uintptr_t)(_get_sp(next_id));
+    const uintptr_t sp = (uintptr_t)(_get_sp(next_id));
     hrt__set_current(next_id);
 
 #if HARDRT_DEBUG == 1
@@ -516,7 +538,7 @@ uint32_t hrt__test_get_tick(void) { return g_tick; }
 #endif
 
 
-uint32_t hrt__schedule(const uint32_t old_sp)
+uintptr_t hrt__schedule(const uintptr_t old_sp)
 {
 
     /* Save current only if this is not the first switch */
@@ -555,7 +577,7 @@ uint32_t hrt__schedule(const uint32_t old_sp)
 
     hrt__set_current(next_id);
 
-    const uint32_t sp_new = (uint32_t)(uintptr_t)_get_sp(next_id);
+    const uintptr_t sp_new = (uintptr_t)_get_sp(next_id);
 
 #if HARDRT_DEBUG == 1
     dbg_id_load = next_id;

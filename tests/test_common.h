@@ -93,6 +93,18 @@ extern int g_failures;
     } \
 } while(0)
 
+void hrt__inc_tick(void);
+
+#define T_ASSERT_EQ_UINT(exp, got, msg) do { \
+    if ((exp) != (got)) { \
+        ++g_failures; \
+        printf(ANSI_RED "FAIL" ANSI_RST ": %s\n", msg); \
+        printf("  expected %u, got %u (%s:%d)\n", (unsigned)(exp), (unsigned)(got), __FILE__, __LINE__); \
+    } else { \
+        printf(ANSI_GRN "PASS" ANSI_RST ": %s (=%u)\n", msg, (unsigned)(got)); \
+    } \
+} while(0)
+
 /**
  * @brief Test case function signature.
  */
@@ -138,6 +150,12 @@ const test_case_t *get_tests_task_return(int *out_count);
 const test_case_t *get_tests_idle_behavior(int *out_count);
 
 const test_case_t *get_tests_semaphore(int *out_count);
+
+const test_case_t *get_tests_queue(int *out_count);
+
+const test_case_t *get_tests_mutex(int *out_count);
+
+const test_case_t *get_tests_now_ms(int *out_count);
 
 /* External tick tests */
 const test_case_t *get_tests_external_tick(int *out_count);

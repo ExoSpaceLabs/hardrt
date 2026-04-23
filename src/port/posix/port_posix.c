@@ -94,10 +94,8 @@ void hrt__task_trampoline(void) {
     const int id = hrt__get_current();
     const _hrt_tcb_t *t = hrt__tcb(id);
     t->entry(t->arg);
-    /* If the task returns, request a rescheduling and jump back */
-    g_switch_pending = 1;
-    swapcontext(&g_ctxs[id].ctx, &g_sched_ctx);
-    /* not reached */
+    /* If the task returns, delete it */
+    hrt_task_delete();
 }
 
 /* Prepare ucontext for the task using the provided stack */
@@ -223,7 +221,7 @@ void hrt_port_crit_exit(void) {
     }
 }
 
-void hrt_port_sp_valid(const uint32_t sp)
+void hrt_port_sp_valid(const uintptr_t sp)
 {
     (void)sp;
     /* POSIX “stacks” are host stacks / malloc etc.; no HW limit. */

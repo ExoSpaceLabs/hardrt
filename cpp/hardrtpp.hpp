@@ -1,6 +1,12 @@
 #pragma once
 #include "hardrt.h"
 #include "hardrt_sem.h"
+#include "hardrt_queue.h"
+#include "hardrt_mutex.h"
+
+#include <array>
+#include <cstddef>
+#include <type_traits>
 
 namespace hardrt {
 
@@ -64,6 +70,13 @@ namespace hardrt {
         static void yield() {
             hrt_yield();
         }
+
+        /**
+         * @brief Permanently remove the current task from the scheduler.
+         */
+        static void delete_current() {
+            hrt_task_delete();
+        }
     };
 
     /* UniqueTask is kept for future reference but currently not recommended for use.
@@ -114,8 +127,16 @@ namespace hardrt {
         }
 
         /**
+         * @brief Get the elapsed system time in milliseconds since boot.
+         * @return Milliseconds since System::init().
+         */
+        static uint32_t now_ms() {
+            return hrt_now_ms();
+        }
+
+        /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.3.0").
+         * @return Version string (e.g., "0.4.0").
          */
         static const char* version_string() {
             return hrt_version_string();
@@ -154,11 +175,16 @@ namespace hardrt {
     class Semaphore {
     public:
         /**
-         * @brief Initialize a binary semaphore.
+         * @brief Initialize a semaphore. Binary by default, counting if max_count > 1.
          * @param init Initial state: 1 (available/given), 0 (unavailable/taken).
          */
-        explicit Semaphore(unsigned init = 0) {
-            hrt_sem_init(&_sem, init);
+        explicit Semaphore(unsigned init = 0, uint8_t max_count = 1) {
+            if (max_count <= 1) {
+                // Preserve strict binary semantics
+                hrt_sem_init(&_sem, init);
+            } else {
+                hrt_sem_init_counting(&_sem, init, max_count);
+            }
         }
 
         /**
@@ -182,7 +208,7 @@ namespace hardrt {
         /**
          * @brief Give (release) the semaphore.
          *
-         * Wakes up the highest priority task waiting on this semaphore.
+         * Wakes one waiting task according to the semaphore handoff policy.
          * @return 0 on success.
          */
         int give() {
@@ -204,5 +230,123 @@ namespace hardrt {
         hrt_sem_t _sem;
     };
 
-} // namespace hardrt
+    /**
+     * @brief C++ wrapper for HardRT queues.
+     *
+     * HardRT queues are fixed-capacity and copy items into a user-provided
+     * storage buffer (no malloc). This wrapper provides two options:
+     *
+     * - QueueRef<T>: bind to externally provided storage
+     * - StaticQueue<T, Capacity>: owns a static buffer sized at compile-time
+     */
+    template <typename T>
+    class QueueRef {
+        static_assert(!std::is_void<T>::value, "QueueRef<T>: T cannot be void");
 
+    public:
+        QueueRef() = default;
+
+        /**
+         * @brief Initialize a queue using external storage.
+         *
+         * @param storage   Byte buffer large enough for (capacity * sizeof(T)).
+         * @param capacity  Number of T elements.
+         */
+        void init(void* storage, uint16_t capacity) {
+            hrt_queue_init(&_q, storage, capacity, sizeof(T));
+        }
+
+        int send(const T& item) {
+            return hrt_queue_send(&_q, &item);
+        }
+
+        int try_send(const T& item) {
+            return hrt_queue_try_send(&_q, &item);
+        }
+
+        int recv(T& out) {
+            return hrt_queue_recv(&_q, &out);
+        }
+
+        int try_recv(T& out) {
+            return hrt_queue_try_recv(&_q, &out);
+        }
+
+        int try_send_from_isr(const T& item, int& need_switch) {
+            return hrt_queue_try_send_from_isr(&_q, &item, &need_switch);
+        }
+
+        int try_recv_from_isr(T& out, int& need_switch) {
+            return hrt_queue_try_recv_from_isr(&_q, &out, &need_switch);
+        }
+
+        hrt_queue_t* native_handle() { return &_q; }
+
+    private:
+        hrt_queue_t _q{};
+    };
+
+    template <typename T, size_t Capacity>
+    class StaticQueue {
+        static_assert(Capacity > 0, "StaticQueue<T, Capacity>: Capacity must be > 0");
+
+    public:
+        StaticQueue() {
+            // The storage is byte-addressed, but aligned for T.
+            hrt_queue_init(&_q, _storage.data(), static_cast<uint16_t>(Capacity), sizeof(T));
+        }
+
+        int send(const T& item) {
+            return hrt_queue_send(&_q, &item);
+        }
+
+        int try_send(const T& item) {
+            return hrt_queue_try_send(&_q, &item);
+        }
+
+        int recv(T& out) {
+            return hrt_queue_recv(&_q, &out);
+        }
+
+        int try_recv(T& out) {
+            return hrt_queue_try_recv(&_q, &out);
+        }
+
+        int try_send_from_isr(const T& item, int& need_switch) {
+            return hrt_queue_try_send_from_isr(&_q, &item, &need_switch);
+        }
+
+        int try_recv_from_isr(T& out, int& need_switch) {
+            return hrt_queue_try_recv_from_isr(&_q, &out, &need_switch);
+        }
+
+        hrt_queue_t* native_handle() { return &_q; }
+
+    private:
+        alignas(T) std::array<std::byte, Capacity * sizeof(T)> _storage{};
+        hrt_queue_t _q{};
+    };
+
+    class Mutex {
+    public:
+        Mutex() {
+            hrt_mutex_init(&_m);
+        }
+
+        int lock() {
+            return hrt_mutex_lock(&_m);
+        }
+
+        int try_lock() {
+            return hrt_mutex_try_lock(&_m);
+        }
+
+        int unlock() {
+            return hrt_mutex_unlock(&_m);
+        }
+
+    private:
+        hrt_mutex_t _m;
+    };
+
+} // namespace hardrt

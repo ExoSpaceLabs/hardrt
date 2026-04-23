@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "hardrt.h"
 #include "hardrt_time.h"
+#include "hardrt_port_int.h"
 
 /* Null port: provides stub hooks so the library links.
    - No tick source is started.
@@ -46,6 +47,12 @@ void hrt_port_yield_to_scheduler(void) {
 
 void hrt__task_trampoline(void) {
     /* On real ports, this pops the initial context and jumps to task entry. */
+    const int id = hrt__get_current();
+    const _hrt_tcb_t *t = hrt__tcb(id);
+    if (t && t->entry) {
+        t->entry(t->arg);
+    }
+    hrt_task_delete();
 }
 
 /* Prepare an initial stack frame for a task.
@@ -67,7 +74,7 @@ void hrt_port_crit_enter(void) {
 void hrt_port_crit_exit(void) {
     /* no-op */
 }
-void hrt_port_sp_valid(const uint32_t sp)
+void hrt_port_sp_valid(const uintptr_t sp)
 {
     (void)sp;
 }

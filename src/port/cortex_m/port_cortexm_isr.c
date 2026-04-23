@@ -42,16 +42,7 @@ void hrt__task_trampoline(void) {
 
     /* r0 arg is ignored on entry; call real entry now */
     t->entry(t->arg);
-#if HARDRT_DEBUG == 1
-    dbg_tasks_returned++;
-    (void)dbg_tasks_returned;
-#endif
-    /* If task returns, yield forever */
-    for (;;) {
-#if HARDRT_DEBUG == 1
-        dbg_pend_from_tramp++;
-#endif
-        hrt__pend_context_switch();
-        __asm volatile ("wfi");
-    }
+
+    /* If task returns, delete it */
+    hrt_task_delete();
 }

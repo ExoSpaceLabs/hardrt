@@ -1,85 +1,49 @@
 # 🧭 HardRT Roadmap
 
-This roadmap outlines the evolution of HardRT from its current v0.2.x stage to the planned 1.0.0 release.
+This roadmap outlines the evolution of HardRT toward the planned 1.0.0 release.
 
-> Note: roadmap may be subject to changes during its lifetime.
+> Roadmap items may shift as implementation priorities change.
 
----
+## ✅ Completed foundations
 
-## ✅ Completed (v0.2.x)
+- Core scheduler with static tasks
+- Null and POSIX ports
+- Cortex-M port foundation
+- Binary and counting semaphores
+- Mutex primitive
+- Message queues
+- Version and port metadata via CMake
+- C and C++ example set for tasks, semaphores, and queues
+- POSIX test harness expansion
 
-- Core scheduler (static tasks)
-- Null and POSIX ports (simulation / verification tester application)
-- Binary semaphores (ISR-safe give)
-- Version + port metadata via CMake
-- Example: `two_tasks` and `sem_basic`
+## ⚙️ Next synchronization work
 
----
+- Timeout variants of IPC (`hrt_sem_take_timeout`, queue timeout variants, mutex timed lock if adopted)
+- Event flags / task notification API
+- Priority inheritance or another priority inversion mitigation strategy for mutexes
 
-## ✅ v0.3.0 — *Cortex‑M Foundation*
-- Cortex‑M port: context switching, SysTick, PendSV
-- STM32H7 compilation target
-- Tick + timeslice enforcement
-- Port abstraction cleanup (`hrt_port_yield_to_scheduler`)
-- Example: Blinky / UART echo demo
+## 🕒 Timing work
 
----
-
-## ⚙️ v0.4.0 — *Synchronization & Mutexes*
-- Counting semaphores
-- `Mutex wrapper with basic priority inheritance` < semaphores might be enough.
-- Immediate handoff optimization on semaphore give
-- Expanded unit tests (POSIX)
-
----
-
-## 📬 v0.5.0 — *Queues & Events*
-- Message queues (SPSC → MPMC)
-- Event flags (bitmask groups)
-- Task notification API
-- Timeout variants of IPC (`hrt_sem_take_timeout`, etc.)
-
----
-
-## 🕒 v0.6.0 — *Timing & Tickless Idle*
-- Tickless idle (auto sleep until next event)
-- High‑resolution timers
+- Tickless idle
+- High-resolution timers
 - `hrt_delay_until()` API
 
----
+## 🧩 Broader platform work
 
-## 🧩 v0.7.0 — *Dual‑Core & AMP Support*
 - CM4↔CM7 communication primitives (AMP)
 - Shared memory mailbox interface
+- More Cortex-M validation and production hardening
 
----
+## 🧪 Verification work
 
-## 🧪 v0.8.0 — *Testing & Determinism*
-- POSIX simulation test harness
-- Cortex‑M simulation validation
-- Continuous integration with coverage
+- Continuous integration with broader coverage
+- More Cortex-M validation scenarios
+- Static analysis and MISRA-oriented cleanup
 
----
+## 🏁 1.0.0 target themes
 
-## 🧱 v0.9.0 — *Stabilization*
-- Code cleanup, strict warnings
-- Static analysis & MISRA review
-- Docs freeze draft
-
----
-
-## 🏁 v1.0.0 — *Production Release*
-- Fully verified Cortex‑M port (STM32H7)
-- Deterministic scheduler with preemption
-- Complete IPC suite (semaphores, mutexes, queues, events)
-- Tickless idle + timers
-- Unit tests and examples
-- Documentation freeze (API, Porting, Design)
-
----
-
-## 🧭 Beyond 1.0
-- Multi‑core load balancing (SMP experiment)
-- Dynamic memory configuration (optional)
-- Distributed scheduling primitives
-- File‑backed POSIX simulation mode
+- Verified Cortex-M port
+- Deterministic scheduler with clear behavioral guarantees
+- Complete IPC suite: semaphores, mutexes, queues, events
+- Timing primitives beyond basic sleep/tick
+- Documentation freeze

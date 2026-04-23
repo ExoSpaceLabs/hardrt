@@ -1,13 +1,8 @@
 #ifndef HARDRT_H
 #define HARDRT_H
 
-#include <stdint.h>
-#include <stddef.h>
-
 #ifdef __cplusplus
 extern "C" {
-
-
 
 #endif
 
@@ -28,6 +23,16 @@ extern "C" {
 #endif
 
 
+#include <stdint.h>
+#include <stddef.h>
+
+#include "hardrt_cfg.h"
+#include "hardrt_time.h"
+#include "hardrt_sem.h"
+#include "hardrt_mutex.h"
+#include "hardrt_queue.h"
+
+
 /**
  * @brief Task entry function signature.
  * @param arg Opaque pointer passed to the task on start.
@@ -40,7 +45,7 @@ typedef void (*hrt_task_fn)(void *);
 typedef enum {
     HRT_READY = 0, /**< Runnable (on ready queue) */
     HRT_SLEEP, /**< Sleeping until a wake tick */
-    HRT_BLOCKED, /**< Blocked on a primitive (future use) */
+    HRT_BLOCKED, /**< Blocked on a primitive */
     HRT_UNUSED /**< Slot not in use */
 } hrt_state_t;
 
@@ -61,7 +66,10 @@ typedef enum {
     ERR_STACK_RANGE = 12,
     ERR_STACK_ALIGN = 13,
     ERR_INVALID_RAM_RANGE = 14,
-    ERR_DUP_READY = 15
+    ERR_DUP_READY = 15,
+    ERR_MUTEX_OWNER = 16,
+    ERR_MUTEX_RECURSIVE = 17,
+    ERR_MUTEX_BAD_CTX = 18
 }hrt_err;
 
 /**
@@ -160,7 +168,7 @@ static uint32_t     g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned
 
 /**
  * @brief Get the semantic version string of HardRT at runtime.
- * @return NUL-terminated string, e.g. "0.3.0".
+ * @return NUL-terminated string, e.g. "0.4.0".
  */
 const char *hrt_version_string(void);
 
@@ -227,10 +235,23 @@ void hrt_sleep(uint32_t ms);
 void hrt_yield(void);
 
 /**
+ * @brief Permanently remove the current task from the scheduler.
+ * @note If a task function returns, this is called automatically.
+ *       The task slot is marked as UNUSED and won't be scheduled again.
+ */
+void hrt_task_delete(void);
+
+/**
  * @brief Get the current system tick count (monotonic, wraps on overflow).
  * @return Current tick counter.
  */
 uint32_t hrt_tick_now(void);
+
+/**
+ * @brief Get the elapsed system time in milliseconds since boot.
+ * @return Milliseconds since hrt_init().
+ */
+uint32_t hrt_now_ms(void);
 
 /**
  * @brief Change the scheduler policy at runtime.

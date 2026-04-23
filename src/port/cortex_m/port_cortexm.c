@@ -62,7 +62,7 @@ volatile uint32_t dbg_basperi;
 extern void hrt__tick_isr(void);
 extern _hrt_tcb_t* hrt__tcb(int id);
 
-void hrt_port_sp_valid(const uint32_t sp) {
+void hrt_port_sp_valid(const uintptr_t sp) {
 #if HARDRT_DEBUG == 1
     dbg_curr_sp = sp;
     (void)dbg_curr_sp;

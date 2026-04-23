@@ -1,18 +1,17 @@
-# Cross Compile
+# Cross-Compilation
 
-To compile the library for a different architecture, use the following instructions:
+To compile the library for a different architecture, follow these instructions:
 
-## ARM BAREMETAL
+## ARM BARE-METAL
 
-### Pre-requisites
+### Prerequisites
 
-#### prepare your projects:
-navigate to `Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/` from the `STM32CubeH7` repo and move your 
-device-specific system, startup and linker files to their dedicated folder.
+#### Project Preparation:
+Navigate to `Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/` from the `STM32CubeH7` repository and move the 
+device-specific system, startup, and linker files to the dedicated folder.
 
-install gcc by version 
-
-Debian/Ubuntu names shown; use your distro equivalents
+Install GCC:
+Debian/Ubuntu names shown; use equivalent names for other distributions.
 
 ```bash
 
@@ -20,9 +19,7 @@ sudo apt-get install gcc-arm-none-eabi gdb-multiarch openocd stlink-tools
 
 ```
 
-### Build
-
-use the following command to build the project
+# Use the following command to build the project:
 ```bash
 
 cmake -S . -B build-mcu \
@@ -35,11 +32,11 @@ cmake --build build-mcu -j
 cmake --install build-mcu --prefix "$PWD/install"
 ```
 
-> **NOTE:** This example builds for `cortex-m7`, if you are building for a different processor update it accordingly. 
+> **NOTE:** This example builds for `cortex-m7`. If building for a different processor, update it accordingly. 
 
-### Flashing the stm32
+### Flashing the STM32
 
-give st-link access to usb
+Provide st-link access to USB:
 ```bash
 cat <<'RULE' | sudo tee /etc/udev/rules.d/99-stlink.rules
 # STMicroelectronics ST-LINK/V2 & V3
@@ -48,59 +45,58 @@ RULE
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
-probe the existence of the board
+Probe the existence of the board:
 ```bash
 lsusb | grep -i st
 
 ```
-ask the package manager where the configuration scripts are located.
+Query the package manager for the location of the configuration scripts.
 
 ```bash
 dpkg -L openocd | grep '/scripts$'
 
 ```
-check for st file existence.
-```bash
+# Check for ST file existence.
 ls $(dpkg -L openocd | grep '/scripts$')/interface/stlink.cfg
 ls $(dpkg -L openocd | grep '/scripts$')/target/stm32h7x_dual_bank.cfg
 ```
-if they are shown, the board can be flashed.
-run the following openocd command to flash board:
+If these files are present, the board can be flashed.
+Run the following openocd command to flash the board:
 ```bash
 
-openocd -s /usr/share/openocd/scripts   -f scripts/openocd_h755_clean.cfg   -c "init; reset halt; \
+openocd -s /usr/share/openocd/scripts -f scripts/openocd_h755_clean.cfg -c "init; reset halt; \
       stm32h7x mass_erase 0; \
       stm32h7x mass_erase 1; \
       program examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf verify; \
       reset halt; shutdown"
 
 ```
-if no errors pop up, we can try and debug using dbg and two terminals:
+If no errors occur, debugging is possible using gdb and two terminals:
 
 Terminal A:
 ```bash
 
-openocd -s /usr/share/openocd/scripts -f  scripts/openocd_h755.cfg -c "init; reset halt"
+openocd -s /usr/share/openocd/scripts -f scripts/openocd_h755.cfg -c "init; reset halt"
 ```
-Which will launch the board in debug mode. And now we can uce gdb to debug for ticks.
+This command launches the board in debug mode. gdb can then be used to debug for ticks.
 
 Terminal B:
 ```bash
 gdb-multiarch examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf
 
 ```
-inside (gdb)
+Inside (gdb):
 ```bash 
 target extended-remote :3333
 monitor reset halt
-b SysTick_Handler            # PendSV_Handler
+b SysTick_Handler # PendSV_Handler
 c
 
 ```
 Alternatively, run a gdb script that prepares all required breakpoints and outputs. See example scripts under
-scripts/gdb/  
+scripts/gdb/.
 
-commands
+Command:
 ```bash
 
 gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -batch -x scripts/gdb/tasks.gdb
@@ -108,7 +104,7 @@ gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -b
 This example script sets breakpoints for taskA and taskB with additional information like ticks and execution count.
 
 
-### include it in your project as follows:
+### Include HardRT in a project:
 #### CMake
 
-#### Others?
+#### Others
