@@ -28,7 +28,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (excerpt on POSIX):
 ```
-HardRT version: 0.4.0 (0x000301), port: posix (id=1)
+HardRT version: 0.4.0 (0x000400), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 ...

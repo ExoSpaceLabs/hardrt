@@ -34,7 +34,7 @@ static void B(void* arg) {
 }
 
 int main() {
-    const hrt_config_t cfg = { .tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5 };
+    hrt_config_t cfg = { 1000, HRT_SCHED_PRIORITY_RR, 5, 0, HRT_TICK_SYSTICK };
     System::init(cfg);
 
     if (Task::create<2048, 0>(A, nullptr, HRT_PRIO0, 5) < 0)

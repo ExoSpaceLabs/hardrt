@@ -17,6 +17,6 @@ Current components and their status.
 - Priority enum provides 12 symbolic levels (`HRT_PRIO0..HRT_PRIO11`); effective range is `0..HARDRT_MAX_PRIO-1` per build config.
 - Max task/priority sizing is controlled at configure time; see `docs/BUILD.md` for `HARDRT_CFG_MAX_TASKS` and `HARDRT_CFG_MAX_PRIO`.
 - Mutexes are implemented as **non-recursive**, **task-context-only**, and **without priority inheritance** in the current release.
-- Dedicated example applications for mutex in both C and C++ are still pending, but the public API and tests are present.
+- Dedicated example applications for mutexes in both C and C++ are available in `examples/mutex_basic[_cpp]`.
 
 Current version: `0.4.0` (see `hrt_version_string()` and `hrt_version_u32()`).

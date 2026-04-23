@@ -23,7 +23,7 @@ This guide summarizes the bundled examples and includes small usage snippets for
 - `examples/queue_posix_cpp`
 - `examples/hardrt_h755_blinky_cpp`
 
-> Dedicated `mutex` example applications in C and C++ are available in `examples/mutex_basic` and `examples/mutex_basic_cpp`. The API is also documented below with usage snippets.
+> Dedicated `mutex` example applications in C and C++ are available in `examples/mutex_basic` and `examples/mutex_basic_cpp`.
 
 ---
 
@@ -37,7 +37,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (program exits immediately; no live scheduling):
 ```
-HardRT version: 0.4.0 (0x000301), port: null (id=0)
+HardRT version: 0.4.0 (0x000400), port: null (id=0)
 ```
 
 Notes:
@@ -53,7 +53,7 @@ cmake --build . --target two_tasks -j
 
 Expected output (excerpt; continues indefinitely):
 ```terminaloutput
-HardRT version: 0.4.0 (0x000301), port: posix (id=1)
+HardRT version: 0.4.0 (0x000400), port: posix (id=1)
 [A] tick count [0]
 [B] tock -----
 [A] tick count [1]

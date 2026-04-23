@@ -29,10 +29,12 @@ int main() {
            System::version_string(), System::version_u32(),
            System::port_name(), System::port_id());
 
-    const hrt_config_t cfg = {
-        .tick_hz = 1000,
-        .policy  = HRT_SCHED_PRIORITY_RR,
-        .default_slice = 5
+    hrt_config_t cfg = {
+        1000,
+        HRT_SCHED_PRIORITY_RR,
+        5,
+        0,
+        HRT_TICK_SYSTICK
     };
 
     if (System::init(cfg) != 0) {

@@ -18,11 +18,11 @@ The wrapper currently provides:
 #include <hardrtpp.hpp>
 
 hrt_config_t cfg{
-    .tick_hz = 1000,
-    .policy = HRT_SCHED_PRIORITY_RR,
-    .default_slice = 5,
-    .core_hz = 0,
-    .tick_src = HRT_TICK_SYSTICK,
+    1000,
+    HRT_SCHED_PRIORITY_RR,
+    5,
+    0,
+    HRT_TICK_SYSTICK
 };
 
 hardrt::System::init(cfg);

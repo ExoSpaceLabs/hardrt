@@ -12,6 +12,7 @@ Minimal footprint, predictable behavior, and zero hardware dependencies in its c
 - **Pure C core** — no dynamic allocation, no HAL dependencies.
 - **Portable ports** — currently: null, posix, cortex-m.
 - **Scheduler** — priority, round-robin, or hybrid.
+- **Task control** — `hrt_sleep()`, `hrt_yield()`, `hrt_task_delete()`, and `hrt_now_ms()` millisecond helper.
 - **Semaphores (binary + counting)** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up; counting mode via `hrt_sem_init_counting`.
 - **Mutexes** — owner-tracked, non-recursive, FIFO waiter queue with direct handoff on unlock.
 - **Message Queues** — fixed-size, copy-based FIFO, blocking/non-blocking and ISR support.
@@ -170,14 +171,9 @@ Task-level yield/sleep:
 
 ## Statistics
 
-HardRT v0.3.0 demonstrates:
-- Deterministic priority-based scheduling
-- Predictable and explainable latency behavior under contention
-- Event → task latencies on the order of **~19–25 µs average** on Cortex-M7 @ 64 MHz under debug-attached conditions
+See [STATISTICS.md](docs/STATISTICS.md) for detailed information on timing and tests collected for **HardRT v0.4.0**. 
 
-See [STATISTICS.md](docs/STATISTICS.md) for detailed information on timing and tests.
-
-These results provide a solid baseline for further optimization and for documenting real-time behavior guarantees.
+These results provide a solid baseline for further optimization and for documenting real-time behavior guarantees. Fundamental deterministic behavior remains identical to previous versions.
 
 ---
 ## 📜 License
