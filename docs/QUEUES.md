@@ -1,139 +1,156 @@
 # HardRT Message Queues
 
-HardRT provides a fixed-size message queue implementation for inter-task communication. These queues are based on a ring buffer and support both blocking and non-blocking operations, as well as use within Interrupt Service Routines (ISRs).
+HardRT v0.4.0 provides fixed-capacity, copy-based FIFO queues for communication between tasks. Queue storage is supplied by the application; the kernel performs no dynamic allocation.
 
-## Overview
+## Properties
 
-A `hrt_queue_t` object manages a buffer of items of a fixed size.
-- **Copy-based**: Items are copied into and out of the queue buffer using `memcpy`.
-- **FIFO**: Items are delivered in the same order they were sent.
-- **Blocking**: Tasks can block indefinitely when sending to a full queue or receiving from an empty one.
-- **FIFO Waiters**: If multiple tasks are blocked on a queue, they are woken in the order they began waiting.
+- Items have one fixed size selected at initialization.
+- Items are copied with `memcpy`.
+- Queue order is FIFO.
+- Blocking task operations may wait indefinitely.
+- Non-blocking task and ISR operations return immediately.
+- Sender and receiver waiters are stored in separate FIFO task-ID queues.
 
 ## Initialization
-
-Queues use application-provided storage for their internal buffer.
 
 ```c
 #include "hardrt_queue.h"
 
 #define QUEUE_CAPACITY 10
-#define ITEM_SIZE sizeof(my_msg_t)
 
-hrt_queue_t my_queue;
-uint8_t queue_storage[QUEUE_CAPACITY * ITEM_SIZE];
+typedef struct {
+    uint32_t id;
+    uint32_t value;
+} message_t;
 
-void init(void) {
-    hrt_queue_init(&my_queue, queue_storage, QUEUE_CAPACITY, ITEM_SIZE);
+static hrt_queue_t queue;
+static uint8_t queue_storage[QUEUE_CAPACITY * sizeof(message_t)];
+
+static void init_queue(void) {
+    hrt_queue_init(
+        &queue,
+        queue_storage,
+        QUEUE_CAPACITY,
+        sizeof(message_t));
 }
 ```
 
-## Operations
+The storage must remain valid for the queue lifetime and must contain at least `capacity * item_size` bytes.
 
-### Task Context (Blocking)
+## Task-context operations
 
-- `hrt_queue_send`: Sends an item. Blocks if the queue is full.
-- `hrt_queue_recv`: Receives an item. Blocks if the queue is empty.
+### Blocking
 
 ```c
-my_msg_t msg = { .id = 1 };
-hrt_queue_send(&my_queue, &msg); // Blocks until space available
-
-my_msg_t received;
-hrt_queue_recv(&my_queue, &received); // Blocks until item available
+int hrt_queue_send(hrt_queue_t *queue, const void *item);
+int hrt_queue_recv(hrt_queue_t *queue, void *out);
 ```
 
-### Task Context (Non-blocking)
+- `hrt_queue_send()` retries until space is available.
+- `hrt_queue_recv()` retries until an item is available.
+- A full sender joins the TX waiter FIFO and becomes `HRT_BLOCKED`.
+- An empty receiver joins the RX waiter FIFO and becomes `HRT_BLOCKED`.
 
-- `hrt_queue_try_send`: Attempts to send. Returns `0` on success, `-1` if full.
-- `hrt_queue_try_recv`: Attempts to receive. Returns `0` on success, `-1` if empty.
+There are no timeout variants in v0.4.0.
 
-### ISR Context
+### Non-blocking
 
-Queues support sending and receiving from ISRs using specialized functions. These functions never block and provide a `need_switch` flag to indicate if a higher-priority task was woken.
+```c
+int hrt_queue_try_send(hrt_queue_t *queue, const void *item);
+int hrt_queue_try_recv(hrt_queue_t *queue, void *out);
+```
 
-- `hrt_queue_try_send_from_isr`
-- `hrt_queue_try_recv_from_isr`
+Both functions return `0` on success and `-1` when the operation cannot be completed immediately.
+
+A successful task-context operation wakes one opposite-side waiter when present. The current implementation then calls `hrt_yield()`, even if the awakened task is not higher priority.
+
+## ISR-context operations
+
+```c
+int hrt_queue_try_send_from_isr(
+    hrt_queue_t *queue,
+    const void *item,
+    int *need_switch);
+
+int hrt_queue_try_recv_from_isr(
+    hrt_queue_t *queue,
+    void *out,
+    int *need_switch);
+```
+
+These operations never block.
+
+In v0.4.0:
+
+- `*need_switch` is set to `1` whenever the operation wakes any waiter;
+- it is not a comparison between the waiter's priority and the interrupted task's priority;
+- the queue function itself calls `hrt__pend_context_switch()` when a waiter is awakened;
+- the ISR does not call a separate `hrt_port_yield_from_isr()` function, because no such public API exists.
+
+Example:
 
 ```c
 void MY_IRQ_Handler(void) {
-    my_msg_t msg = { .id = 99 };
-    int need_switch = 0;
-    if (hrt_queue_try_send_from_isr(&my_queue, &msg, &need_switch) == 0) {
-        if (need_switch) {
-            hrt_port_yield_from_isr(); // Port-specific yield
-        }
-    }
-}
-```
-
-### Handling Large Data
-
-When transmitting large payloads, avoid enqueuing the data directly. Instead, enqueue a structure containing a pointer to the data and its length. This minimizes `memcpy` overhead and critical section time.
-
-```c
-typedef struct {
-    void    *p_data;
-    size_t   length;
-} my_large_msg_t;
-
-/* Send a pointer to a large buffer */
-void producer(void) {
-    static char big_buffer[1024];
-    my_large_msg_t msg = {
-        .p_data = big_buffer,
-        .length = sizeof(big_buffer)
+    const message_t message = {
+        .id = 99,
+        .value = 1234
     };
-    
-    /* Enqueue the small struct containing the pointer */
-    hrt_queue_send(&my_queue, &msg);
-}
+    int need_switch = 0;
 
-void consumer(void) {
-    my_large_msg_t msg;
-    
-    /* Dequeue the small struct */
-    hrt_queue_recv(&my_queue, &msg);
-    
-    /* Process data via pointer */
-    printf("Received %zu bytes at %p\n", msg.length, msg.p_data);
+    (void)hrt_queue_try_send_from_isr(
+        &queue,
+        &message,
+        &need_switch);
+
+    /* The queue operation has already requested rescheduling when needed.
+       The flag is available for ISR/application bookkeeping. */
+    (void)need_switch;
 }
 ```
 
-## Implementation Details
+The selected port's ISR critical-section rules still apply. On Cortex-M, only interrupts compatible with the configured `BASEPRI` syscall ceiling may call HardRT ISR APIs.
 
-### Data Structure
+## Wake behavior
+
+A successful enqueue wakes at most one receiver. A successful dequeue wakes at most one sender. Waiters are removed FIFO and passed to the common ready-queue insertion path.
+
+The queue does not directly transfer an item between waiting tasks. The awakened task resumes and retries its operation.
+
+## Copy and critical-section cost
+
+The implementation copies the complete item while holding the port critical section:
+
+```c
+memcpy(destination, source, queue->item_size);
+```
+
+Large items therefore increase interrupt-masked or signal-masked time. Prefer small values, indices, or pointers for large payloads.
+
+When queueing pointers, HardRT copies only the pointer value. It does not manage ownership or lifetime of the pointed-to storage.
 
 ```c
 typedef struct {
-    uint8_t *buf;
-    size_t   item_size;
-    uint16_t capacity;
-
-    volatile uint16_t head;
-    volatile uint16_t tail;
-    volatile uint16_t count;
-
-    /* Internal waiter FIFOs for TX and RX */
-    uint8_t rx_q[HARDRT_MAX_TASKS];
-    uint8_t rx_head, rx_tail, rx_wait;
-
-    uint8_t tx_q[HARDRT_MAX_TASKS];
-    uint8_t tx_head, tx_tail, tx_wait;
-} hrt_queue_t;
+    void *data;
+    size_t length;
+} buffer_ref_t;
 ```
 
-### Performance Considerations
+The producer and consumer must define who owns the buffer and when it may be reused.
 
-Because HardRT queues copy data, they are best suited for:
-1. Small data structures (integers, small structs).
-2. Pointers to larger buffers (e.g., from a memory pool).
-3. Indices into an array.
+## Current structure
 
-Large `item_size` will increase the time spent in critical sections during `memcpy`.
+The public `hrt_queue_t` contains:
+
+- storage pointer, item size, capacity, head, tail, and item count;
+- one RX waiter FIFO;
+- one TX waiter FIFO.
+
+Waiter arrays are sized by `HARDRT_MAX_TASKS`. In a CMake build, that macro currently includes the additional idle slot, although the idle task should never wait on a queue.
 
 ## Constraints
 
-- **No Timeouts**: Blocking operations currently block forever.
-- **Fixed Size**: Queue capacity and item size are fixed at initialization.
-- **Memory**: Storage must be provided by the caller and must be large enough (`capacity * item_size`).
+- Capacity and item size cannot change after initialization.
+- Blocking operations have no timeout.
+- No dynamic allocation is performed.
+- Queue state and item storage must outlive all users.
+- ISR operations are non-blocking only; they still execute the configured critical-section mechanism and item copy.
