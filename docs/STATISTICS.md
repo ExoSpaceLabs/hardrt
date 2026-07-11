@@ -1,126 +1,122 @@
-# HardRT – Timing & Latency Characterization
+# HardRT Timing and Latency Measurements
 
-This document contains performance data collected for **HardRT v0.4.0** on STM32H7.
-The measurements demonstrate deterministic behavior and the impact of task priorities on scheduling latency.
+This document records measurements collected for HardRT v0.4.0 on one STM32H755 Cortex-M7 setup. The results characterize that setup and workload. They are not a proof of a universal worst-case execution-time or end-to-end latency bound.
 
-All measurements were performed **without modifying HardRT core logic**, using application-level instrumentation and the Cortex-M DWT cycle counter.
+## Recorded setup
 
----
+### Target
 
-## Test Setup
-
-**Target**
-- MCU: STM32H755 (Cortex-M7)
+- MCU: STM32H755, Cortex-M7 core
 - Core clock: 64 MHz (`SystemCoreClock = 64_000_000`)
-- Port: `cortex_m`
+- HardRT port: `cortex_m`
 
-**Build**
+### Build
+
 - Configuration: Release
-- Semihosting: Disabled
-- Debug variables: Disabled
+- Semihosting: disabled
+- HardRT debug variables: disabled
 
-**Measurement method**
-- ISR timestamps event using `DWT->CYCCNT`
-- ISR signals a semaphore (`hrt_sem_give_from_isr`)
-- High-priority task timestamps on semaphore take
-- Latency = `t_task_entry - t_event`
-- Samples per test: 10,000
+The original record does not pin every compiler, linker, cache, flash-wait-state, FPU, interrupt-load, and memory-placement detail needed to reproduce a formal upper bound. Treat the values below as historical measurements until that information and the raw artifacts are captured together.
 
-**Tick mode**
-- External tick (kernel time advanced externally)
-- Measurements focus on **event → task execution**, not timekeeping accuracy
+### Measurement method
 
----
+- An ISR timestamps an event using `DWT->CYCCNT`.
+- The ISR calls `hrt_sem_give_from_isr()`.
+- The awakened task timestamps after its semaphore take returns.
+- Reported latency is the unsigned cycle difference between those timestamps.
+- Each recorded case contains 10,000 samples.
 
-## Representative Run (Tick PRIO0, Event PRIO0)
+### Tick mode
 
-This run shows the full console output for the **equal-priority** case (both tick and event tasks at **PRIO0**).
+The measurements used external tick mode. They focus on ISR signal to task execution rather than accuracy of the kernel time base.
 
-Command used:
+## Representative recorded run
+
+The following command shape was used with the repository timing example and GDB script:
+
+```bash
+gdb-multiarch \
+  -q examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf \
+  -batch \
+  -x scripts/gdb/timing.dbg
 ```
-dev in dev in hardrt on  develop [!?⇡] via △ v3.22.1 took 25s 
-➜ gdb-multiarch -q examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf -batch -x scripts/gdb/timing.dbg
-```
 
-Console output:
-```
-0x080006cc in Reset_Handler ()
-semihosting is disabled
+The build directory is illustrative. Reproduction requires generating the firmware for the same target and configuration first.
 
-target halted due to debug-request, current mode: Thread 
-xPSR: 0x01000000 pc: 0x080006cc msp: 0x20020000
-Breakpoint 1 at 0x8000d68
-Note: automatically using hardware breakpoints for read-only addresses.
-Breakpoint 2 at 0x80007c6
+Recorded output for the equal-priority case:
 
---- Target reached ---
+```text
 SystemCoreClock=64000000 Hz
 
 [TICK -> TASK]
 count=10000
-min=1161 cycles, avg=1414 cycles (sum/count=1414), max=2232 cycles
+min=1161 cycles, avg=1414 cycles, max=2232 cycles
 min=18 us, avg=22 us, max=34 us (approx)
-min=18140 ns, avg=22093 ns, max=34875 ns
 
 [SEM GIVE -> TASK TAKE]
 count=10000
-min=1201 cycles, avg=1547 cycles (sum/count=1547), max=2893 cycles
+min=1201 cycles, avg=1547 cycles, max=2893 cycles
 min=18 us, avg=24 us, max=45 us (approx)
-min=18765 ns, avg=24171 ns, max=45203 ns
 
 [TIMER CFG]
 TIM2: PSC=31 ARR=999 us period
 TIM3: PSC=31 ARR=4999 us period
-[Inferior 1 (Remote target) detached]
 ```
 
----
+## Recorded priority-interaction results
 
-## Priority Interaction Results
+Two tasks were used:
 
-Two latency-sensitive tasks were used:
-- **Tick task** (periodic event)
-- **Event task** (asynchronous external event)
+- a periodic tick-related task;
+- an asynchronous event task.
 
-Both tasks are woken via ISR-signaled semaphores.
+Both were awakened through ISR semaphore gives.
 
-### Summary Table
+| Test | Task priorities | Metric | Min cycles | Avg cycles | Max cycles | Min µs | Avg µs | Max µs |
+|---:|---|---|---:|---:|---:|---:|---:|---:|
+| 0 | Tick PRIO0, Event PRIO0 | Tick to task | 1161 | 1414 | 2232 | 18 | 22 | 34 |
+| 0 | Tick PRIO0, Event PRIO0 | Event to task | 1201 | 1547 | 2893 | 18 | 24 | 45 |
+| 1 | Tick PRIO0, Event PRIO1 | Tick to task | 1161 | 1348 | 1879 | 18 | 21 | 29 |
+| 1 | Tick PRIO0, Event PRIO1 | Event to task | 1301 | 1636 | 2957 | 20 | 25 | 46 |
+| 2 | Tick PRIO1, Event PRIO0 | Tick to task | 1261 | 1741 | 3559 | 19 | 27 | 55 |
+| 2 | Tick PRIO1, Event PRIO0 | Event to task | 1158 | 1221 | 1242 | 18 | 19 | 19 |
 
-| Test | Task Priorities                 | Metric       | Min (cycles) | Avg (cycles) | Max (cycles) | Min (µs) | Avg (µs) | Max (µs) |
-|-----:|---------------------------------|--------------|-------------:|-------------:|-------------:|---------:|---------:|---------:|
-|    0 | Tick **PRIO0**, Event **PRIO0** | Tick → Task  |         1161 |         1414 |         2232 |       18 |       22 |       34 |
-|    0 | Tick **PRIO0**, Event **PRIO0** | Event → Task |         1201 |         1547 |         2893 |       18 |       24 |       45 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Tick → Task  |         1161 |         1348 |         1879 |       18 |       21 |       29 |
-|    1 | Tick **PRIO0**, Event **PRIO1** | Event → Task |         1301 |         1636 |         2957 |       20 |       25 |       46 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Tick → Task  |         1261 |         1741 |         3559 |       19 |       27 |       55 |
-|    2 | Tick **PRIO1**, Event **PRIO0** | Event → Task |         1158 |         1221 |         1242 |       18 |       19 |       19 |
+Microsecond values are approximate conversions from the reported 64 MHz cycle counts.
 
----
+## Interpretation limited to this run
 
-## Interpretation
+The recorded traces are consistent with the current priority-ordered ready-queue implementation: when both measured tasks were ready at a scheduling decision, the higher-priority task was selected first.
 
-- When multiple tasks are woken concurrently, **HardRT always schedules the highest-priority READY task first**.
-- With equal priority (PRIO0/PRIO0), both latency paths remain in the same ballpark, but jitter reflects contention and timing alignment.
-- The highest-priority task consistently exhibits **lower average latency and tighter jitter** when priorities differ.
-- Lower-priority tasks absorb interference caused by:
-    - context save/restore of higher-priority tasks
-    - scheduler execution
-    - shared interrupt and memory activity
+The measurements also show that observed latency varied with task priority and contention in this workload. They do not establish that every higher-priority wake has the same latency, or that lower-priority delay is bounded independently of application behavior.
 
-This behavior is **intentional and deterministic**, and matches the expected contract of a priority-based real-time scheduler.
+Factors not represented by the simplified table can include:
 
-**Note on v0.4.0 changes:** 
-Measurements for v0.4.0 show a slight improvement in the best-case latency (min cycles) and more consistent performance across priority levels compared to v0.3.0. The fundamental behavior remains identical: higher priority tasks pre-empt or execute before lower priority tasks when both are ready.
+- time spent in HardRT critical sections;
+- higher-urgency interrupts permitted above the `BASEPRI` ceiling;
+- execution of already-ready higher-priority tasks;
+- queue or semaphore processing;
+- compiler optimization and code placement;
+- cache, flash, bus, and memory effects;
+- debug or trace instrumentation;
+- optional floating-point context requirements.
 
----
+A continuously ready higher-priority task can starve lower-priority work. Any application-level deadline claim therefore requires a workload and interrupt analysis in addition to the kernel measurements.
 
-## Notes on Tick Source
+## Tick-source relevance
 
-These measurements were performed using **external tick mode**.  
-This choice isolates **event → task latency** from kernel timekeeping behavior.
+External tick mode was used to isolate the semaphore event path from SysTick configuration. Changing to the internal SysTick source can change interrupt interaction, tick-handler timing, and wake-up timing. The data here should not be assumed unchanged without measurement.
 
-Using SysTick instead would primarily affect:
-- tick ISR execution time
-- wake-up of sleeping tasks
+## Reproduction status
 
-It does **not** materially change the semaphore-based event → task latency path shown above.
+The repository contains the timing example and GDB script referenced above, but the historical record does not yet contain a complete reproducibility bundle with:
+
+- exact HardRT commit SHA;
+- compiler and binutils versions;
+- complete compile and link flags;
+- board revision and clock configuration;
+- cache, FPU, and flash settings;
+- interrupt priorities and competing interrupt load;
+- raw machine-readable samples;
+- analysis script and expected output.
+
+Until those are recorded together, use this page as a performance observation for the stated setup, not as a certified maximum-latency specification.
