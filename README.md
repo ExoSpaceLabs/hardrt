@@ -1,181 +1,149 @@
 # 🫀 HardRT [[ExoSpaceLabs](https://github.com/ExoSpaceLabs)]
 
-**HardRT** is the heartbeat of small embedded systems.  
-A tiny, portable, modular real-time operating system written in C.  
-Minimal footprint, predictable behavior, and zero hardware dependencies in its core.
+**HardRT** is a small, portable real-time operating-system kernel written in C.
+The core uses static allocation and has no HAL dependency.
 
 **Version:** `0.4.0`
 
----
+## Features available in v0.4.0
 
-## ✨ Features
-- **Pure C core** — no dynamic allocation, no HAL dependencies.
-- **Portable ports** — currently: null, posix, cortex-m.
-- **Scheduler** — priority, round-robin, or hybrid.
-- **Task control** — `hrt_sleep()`, `hrt_yield()`, `hrt_task_delete()`, and `hrt_now_ms()` millisecond helper.
-- **Semaphores (binary + counting)** — blocking take, `try_take`, ISR-safe `give` with FIFO wake-up; counting mode via `hrt_sem_init_counting`.
-- **Mutexes** — owner-tracked, non-recursive, FIFO waiter queue with direct handoff on unlock.
-- **Message Queues** — fixed-size, copy-based FIFO, blocking/non-blocking and ISR support.
-- **Static tasks** — stacks and TCBs supplied by the application.
-- **CMake package** — install and consume via `find_package(HardRT)`.
-- **Generated metadata** — version and port headers at build time.
-- **Optional C++17 wrapper** — header-only interface target when enabled. See [C++ Guide](docs/CPP.md).
+- **Pure C core:** no dynamic allocation and no hardware abstraction layer in the kernel.
+- **Ports:** `null`, `posix`, and `cortex_m`.
+- **Static tasks:** task stacks are supplied by the application.
+- **Scheduling:** fixed-priority scheduling with optional round-robin time slicing inside priority classes.
+- **Task control:** `hrt_sleep()`, `hrt_yield()`, `hrt_task_delete()`, `hrt_tick_now()`, and `hrt_now_ms()`.
+- **Semaphores:** binary and counting modes, FIFO waiter queues, and ISR-safe give.
+- **Mutexes:** owner-tracked, non-recursive, FIFO waiter queues, and direct handoff.
+- **Message queues:** fixed-size, copy-based FIFO queues with task and ISR operations.
+- **CMake package:** installation and consumption through `find_package(HardRT)`.
+- **Optional C++17 wrapper:** header-only wrappers enabled with `HARDRT_ENABLE_CPP`.
 
-Please refer to [PORTING.md](docs/PORTING.md) for additional port inclusion.
+The current release does not provide IPC timeouts, mutex priority inheritance, event flags, task notifications, tickless idle, or high-resolution timers.
 
-> The POSIX port is for logic verification, not timing accuracy. `ucontext` is used and supported on Linux/glibc.
+## Port behavior
 
-> “On Cortex-M, the max time from tick to running the next highest priority ready task is bounded by: ISR tail + PendSV latency + context save/restore”
+The Cortex-M port uses SysTick or an application-provided external tick and performs context switching through PendSV.
 
-> The POSIX port is regularly validated on Ubuntu 22.04, Ubuntu 24.04, and GitHub CI Linux environments. A test-suite failure has been observed on Debian 13 and is currently under investigation.
----
+The POSIX port is a logic and scheduler simulator for Linux/glibc. It uses `ucontext` and a `SIGALRM` tick. The signal handler performs tick accounting and requests rescheduling, but it does not switch task contexts directly. A POSIX task returns control to the scheduler only when it calls a HardRT scheduling point, such as sleep, yield, a blocking IPC operation, task deletion, or task return. A CPU-bound task that never reaches such a point can prevent other POSIX tasks from running.
 
-### Architecture
+The POSIX port is not a timing-accurate model of Cortex-M execution. It is regularly exercised on Ubuntu and GitHub-hosted Linux runners. A test-suite failure has been observed on Debian 13 with GCC 14 and glibc 2.41.
+
+See [the porting guide](docs/PORTING.md) for the current port contract.
+
+## Architecture
 
 ![architecture](docs/images/Architecture.png)
 
-The Architecture is mainly divided into three layers:
-- **Application Layer**: Where the tasks are defined. e.g., camera, UART downlink, HK/FDIR, etc.
-- **HardRT Core**: Where the RTOS lives, manages tasks, and calls the port to switch context when necessary.
-  - **HardRT Port**: Wraps the hardware-specific methods.
-- **Hardware Layer**: Hardware specific methods, registers, primitives, etc.
+HardRT is divided into three layers:
 
-> “Event-to-task latency in HardRT depends on task priority. When multiple tasks are woken concurrently,
-> the highest-priority task consistently achieves minimal latency, while lower-priority tasks incur bounded
-> additional delay.”
+- **Application:** task functions and application-owned storage.
+- **HardRT core:** task state, ready queues, timing, and synchronization primitives.
+- **Port:** architecture-specific tick, critical-section, idle, stack-frame, and context-switch operations.
 
-### Task State Machine
-![task_state_machine.png](docs/images/task_state_machine.png)
+### Task state machine
 
-Where each task is executed in accordance with the policy adopted by the scheduler.
+![task state machine](docs/images/task_state_machine.png)
 
-> Note: If a task exits, it is automatically deleted (EXIT) and the scheduler won't requeue it.
+A task that returns from its entry function is passed to `hrt_task_delete()`, marked unused, and is not scheduled again.
 
-see also [Concepts](#-concepts)
+## Repository layout
 
-## 📁 Repository Layout
-```
+```text
 hardrt/
-├── inc/                    # Public headers
-├── src/                    # Core + port implementations
-│   ├── core/               # Kernel internals
-│   └── port/               # Architecture-specific backends (null, posix, cortex_m)
-├── cpp/                    # Optional C++17 interface
-├── cmake/                  # additional cmake files and toolchains
+├── inc/                    # Public and port-facing headers
+├── src/
+│   ├── core/               # Kernel implementation
+│   └── port/               # null, posix, and cortex_m ports
+├── cpp/                    # Optional C++17 wrapper
+├── cmake/                  # Package files and toolchains
 ├── examples/               # Example applications
 ├── tests/                  # POSIX test harness
-├── scripts/                # scripts to build and test the project
+├── scripts/                # Build and test helpers
 ├── docs/                   # Documentation
 ├── LICENSE
 └── README.md
 ```
 
----
+## Build
 
-## ⚙️ Build
 ```bash
-mkdir -p build && cd build
-cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_EXAMPLES=ON ..
-cmake --build . -j$(nproc)
-./examples/two_tasks/two_tasks
-```
-Install package:
-```bash
-cmake --install . --prefix "$PWD/install"
+cmake -S . -B build \
+  -DHARDRT_PORT=posix \
+  -DHARDRT_BUILD_EXAMPLES=ON
+cmake --build build -j
+./build/examples/two_tasks/two_tasks
 ```
 
-Consume from another CMake project:
+Install the package:
+
+```bash
+cmake --install build --prefix "$PWD/build/install"
+```
+
+Consume it from another CMake project:
+
 ```cmake
 find_package(HardRT 0.4.0 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
-For further information and CMake flags, see the [Build](docs/BUILD.md) document.
 
----
+See [BUILD.md](docs/BUILD.md) for the current prerequisites and CMake options.
 
-## 🧠 Concepts
+## Scheduling in the current implementation
 
-### Tick vs Timeslice
-- **Tick:** base time unit generated by a timer interrupt (or POSIX signal). HardRT increments a counter each tick and wakes sleepers.
-- **Timeslice:** number of ticks a task may run before being rotated under RR. In the current implementation, rotation is triggered safely through the scheduler path rather than by direct context switching inside the tick hook.
+Priority `0` is the highest priority. Ready tasks are stored in one FIFO queue per priority, and the scheduler always selects the first task from the highest non-empty priority queue.
 
+- `HRT_SCHED_PRIORITY` uses fixed-priority selection without tick-driven time-slice rotation.
+- `HRT_SCHED_RR` enables time-slice accounting, but task selection still uses the priority queues in v0.4.0.
+- `HRT_SCHED_PRIORITY_RR` also uses fixed-priority selection and rotates time-sliced tasks within the same priority class.
+- A task with `timeslice == 0` is cooperative and is not rotated when ticks expire.
 
-### Policy: Round‑robin within one priority (Sequence at tick times)
+Consequently, `HRT_SCHED_RR` is not a priority-independent global round-robin policy in the current implementation.
 
-![policy_RR.png](docs/images/policy_RR.png)
+A timeslice is expressed in **ticks**, not milliseconds. Its wall-clock duration depends on `tick_hz`.
 
-Caption:
-- Policy: `HRT_SCHED_PRIORITY_RR` (RR applies within same priority).
-- Two READY tasks with `timeslice=1 ms`. Handoffs occur exactly at every tick...
-- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
+## Tick sources
 
-![two_tick_RR.png](docs/images/two_tick_RR.png)
+- `HRT_TICK_SYSTICK`: the selected port owns the periodic tick and calls the private core tick handler.
+- `HRT_TICK_EXTERNAL`: the application owns the timer and calls `hrt_tick_from_isr()` from that timer ISR.
 
-Caption:
-- Identical example with `timeslice=2 ms` is shown above, in essence handoffs occur every two ticks.
+Tick processing increments the tick counter, wakes expired sleepers, updates the running task's slice, and requests rescheduling only when a wake-up or slice expiry requires it. It never performs a task-context switch directly.
 
-each task is executed in order.
+See [TICK_SOURCE.md](docs/TICK_SOURCE.md) for details.
 
-### Policy: Priority preemption (Sequence at tick times)
+## Task timing
 
-![preempt.png](docs/images/preempt.png)
+`hrt_sleep(ms)` converts milliseconds to ticks using ceiling division. Positive durations shorter than one tick sleep for one tick. In v0.4.0, `hrt_sleep(0)` also sleeps for one tick; use `hrt_yield()` for an immediate voluntary scheduling point.
 
-Caption:
-- this example shows four tasks with different priorities.
-- D the lowest priority task running continuously.
-- D is interrupted at T6 by Task A lasting one tick and resumes Task D.
-- D is interrupted once again by higher priority task C at T10 lasting three ticks.
-- C as well is interrupted by Task B (an even higher task) at T11 lasting two ticks.
-- B returns to C, which finishes the remaining work (two more ticks); and returns to D.
-- Self-transitions mark per-tick continuity when no interrupt/context switch occurs.
+## Synchronization
 
+### Semaphores
 
+- `hrt_sem_init`, `hrt_sem_init_counting`
+- `hrt_sem_take`, `hrt_sem_try_take`
+- `hrt_sem_give`, `hrt_sem_give_from_isr`
 
-> RR with preemption allows the usage of both policies within the same context.
-
----
-
-### Semaphores (binary + counting)
-- `hrt_sem_init`, `hrt_sem_init_counting`, `hrt_sem_take`, `hrt_sem_try_take`, `hrt_sem_give`, `hrt_sem_give_from_isr`.
-- Use semaphores for **event signaling**, **resource counting**, and producer/consumer synchronization.
+Semaphores use FIFO waiter queues and direct handoff. They are not owner-tracked.
 
 ### Mutexes
-- `hrt_mutex_init`, `hrt_mutex_lock`, `hrt_mutex_try_lock`, `hrt_mutex_unlock`.
-- Owner-tracked, non-recursive, task-context-only mutual exclusion primitive.
-- Unlock performs direct handoff to one waiter when contention exists.
-- Current implementation does **not** provide priority inheritance or timed lock.
 
-### Message Queues
-- `hrt_queue_init`, `hrt_queue_send`, `hrt_queue_recv`, `hrt_queue_try_send`, `hrt_queue_try_recv`.
-- Fixed-size items, copy-based FIFO. See [QUEUES.md](docs/QUEUES.md).
+- `hrt_mutex_init`, `hrt_mutex_lock`, `hrt_mutex_try_lock`, `hrt_mutex_unlock`
 
-### Scheduling Flow
-![scheduling_flow.png](docs/images/scheduling_flow.png)
+Mutexes are task-context-only, non-recursive, and owner-tracked. The current implementation has no priority inheritance or timed lock.
 
-Tick (ISR/signal) -> hrt_tick_from_isr():
-- g_tick++
-- wake any SLEEP tasks whose wake_tick ⇐ now
-- hrt__pend_context_switch() (set resched flag)
+### Message queues
 
-Scheduler loop (port):
-- if resched flag:
-  -  next = hrt__pick_next_ready()
-  -  swapcontext/PendSV to next task
+- `hrt_queue_init`
+- blocking and non-blocking send/receive
+- non-blocking ISR send/receive
 
-Task-level yield/sleep:
-- mark state (READY→queue or SLEEP)
-- hrt__pend_context_switch()
-- hrt_port_yield_to_scheduler() (safe handoff from task ctx)
+Queue items are copied with `memcpy` while the queue operation holds the port critical section. Keep items small or enqueue pointers/indices whose lifetime is managed by the application.
 
----
+## Timing measurements
 
-## Statistics
+[STATISTICS.md](docs/STATISTICS.md) contains measurements collected on an STM32H755 Cortex-M7 setup. Those values characterize that recorded configuration and workload; they are not general worst-case execution-time guarantees for every application, interrupt layout, build, or memory configuration.
 
-See [STATISTICS.md](docs/STATISTICS.md) for detailed information on timing and tests collected for **HardRT v0.4.0**. 
+## License
 
-These results provide a solid baseline for further optimization and for documenting real-time behavior guarantees. Fundamental deterministic behavior remains identical to previous versions.
-
----
-## 📜 License
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
