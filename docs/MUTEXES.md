@@ -1,23 +1,18 @@
-# 🔐 Mutexes
+# Mutexes
 
-HardRT provides a dedicated mutex primitive for mutual exclusion in task context.
+HardRT v0.4.0 provides an owner-tracked mutex for mutual exclusion in task context.
 
 ## Current semantics
 
 The current `hrt_mutex_t` implementation is:
-- **owner-tracked**
-- **non-recursive**
-- **FIFO for waiters**
-- **direct handoff on unlock**
-- **task-context only**
 
-The current implementation does **not** provide:
-- priority inheritance
-- recursive locking
-- timed lock / timeout API
-- ISR lock/unlock API
+- owner-tracked;
+- non-recursive;
+- FIFO for waiters;
+- direct-handoff on unlock;
+- task-context-only.
 
----
+It does not provide priority inheritance, recursive locking, timeout operations, or ISR lock/unlock APIs.
 
 ## API
 
@@ -26,90 +21,75 @@ The current implementation does **not** provide:
 
 #define HRT_MUTEX_NO_OWNER (-1)
 
-void hrt_mutex_init(hrt_mutex_t *m);
-int  hrt_mutex_lock(hrt_mutex_t *m);
-int  hrt_mutex_try_lock(hrt_mutex_t *m);
-int  hrt_mutex_unlock(hrt_mutex_t *m);
+void hrt_mutex_init(hrt_mutex_t *mutex);
+int  hrt_mutex_lock(hrt_mutex_t *mutex);
+int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
+int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
 
-### Initialization
+## Initialization
 
 ```c
-hrt_mutex_t m;
-hrt_mutex_init(&m);
+hrt_mutex_t mutex;
+hrt_mutex_init(&mutex);
 ```
 
-After initialization:
-- `locked == 0`
-- `owner == HRT_MUTEX_NO_OWNER`
-- waiter queue is empty
+After initialization, the mutex is unlocked, its owner is `HRT_MUTEX_NO_OWNER`, and its waiter FIFO is empty.
 
-### `hrt_mutex_try_lock()`
+## Try lock
 
-Attempts to acquire the mutex without blocking.
+`hrt_mutex_try_lock()` attempts to acquire the mutex without blocking.
 
-Returns:
-- `0` on success
-- `-1` if already locked or the call is invalid for the current context
+- It returns `0` when the current task acquires ownership.
+- It returns `-1` when the mutex is already locked or the current context is invalid.
+- It returns `-1` when the current owner tries to acquire it again, because the mutex is non-recursive.
 
-If the current owner calls `try_lock()` again, the call fails because the mutex is non-recursive.
+## Blocking lock
 
-### `hrt_mutex_lock()`
+`hrt_mutex_lock()`:
 
-Blocks until the mutex becomes available.
+- acquires an unlocked mutex and records the current task as owner;
+- appends a contending task to the FIFO waiter queue and marks it blocked;
+- rejects recursive acquisition by the current owner.
 
-Behavior:
-- if unlocked, the current task becomes owner and returns `0`
-- if locked by another task, the caller is queued FIFO and moved to `HRT_BLOCKED`
-- if already owned by the caller, the call fails with `-1`
+When a blocked task resumes after direct handoff, it already owns the mutex.
 
-When a blocked task resumes after handoff, it already owns the mutex.
+There is no timed-lock variant in v0.4.0.
 
-### `hrt_mutex_unlock()`
+## Unlock
 
-Releases a mutex owned by the current task.
+Only the owning task may unlock.
 
-Behavior:
-- if there is no waiter, the mutex becomes unlocked and owner resets to `HRT_MUTEX_NO_OWNER`
-- if there is a waiter, ownership is transferred directly to the next waiter and that task is made READY
-- if called by a non-owner, the call fails with `-1`
+- With no waiter, the mutex becomes unlocked and the owner is reset.
+- With a waiter, ownership is transferred directly to the first FIFO waiter and that task is made ready.
+- A non-owner unlock returns `-1`.
 
----
+The current implementation yields after waking a waiter. Waiter selection is FIFO at the mutex, while final execution still follows the scheduler's priority-queue selection.
 
-## Scheduling behavior under contention
-
-When a task unlocks a contested mutex, HardRT performs **direct handoff**:
-1. dequeue one waiter
-2. transfer ownership to that waiter
-3. wake the waiter
-4. yield so the awakened task can run promptly under scheduler policy
-
-This avoids a release-then-race pattern and keeps handoff deterministic.
-
-Waiter order is FIFO at the mutex queue level. Final execution order still respects the scheduler's global priority policy.
-
----
-
-## Usage example (C)
+## C example
 
 ```c
 #include "hardrt.h"
 
 static hrt_mutex_t uart_lock;
+static uint32_t telemetry_stack[1024];
+static uint32_t log_stack[1024];
 
-static void telemetry_task(void*) {
+static void telemetry_task(void *arg) {
+    (void)arg;
     for (;;) {
         hrt_mutex_lock(&uart_lock);
-        /* write telemetry frame */
+        /* Write telemetry frame. */
         hrt_mutex_unlock(&uart_lock);
         hrt_sleep(20);
     }
 }
 
-static void log_task(void*) {
+static void log_task(void *arg) {
+    (void)arg;
     for (;;) {
         if (hrt_mutex_try_lock(&uart_lock) == 0) {
-            /* write log record */
+            /* Write log record. */
             hrt_mutex_unlock(&uart_lock);
         }
         hrt_sleep(5);
@@ -117,50 +97,58 @@ static void log_task(void*) {
 }
 
 int main(void) {
-    static uint32_t s1[1024], s2[1024];
-    hrt_config_t cfg = {
+    const hrt_config_t cfg = {
         .tick_hz = 1000,
         .policy = HRT_SCHED_PRIORITY_RR,
         .default_slice = 5,
         .core_hz = 0,
         .tick_src = HRT_TICK_SYSTICK
     };
+    const hrt_task_attr_t attr = {
+        .priority = HRT_PRIO1,
+        .timeslice = 5
+    };
 
     hrt_init(&cfg);
     hrt_mutex_init(&uart_lock);
-
-    hrt_task_attr_t p = { .priority = HRT_PRIO1, .timeslice = 5 };
-    hrt_create_task(telemetry_task, 0, s1, 1024, &p);
-    hrt_create_task(log_task, 0, s2, 1024, &p);
+    hrt_create_task(
+        telemetry_task,
+        NULL,
+        telemetry_stack,
+        1024,
+        &attr);
+    hrt_create_task(
+        log_task,
+        NULL,
+        log_stack,
+        1024,
+        &attr);
     hrt_start();
 }
 ```
 
-## Usage example (C++)
+## C++ example
 
 ```cpp
 #include <hardrtpp.hpp>
 
 static hardrt::Mutex uart_lock;
 
-static void task(void*) {
+static void worker(void *arg) {
+    (void)arg;
     for (;;) {
         uart_lock.lock();
-        // critical section
+        // Critical section.
         uart_lock.unlock();
         hardrt::Task::sleep(10);
     }
 }
 ```
 
----
-
-## Rules and caveats
+## Rules
 
 - Call mutex APIs only from task context.
-- Do not call mutex APIs from ISR.
-- Unlock must be performed by the owner.
+- Do not call mutex APIs from an ISR.
+- Unlock only from the owning task.
 - Do not attempt recursive locking.
-- Priority inversion mitigation is not yet implemented.
-
-For cases where ownership does not matter and ISR interaction does, use a semaphore instead.
+- Analyze priority inversion at the application level; v0.4.0 has no mitigation mechanism.
