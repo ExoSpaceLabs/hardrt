@@ -62,7 +62,9 @@ int hrt_queue_try_recv(hrt_queue_t *queue, void *out);
 
 Both functions return `0` on success and `-1` when the operation cannot be completed immediately.
 
-A successful task-context operation wakes one opposite-side waiter when present. The current implementation then calls `hrt_yield()`, even if the awakened task is not higher priority.
+A successful non-blocking task operation wakes one opposite-side waiter when present and then calls `hrt_yield()`, regardless of relative task priority.
+
+The blocking send/receive loops first call those non-blocking functions. If a blocking operation later succeeds through its protected recheck path, it may wake one opposite-side waiter and return without an additional explicit yield.
 
 ## ISR-context operations
 
