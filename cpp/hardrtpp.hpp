@@ -29,8 +29,10 @@ namespace hardrt {
          * @param fn     Pointer to the task function.
          * @param arg    User argument passed to the task function.
          * @param prio   Task priority.
-         * @param slice  Timeslice in ticks (0 for default).
-         * @return 0 on success, or a negative error code on failure.
+         * @param slice  Timeslice in ticks; zero creates a cooperative task.
+         * @return Non-negative task ID on success, or a negative error code.
+         * @note Because an explicit attribute object is passed to the C API, a
+         *       zero slice does not request the system default.
          */
         template <size_t StackWords = 1024, int Tag = 0>
         static int create(const hrt_task_fn fn, void* arg, const hrt_prio_t prio, const uint16_t slice = 0) {
@@ -47,8 +49,8 @@ namespace hardrt {
          * @param stack  Pointer to the beginning of the stack array (uint32_t).
          * @param words  Size of the stack in 32-bit words.
          * @param prio   Task priority.
-         * @param slice  Timeslice in ticks (0 to use system default).
-         * @return 0 on success.
+         * @param slice  Timeslice in ticks; zero creates a cooperative task.
+         * @return Non-negative task ID on success, or a negative error code.
          */
         static int create_with_stack(const hrt_task_fn fn, void* arg, uint32_t* stack, const size_t words,
                                      const hrt_prio_t prio, const uint16_t slice = 0) {
@@ -58,14 +60,15 @@ namespace hardrt {
 
         /**
          * @brief Put the current task to sleep for a specified duration.
-         * @param ms Duration in milliseconds.
+         * @param ms Duration in milliseconds. In v0.4.0, zero sleeps for one tick.
          */
         static void sleep(uint32_t ms) {
             hrt_sleep(ms);
         }
 
         /**
-         * @brief Yield the CPU to another task of the same or higher priority.
+         * @brief Yield the CPU, moving the current READY task to the tail of its
+         * priority queue and refreshing its configured slice.
          */
         static void yield() {
             hrt_yield();
@@ -100,9 +103,11 @@ namespace hardrt {
         /**
          * @brief Initialize the RTOS kernel.
          *
-         * Must be called exactly once before any other RTOS function.
+         * Applications should call this once before creating tasks or starting
+         * the scheduler. The v0.4.0 C implementation returns zero and does not
+         * validate repeated initialization or lifecycle ordering.
          * @param cfg Configuration structure (tick rate, scheduling policy, etc.).
-         * @return 0 on success, or a negative error code on failure.
+         * @return The value returned by hrt_init().
          */
         static int init(const hrt_config_t& cfg) {
             return hrt_init(&cfg);
@@ -111,15 +116,15 @@ namespace hardrt {
         /**
          * @brief Start the RTOS scheduler.
          *
-         * This function normally never returns. It transfers control to the highest
-         * priority task created.
+         * This function normally does not return on Cortex-M. The null port
+         * returns without running tasks.
          */
         static void start() {
             hrt_start();
         }
 
         /**
-         * @brief Get the elapsed system ticks since boot.
+         * @brief Get the elapsed system ticks since initialization.
          * @return Current tick count.
          */
         static uint32_t tick_now() {
@@ -127,8 +132,8 @@ namespace hardrt {
         }
 
         /**
-         * @brief Get the elapsed system time in milliseconds since boot.
-         * @return Milliseconds since System::init().
+         * @brief Get the elapsed system time in milliseconds.
+         * @return Milliseconds derived from the current tick and tick rate.
          */
         static uint32_t now_ms() {
             return hrt_now_ms();
@@ -143,7 +148,7 @@ namespace hardrt {
         }
 
         /**
-         * @brief Get the RTOS version as a packed 32-bit integer.
+         * @brief Get the RTOS version as a packed integer.
          * @return Packed version (0xMMmmPP).
          */
         static uint32_t version_u32() {
@@ -168,15 +173,14 @@ namespace hardrt {
     };
 
     /**
-     * @brief Object-oriented wrapper for binary semaphores.
-     *
-     * Used for task synchronization and resource protection.
+     * @brief Object-oriented wrapper for binary or counting semaphores.
      */
     class Semaphore {
     public:
         /**
          * @brief Initialize a semaphore. Binary by default, counting if max_count > 1.
-         * @param init Initial state: 1 (available/given), 0 (unavailable/taken).
+         * @param init Initial token count, clamped by the C implementation.
+         * @param max_count Maximum token count.
          */
         explicit Semaphore(unsigned init = 0, uint8_t max_count = 1) {
             if (max_count <= 1) {
@@ -188,10 +192,8 @@ namespace hardrt {
         }
 
         /**
-         * @brief Take (wait for) the semaphore.
-         *
-         * Blocks the calling task if the semaphore is not available.
-         * @return 0 on success.
+         * @brief Take the semaphore, blocking if no token is available.
+         * @return 0 after the semaphore has been acquired.
          */
         int take() {
             return hrt_sem_take(&_sem);
@@ -199,28 +201,26 @@ namespace hardrt {
 
         /**
          * @brief Attempt to take the semaphore without blocking.
-         * @return 0 if taken successfully, -1 if it was already unavailable.
+         * @return 0 on success, -1 when unavailable.
          */
         int try_take() {
             return hrt_sem_try_take(&_sem);
         }
 
         /**
-         * @brief Give (release) the semaphore.
-         *
-         * Wakes one waiting task according to the semaphore handoff policy.
-         * @return 0 on success.
+         * @brief Give the semaphore.
+         * @return 0.
+         * @note The current implementation yields when it wakes a waiter.
          */
         int give() {
             return hrt_sem_give(&_sem);
         }
 
         /**
-         * @brief Give (release) the semaphore from an Interrupt Service Routine (ISR).
-         *
-         * Special version to be used in hardware interrupts.
-         * @param need_switch [out] Set to 1 if a context switch is required after the ISR.
-         * @return 0 on success.
+         * @brief Give the semaphore from an ISR.
+         * @param need_switch Set to 1 when any waiter is awakened. In v0.4.0
+         *        this is not a higher-priority comparison.
+         * @return 0.
          */
         int give_from_isr(int& need_switch) {
             return hrt_sem_give_from_isr(&_sem, &need_switch);
@@ -231,13 +231,13 @@ namespace hardrt {
     };
 
     /**
-     * @brief C++ wrapper for HardRT queues.
+     * @brief C++ wrappers for fixed-capacity, copy-based HardRT queues.
      *
-     * HardRT queues are fixed-capacity and copy items into a user-provided
-     * storage buffer (no malloc). This wrapper provides two options:
+     * - QueueRef<T>: binds to externally provided storage.
+     * - StaticQueue<T, Capacity>: owns storage sized at compile time.
      *
-     * - QueueRef<T>: bind to externally provided storage
-     * - StaticQueue<T, Capacity>: owns a static buffer sized at compile-time
+     * The C implementation copies T with memcpy. Use types that are safe to
+     * copy byte-for-byte. The v0.4.0 wrapper does not enforce trivial copyability.
      */
     template <typename T>
     class QueueRef {
@@ -248,9 +248,8 @@ namespace hardrt {
 
         /**
          * @brief Initialize a queue using external storage.
-         *
-         * @param storage   Byte buffer large enough for (capacity * sizeof(T)).
-         * @param capacity  Number of T elements.
+         * @param storage Byte buffer large enough for capacity * sizeof(T).
+         * @param capacity Number of T elements.
          */
         void init(void* storage, uint16_t capacity) {
             hrt_queue_init(&_q, storage, capacity, sizeof(T));
@@ -327,6 +326,9 @@ namespace hardrt {
         hrt_queue_t _q{};
     };
 
+    /**
+     * @brief C++ wrapper for the current owner-tracked, non-recursive mutex.
+     */
     class Mutex {
     public:
         Mutex() {

@@ -1,99 +1,99 @@
-# POSIX Test Suite — Validating HardRT on Linux
+# POSIX Test Suite
 
-This document explains how the POSIX-hosted test suite validates the HardRT static library, how to build and run it, and what `HARDRT_TEST_HOOKS` means.
+This document describes the hosted test suite for HardRT v0.4.0.
 
-## Overview
-- Target: POSIX port (`HARDRT_PORT=posix`)
-- Artifact: `hardrt_tests` (single executable)
-- Purpose: Deterministically exercise core scheduling/time behavior on a desktop host using a signal-driven tick and cooperative context switching.
-- Output: Numbered test cases with colorized PASS/FAIL lines and a final summary.
+## Purpose and execution model
 
-The suite is self-contained; it does not pull any external test framework.
+- Port: `posix`
+- Test executable: `hardrt_tests`
+- Tick source: normally `SIGALRM`
+- Task contexts: Linux/glibc `ucontext`
+- Context handoff: cooperative at HardRT scheduling points
 
-## What is HARDRT_TEST_HOOKS?
-Some tests need additional visibility or control to be deterministic (e.g., stop the scheduler cleanly, fast-forward ticks, inspect idle activity). To support this, the POSIX port and core expose a few extra symbols guarded by the compile-time macro `HARDRT_TEST_HOOKS`.
+The signal handler advances tick accounting and marks rescheduling pending. It does not call `swapcontext()`. A task returns control to the scheduler through sleep, yield, blocking IPC, deletion, or task return.
 
-- When building tests via CMake on the POSIX port, `HARDRT_TEST_HOOKS` is REQUIRED and is automatically defined for the library target:
-  - `target_compile_definitions(hardrt PRIVATE HARDRT_TEST_HOOKS)`
-- These hooks do not exist in normal (non-test) builds and have no impact on release functionality.
-- In this project’s configuration, POSIX tests are always built with hooks enabled; if they are manually disabled, hook-dependent tests will fail fast rather than silently skipping, because they validate essential scheduler behavior.
+The POSIX suite validates core logic and hosted integration. It is not a timing-accuracy test for Cortex-M.
 
-Examples of test-only hooks (POSIX):
-- `hrt__test_stop_scheduler()` / `hrt__test_reset_scheduler_state()` — deterministic start/stop of the scheduler loop.
-- `hrt__test_fast_forward_ticks(uint32_t delta)` — advance the core tick with `SIGALRM` masked (used for wraparound testing).
-- `hrt__test_idle_counter_reset()` / `hrt__test_idle_counter_value()` — observe idle-loop activity.
-- Core helpers under tests: `hrt__test_set_tick(uint32_t)` / `hrt__test_get_tick()`.
+## Test hooks
 
-## Building and running
+Tests compile the library and test executable with `HARDRT_TEST_HOOKS`.
 
-### With CMake (example)
+Current hooks include:
+
+- `hrt__test_stop_scheduler()`
+- `hrt__test_reset_scheduler_state()`
+- `hrt__test_fast_forward_ticks(uint32_t delta)`
+- `hrt__test_idle_counter_reset()`
+- `hrt__test_idle_counter_value()`
+- `hrt__test_set_tick(uint32_t value)`
+- `hrt__test_get_tick()`
+
+These symbols are not part of a normal release build.
+
+## Build and run
+
+```bash
+cmake -S . -B build-tests \
+  -DHARDRT_PORT=posix \
+  -DHARDRT_BUILD_TESTS=ON
+cmake --build build-tests --target hardrt_tests -j
+ctest --test-dir build-tests --output-on-failure
 ```
-mkdir build && cd build
-cmake -DHARDRT_PORT=posix -DHARDRT_BUILD_TESTS=ON ..
-cmake --build . --target hardrt_tests
-./hardrt_tests
-```
 
-Or via CTest:
-```
-ctest --output-on-failure
-```
+`HARDRT_BUILD_TESTS` defaults to ON, but the executable is created only when `HARDRT_PORT=posix`.
 
-Prerequisites at configured time:
-- `-DHARDRT_PORT=posix`
-- `-DHARDRT_BUILD_TESTS=ON` (default ON)
+The helper script also runs the suite:
 
-If either is missing or the port is not `posix`, the `hardrt_tests` target is skipped.
-
-### Using the helper script
-The helper script also builds and runs the test suite before launching the example:
-```
+```bash
 ./scripts/build-lib-posix.sh
 ```
-It will abort before running the example if any test fails.
 
-## What the suite covers
-Existing groups (non-exhaustive summary):
-- Identity & init basics
-- Sleep/wake determinism and controlled scheduler stop
-- Round-robin fairness with yield and with short sleeps
-- Strict priority dominance (PRIORITY policy)
-- Cooperative vs RR mix within the same priority class
-- Tick-rate independence (e.g., 200 Hz) via correct ms→tick conversion
-- Task creation limits, default attributes behavior
-- Runtime tuning at runtime (policy switch)
-- Ready-queue FIFO order in a priority class
-- Tick wraparound safety (requires `HARDRT_TEST_HOOKS`)
-- `sleep(0)` semantics vs `yield()`
-- Task return stability (task entry returns without crashing the scheduler)
+## Current coverage
 
-All tests are deterministic and bounded; the POSIX scheduler is stopped by a test hook when a case is complete.
+The registered test sources cover:
 
-## Output format
-Each case prints:
-- A heading: `==== Test N/TOTAL: <Name> ====`
-- One or more colorized assertion lines:
-  - `PASS: <description>` (green)
-  - `FAIL: <description>` with diagnostics (red)
-- A per-test result line and an end-of-suite summary:
+- version, port identity, and basic initialization;
+- sleep/wake behavior and controlled scheduler shutdown;
+- same-priority yield and sleep rotation;
+- strict priority dominance;
+- cooperative versus sliced tasks within a priority class;
+- tick-rate conversion;
+- task creation limits and default attributes;
+- runtime policy/default-slice updates;
+- FIFO ready-queue order within a priority class;
+- tick wraparound;
+- current `sleep(0)` behavior;
+- task return;
+- semaphores, queues, mutexes, and external tick mode;
+- idle behavior and `hrt_now_ms()`.
+
+The `sleep(0)` test currently verifies that `hrt_sleep(0)` delays for at least one tick. It does not treat zero as an alias for `hrt_yield()`.
+
+The RR tests exercise tasks within the same priority class. They do not prove that `HRT_SCHED_RR` ignores task priorities; the current scheduler continues to select the highest non-empty priority queue.
+
+## Output
+
+Each test prints a heading, assertion results, and a suite summary. The process returns zero only when all registered cases pass.
+
+## Sanitizer behavior
+
+With `HARDRT_SANITIZE=ON`, the test configuration enables UndefinedBehaviorSanitizer:
+
+```text
+-fsanitize=undefined -fno-omit-frame-pointer
 ```
-================ Summary ================
-Total tests: <N>
-  Passed: <n>
-  Failed: <m>
-========================================
-```
-The test runner returns exit code 0 if all tests passed; non-zero otherwise.
 
-## Skipped tests and hook-dependent behavior
-- Some cases (e.g., tick wraparound) rely on `HARDRT_TEST_HOOKS`. If the library under test was not built with these hooks, such cases are reported as skipped in their group implementation or omitted from registration.
-- In the default POSIX test configuration provided by this project, hooks are enabled, so no cases are skipped.
+AddressSanitizer is not enabled because `makecontext()` and `swapcontext()` are not compatible with the intended ASan setup.
 
-## Validating the library
-For the POSIX port, a successful run of `hardrt_tests` indicates that:
-- The core time base (`hrt_tick_now`) is consistent with the configured tick rate.
-- Sleep/wake and round-robin accounting behave as specified.
-- Priority policy invariants hold (strict priority wins, FIFO within a class).
-- The port integrates correctly with the core: no context switches in the signal handler; rotation at scheduler re-entry with `SIGALRM` masked.
+## What a passing suite demonstrates
 
-This provides a strong signal that the static library (`libhardrt.a`) is functionally correct on the POSIX host port.
+A passing run provides evidence that, on the tested Linux/glibc environment:
+
+- core tick and millisecond conversion behave as asserted by the tests;
+- sleep, wake, block, and ready-queue transitions complete without detected test failures;
+- same-priority FIFO and slice behavior matches the registered cases;
+- synchronization primitives integrate with the hosted scheduler;
+- no context switch is performed directly in the SIGALRM handler;
+- test-only scheduler shutdown remains deterministic.
+
+It does not establish Cortex-M timing bounds, portability to another libc, global priority-independent round-robin semantics, or absence of defects outside the covered cases.

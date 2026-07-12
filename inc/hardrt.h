@@ -7,8 +7,10 @@ extern "C" {
 #endif
 
 /**
- * @brief Maximum number of concurrent tasks supported by the kernel.
+ * @brief Total number of task-control slots supported by the kernel.
  * @note Can be overridden at compile time via -DHARDRT_MAX_TASKS.
+ *       CMake currently defines this as HARDRT_CFG_MAX_TASKS + 1 so that one
+ *       additional slot is reserved for the idle task.
  */
 #ifndef HARDRT_MAX_TASKS
 #define HARDRT_MAX_TASKS 8
@@ -73,10 +75,14 @@ typedef enum {
 }hrt_err;
 
 /**
- * @brief Scheduler policy.
- * - HRT_SCHED_PRIORITY: strict fixed-priority, cooperative within a class.
- * - HRT_SCHED_RR: single round-robin class.
- * - HRT_SCHED_PRIORITY_RR: fixed-priority with round-robin within each class.
+ * @brief Scheduler policy used by the v0.4.0 implementation.
+ *
+ * Ready tasks are stored in FIFO queues per priority and all policies select
+ * from the highest non-empty priority queue.
+ * - HRT_SCHED_PRIORITY: fixed-priority selection without tick-driven rotation.
+ * - HRT_SCHED_RR: enables time-slice accounting but still respects priorities.
+ * - HRT_SCHED_PRIORITY_RR: fixed-priority selection with time-slice rotation
+ *   inside each priority class.
  */
 typedef enum {
     HRT_SCHED_PRIORITY = 0,
@@ -110,7 +116,8 @@ typedef enum {
 
 /**
  * @brief Kernel initialization parameters.
- * @note All fields are optional; zero initializes to defaults.
+ * @note Zero tick_hz selects 1000 Hz and zero default_slice selects 5 ticks.
+ *       Policy and tick-source values are not validated in v0.4.0.
  */
 typedef struct {
     uint32_t tick_hz; // kernel tick frequency (Hz)
@@ -191,10 +198,12 @@ const char *hrt_port_name(void);
 int hrt_port_id(void);
 
 /**
- * @brief Initialize the kernel and start the system tick on the active port.
+ * @brief Initialize kernel state and invoke the active port tick-start hook.
  * @param cfg Optional configuration; pass NULL for defaults.
- * @return 0 on success; negative on error.
- * @note Must be called before any other API. Safe to call once.
+ * @return The v0.4.0 implementation returns 0.
+ * @note Call once before creating tasks or starting the scheduler. The current
+ *       implementation does not reject repeated initialization or invalid
+ *       lifecycle ordering.
  */
 int hrt_init(const hrt_config_t *cfg);
 
@@ -218,19 +227,21 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
                     const hrt_task_attr_t *attr);
 
 /**
- * @brief Enter the scheduler loop; does not return on preemptive ports.
+ * @brief Enter the scheduler loop; does not return on the Cortex-M port.
  * @note On the null port this returns immediately without running tasks.
  */
 void hrt_start(void);
 
 /**
  * @brief Sleep the calling task for at least the specified milliseconds.
- * @param ms Milliseconds to sleep; 0 yields immediately.
+ * @param ms Milliseconds to sleep. In v0.4.0, zero is rounded up to one tick.
+ * @note Use hrt_yield() for an immediate voluntary scheduling point.
  */
 void hrt_sleep(uint32_t ms);
 
 /**
- * @brief Yield the processor voluntarily to allow other ready tasks to run.
+ * @brief Yield the processor voluntarily, moving the current READY task to the
+ * tail of its priority queue and refreshing its configured slice.
  */
 void hrt_yield(void);
 
@@ -248,21 +259,21 @@ void hrt_task_delete(void);
 uint32_t hrt_tick_now(void);
 
 /**
- * @brief Get the elapsed system time in milliseconds since boot.
- * @return Milliseconds since hrt_init().
+ * @brief Get the elapsed system time in milliseconds since initialization.
+ * @return Milliseconds derived from the current tick and configured tick rate.
  */
 uint32_t hrt_now_ms(void);
 
 /**
- * @brief Change the scheduler policy at runtime.
- * @param p New policy to apply.
- * @note Effect takes place on the next scheduling point.
+ * @brief Change the scheduler policy value at runtime.
+ * @param p New policy value to store.
+ * @note The current implementation performs no validation or ready-queue rebuild.
  */
 void hrt_set_policy(hrt_policy_t p);
 
 /**
- * @brief Change the default round-robin timeslice used when creating tasks.
- * @param t Timeslice in ticks; 0 disables RR for tasks without an explicit slice.
+ * @brief Change the default timeslice used by tasks created later with attr==NULL.
+ * @param t Timeslice in ticks; 0 creates cooperative default tasks.
  */
 void hrt_set_default_timeslice(uint16_t t);
 
@@ -270,7 +281,9 @@ void hrt_set_default_timeslice(uint16_t t);
 /**
  * @brief Start the port-specific system tick source with the given frequency.
  * @param tick_hz Tick frequency in Hz.
- * @note Called by hrt_init(). Port must call hrt_tick_from_isr() at each tick.
+ * @note Called by hrt_init(). In port-owned tick mode, the port handler calls
+ *       the private hrt__tick_isr() core function. In external mode, the port
+ *       must not start its own periodic tick.
  */
 void hrt_port_start_systick(uint32_t tick_hz);
 
@@ -288,7 +301,7 @@ void hrt__pend_context_switch(void); /* request a switch (e.g., PendSV) */
 
 /**
  * @brief Architecture-specific trampoline that enters the task function.
- * @note Provided by the port; sets up a call to the user task entry and handles return.
+ * @note Provided by the port; calls hrt_task_delete() when the task returns.
  */
 void hrt__task_trampoline(void); /* arch-specific entry trampoline */
 
