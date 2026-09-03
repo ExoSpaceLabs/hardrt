@@ -4,8 +4,8 @@ project(hardrt_cm7_dwt_timing LANGUAGES C ASM)
 set(STM32CUBE_H7_ROOT "" CACHE STRING "STM32CubeH7 repository path")
 set(STM32_DEVICE "STM32H755xx" CACHE STRING "STM32 device define")
 set(STM32_CORE "CORE_CM7" CACHE STRING "Core define")
-set(HARDRT_TIMING_CASE "event_to_task" CACHE STRING "Timing case: event_to_task|sem_isr_ready|ready_to_task")
-set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS event_to_task sem_isr_ready ready_to_task)
+set(HARDRT_TIMING_CASE "event_to_task" CACHE STRING "Timing case: event_to_task|sem_isr_ready|ready_to_task|scheduler_decision")
+set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS event_to_task sem_isr_ready ready_to_task scheduler_decision)
 set(HARDRT_TIMING_EVENT_HZ 1000 CACHE STRING "One-shot event rate used between samples")
 set(HARDRT_TIMING_TARGET_SAMPLES 10000 CACHE STRING "Samples collected before debugger breakpoint")
 
@@ -23,6 +23,8 @@ elseif(HARDRT_TIMING_CASE STREQUAL "sem_isr_ready")
     set(HARDRT_TIMING_CASE_ID 2)
 elseif(HARDRT_TIMING_CASE STREQUAL "ready_to_task")
     set(HARDRT_TIMING_CASE_ID 3)
+elseif(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
+    set(HARDRT_TIMING_CASE_ID 4)
 else()
     message(FATAL_ERROR "Unknown HARDRT_TIMING_CASE=${HARDRT_TIMING_CASE}")
 endif()
@@ -80,3 +82,9 @@ target_link_options(${PROJECT_NAME}.elf PRIVATE
     -specs=nosys.specs
     -nostartfiles
 )
+
+if(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
+    # Diagnostic-only link wrapping. PendSV's call to hrt__schedule is redirected
+    # through the timing wrapper in main.c; normal HardRT builds are untouched.
+    target_link_options(${PROJECT_NAME}.elf PRIVATE -Wl,--wrap=hrt__schedule)
+endif()
