@@ -76,7 +76,14 @@ commands
       printf "metric=hrt_sem_give_from_isr entry -> waiter marked READY\n"
       printf "HardRT timing profile=ipc (only IPC hook points enabled)\n"
     else
-      printf "case=UNKNOWN (%u)\n", $case
+      if $case == 3
+        printf "case=ready_to_task\n"
+        printf "metric=waiter marked READY -> latency task continuation\n"
+        printf "NOTE: includes ISR tail, PendSV/scheduler selection, context restore, exception return, and blocked semaphore return; it is not a pure context-switch microbenchmark.\n"
+        printf "HardRT timing profile=ipc (waiter-READY start marker only)\n"
+      else
+        printf "case=UNKNOWN (%u)\n", $case
+      end
     end
   end
 
