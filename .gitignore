@@ -18,6 +18,9 @@ CMakeUserPresets.json
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #cmake-build-*
 
+# Legacy local hardware qualification / profiling evidence.
+.qualification/
+
 # Development hardware qualification / profiling evidence.
 # Keep it in the visible validation tree while ignoring timestamped development runs.
 validation/stm32/20*/
