@@ -47,11 +47,29 @@ HardRT is divided into three layers:
 - **HardRT core:** task state, ready queues, timing, and synchronization primitives.
 - **Port:** architecture-specific tick, critical-section, idle, stack-frame, and context-switch operations.
 
-### Task state machine
+### Task lifecycle
 
-![task state machine](docs/images/task_state_machine.png)
+HardRT does not use a separate `RUNNING` state. The currently executing application task remains `HRT_READY`; scheduling changes queue membership and execution context while the task stays logically runnable.
 
-A task that returns from its entry function is passed to `hrt_task_delete()`, marked unused, and is not scheduled again.
+```mermaid
+stateDiagram-v2
+    [*] --> UNUSED
+
+    UNUSED --> READY: hrt_create_task()
+
+    READY --> SLEEP: hrt_sleep()
+    SLEEP --> READY: wake tick
+
+    READY --> BLOCKED: semaphore / queue / mutex wait
+    BLOCKED --> READY: IPC wake / direct handoff
+
+    READY --> READY: hrt_yield() / RR quantum expiry
+    READY --> READY: higher-priority preemption / resume
+
+    READY --> UNUSED: hrt_task_delete() / task returns
+```
+
+A task that returns from its entry function is passed to `hrt_task_delete()`, marked unused, and is not scheduled again unless that task slot is later reused by a new task creation.
 
 ## Repository layout
 
