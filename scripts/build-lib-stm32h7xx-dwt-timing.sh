@@ -13,23 +13,27 @@ usage() {
 Usage: scripts/build-lib-stm32h7xx-dwt-timing.sh [options]
 
 Options:
-  --case event_to_task|sem_isr_ready|ready_to_task
+  --case event_to_task|sem_isr_ready|ready_to_task|scheduler_decision
   --event-hz HZ
   --samples N
   --no-flash
   -h, --help
 
 Cases:
-  event_to_task  Direct DWT timestamps only. HardRT timing profile is `none`.
-                 Measures the composite interval from a software point in TIM2
-                 ISR to the latency task continuing after semaphore wake.
+  event_to_task      Direct DWT timestamps only. HardRT timing profile is `none`.
+                     Measures the composite interval from a software point in
+                     TIM2 ISR to the latency task continuing after semaphore wake.
 
-  sem_isr_ready  Builds HardRT with only the private `ipc` timing profile.
-                 Measures hrt_sem_give_from_isr entry -> waiter marked READY.
+  sem_isr_ready      Builds HardRT with only the private `ipc` timing profile.
+                     Measures hrt_sem_give_from_isr entry -> waiter marked READY.
 
-  ready_to_task  Builds HardRT with the private `ipc` timing profile and a
-                 waiter-READY start marker. Measures waiter marked READY ->
-                 latency task continuation after the blocked semaphore returns.
+  ready_to_task      Builds HardRT with the private `ipc` timing profile and a
+                     waiter-READY start marker. Measures waiter marked READY ->
+                     latency task continuation after the blocked semaphore returns.
+
+  scheduler_decision Diagnostic-only linker wrapper around hrt__schedule().
+                     Measures the complete C scheduler call caused by the TIM2
+                     ISR wake. Production HardRT code is not instrumented.
 USAGE
 }
 
@@ -46,7 +50,7 @@ done
 
 HARD_RT_ARGS=()
 case "$CASE" in
-  event_to_task)
+  event_to_task|scheduler_decision)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
     ;;
   sem_isr_ready)
