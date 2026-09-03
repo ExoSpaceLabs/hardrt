@@ -1,6 +1,6 @@
 # Hardware qualification policy
 
-HardRT separates **development measurements** from **release qualification evidence**, but uses one human-facing STM32 runner for both.
+HardRT separates **development measurements** from **release qualification evidence**, but uses one human-facing STM32 runner for both functional validation and hardware benchmarking.
 
 ## Single STM32 runner
 
@@ -13,12 +13,12 @@ Use:
 The mode rules are deliberately simple:
 
 ```text
-(no --only)       = functional matrix + scheduler diagnostics
---only functional = functional matrix only
---only scheduler  = scheduler/PendSV diagnostics only
+(no --only)       = functional validation + all hardware benchmarks
+--only functional = functional validation only
+--only benchmark  = all hardware benchmarks only
 ```
 
-The default run is the complete release-candidate workflow. `--only` is a development filter, not a different test system.
+The board/OpenOCD probe is a prerequisite and is always run. The default run is the complete release-candidate workflow. `--only` is a development filter, not a different test system.
 
 Development evidence is written to a visible path:
 
@@ -36,29 +36,45 @@ validation/stm32/releases/vX.Y.Z/
 
 The repository should contain exactly one committed STM32 evidence package per released version.
 
-## Functional hardware matrix
+## Functional hardware contracts
 
-The functional matrix contains 13 cases:
+Functional validation contains nine behavior contracts, with the board probe reported separately:
 
-1. board/OpenOCD probe;
-2. C blinky task progress and qualitative relative LED rate;
-3. C++ blinky task progress and qualitative relative LED rate;
-4. scheduler counter demo;
-5. DWT `event_to_task` timing fixture;
-6. DWT `sem_isr_ready` timing fixture;
-7. DWT `ready_to_task` timing fixture;
-8. fixed-priority ISR wake/preemption;
-9. `PRIORITY_RR` retained-quantum preemption;
-10. semaphore hardware contract;
-11. queue hardware contract;
-12. mutex hardware contract;
-13. external-tick hardware contract.
+1. C blinky task progress and qualitative relative LED rate;
+2. C++ blinky task progress and qualitative relative LED rate;
+3. scheduler counter demo;
+4. fixed-priority ISR wake/preemption;
+5. `PRIORITY_RR` retained-quantum preemption;
+6. semaphore hardware contract;
+7. queue hardware contract;
+8. mutex hardware contract;
+9. external-tick hardware contract.
 
-Scheduler/PendSV timing diagnostics are reported separately from the 13 functional contracts. They do not turn the matrix into an artificial fourteenth functional feature.
+Timing measurements are not counted as functional features. This keeps functional qualification stable when new benchmarks are added.
 
-## Scheduler diagnostics
+## Hardware benchmarks
 
-The scheduler diagnostic measures the same ISR-wake path with a measurement-only PendSV handler and reports:
+The current benchmark suite contains four DWT measurements:
+
+1. `event_to_task`;
+2. `sem_isr_ready`;
+3. `ready_to_task`;
+4. `scheduler_decision`, including the PendSV switch decomposition.
+
+Every benchmark is built and flashed as its own firmware image. `scripts/build-lib-stm32h7xx-dwt-timing.sh` selects the timing profile and private hook header required by that benchmark:
+
+- `event_to_task`: direct application DWT timestamps, `HARDRT_TIMING_PROFILE=none`;
+- `sem_isr_ready`: private `ipc` timing profile with ISR-entry/waiter-READY hooks;
+- `ready_to_task`: private `ipc` timing profile with waiter-READY start hook;
+- `scheduler_decision`: measurement-only PendSV image calling the unmodified production `hrt__schedule()`.
+
+Instrumentation is therefore enabled only in benchmark builds that require it. Normal HardRT builds remain uninstrumented.
+
+The benchmark list is expected to grow as qualification work adds measurements such as tick/sleeper scaling. Adding a benchmark must not change the functional-contract count.
+
+## Scheduler/PendSV benchmark
+
+The scheduler benchmark measures the same ISR-wake path with a measurement-only PendSV handler and reports:
 
 - outgoing context save;
 - `hrt__schedule()` decision time;
@@ -85,7 +101,7 @@ Hardware qualification focuses on behavior that can differ because of the Cortex
 - scheduler-aware preemption and retained RR quantum;
 - semaphore, queue, and mutex blocking/wake/handoff paths;
 - C/C++ integration;
-- latency and scheduler-switch measurements.
+- latency, scheduler-switch, and bounded-work benchmarks.
 
 Pure argument validation and deterministic data-structure edge cases remain primarily hosted tests unless they interact with a port-specific path. Hardware validation is additive, not a replacement for the broader hosted suite.
 
@@ -98,9 +114,11 @@ A release STM32 package should be generated from the exact release-candidate SHA
 - clean recorded STM32CubeH7 checkout and SHA;
 - compiler/GDB/OpenOCD/CMake versions;
 - board/core and clock information;
-- all 13 functional cases passing;
-- scheduler/PendSV diagnostic output;
+- board probe passing;
+- all nine functional contracts passing;
+- all current hardware benchmarks passing;
 - timing sample counts and min/avg/max values;
+- scheduler/PendSV decomposition;
 - raw debugger/build logs.
 
-A filtered `--only functional` or `--only scheduler` run is useful development evidence but is not the complete release package.
+A filtered `--only functional` or `--only benchmark` run is useful development evidence but is not the complete release package.
