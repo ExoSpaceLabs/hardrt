@@ -24,13 +24,29 @@ typedef struct {
     uint32_t sum_lo;
     uint32_t sum_hi;
     uint32_t error;
+
+    /* Scheduler/PendSV breakdown. The first 52 bytes above remain compatible
+       with the existing timing result ABI for all other timing cases. */
+    uint32_t pendsv_save_min;
+    uint32_t pendsv_save_avg;
+    uint32_t pendsv_save_max;
+    uint32_t pendsv_restore_min;
+    uint32_t pendsv_restore_avg;
+    uint32_t pendsv_restore_max;
+    uint32_t pendsv_software_min;
+    uint32_t pendsv_software_avg;
+    uint32_t pendsv_software_max;
+    uint32_t pendsv_to_task_min;
+    uint32_t pendsv_to_task_avg;
+    uint32_t pendsv_to_task_max;
 } hrt_timing_result_t;
 
 _Static_assert(offsetof(hrt_timing_result_t, case_id) == 0u, "timing result ABI");
 _Static_assert(offsetof(hrt_timing_result_t, count) == 36u, "timing result ABI");
 _Static_assert(offsetof(hrt_timing_result_t, sum_lo) == 40u, "timing result ABI");
 _Static_assert(offsetof(hrt_timing_result_t, error) == 48u, "timing result ABI");
-_Static_assert(sizeof(hrt_timing_result_t) == 52u, "timing result ABI");
+_Static_assert(offsetof(hrt_timing_result_t, pendsv_save_min) == 52u, "timing breakdown ABI");
+_Static_assert(sizeof(hrt_timing_result_t) == 100u, "timing breakdown ABI");
 
 volatile hrt_timing_stats_t g_timing_stats;
 volatile uint32_t g_timing_start_cycles = 0;
@@ -39,13 +55,27 @@ volatile uint32_t g_timing_event_hz = HRT_TIMING_EVENT_HZ;
 volatile uint32_t g_timing_target_samples = HRT_TIMING_TARGET_SAMPLES;
 volatile uint32_t g_example_error = 0;
 
+/* Diagnostic PendSV exchange variables. These are global because the timing
+   assembly handler references them directly. */
+volatile uint32_t g_pendsv_measure_armed = 0;
+volatile uint32_t g_pendsv_sample_ready = 0;
+volatile uint32_t g_pendsv_entry_cycles = 0;
+volatile uint32_t g_pendsv_save_cycles = 0;
+volatile uint32_t g_pendsv_scheduler_cycles = 0;
+volatile uint32_t g_pendsv_restore_cycles = 0;
+volatile uint32_t g_pendsv_software_cycles = 0;
+
+static volatile hrt_timing_stats_t g_pendsv_save_stats;
+static volatile hrt_timing_stats_t g_pendsv_restore_stats;
+static volatile hrt_timing_stats_t g_pendsv_software_stats;
+static volatile hrt_timing_stats_t g_pendsv_to_task_stats;
+
 static volatile uint32_t tim2_psc_dbg = 0;
 static volatile uint32_t tim2_arr_dbg = 0;
 static volatile hrt_timing_result_t g_timing_result;
 
 static hrt_sem_t g_event_sem;
 static volatile uint32_t g_event_armed = 0;
-static volatile uint32_t g_scheduler_measure_armed = 0;
 
 #define STACK_WORDS 1024
 static uint32_t g_latency_stack[STACK_WORDS] __attribute__((aligned(8)));
@@ -57,31 +87,6 @@ extern uint32_t SystemCoreClock;
 static inline uint32_t cycles_now(void) {
     return DWT_CYCCNT;
 }
-
-#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
-/*
- * Diagnostic-only GNU ld wrapper enabled by CMake for this timing case.
- * PendSV's reference to hrt__schedule is redirected here, while
- * __real_hrt__schedule resolves to the unmodified HardRT implementation.
- * The TIM2 ISR arms exactly the next scheduler call caused by its semaphore
- * wake, so task-block and startup scheduling calls are not sampled.
- */
-extern uintptr_t __real_hrt__schedule(uintptr_t old_sp);
-
-uintptr_t __wrap_hrt__schedule(uintptr_t old_sp) {
-    if (g_scheduler_measure_armed == 0u) {
-        return __real_hrt__schedule(old_sp);
-    }
-
-    const uint32_t start = cycles_now();
-    const uintptr_t next_sp = __real_hrt__schedule(old_sp);
-    const uint32_t end = cycles_now();
-
-    g_scheduler_measure_armed = 0u;
-    hrt_timing_stats_record(&g_timing_stats, end - start);
-    return next_sp;
-}
-#endif
 
 static void dwt_init(void) {
     DEMCR |= (1u << 24);
@@ -129,6 +134,34 @@ static void timing_finish(void) {
     g_timing_result.sum_lo = (uint32_t)sum;
     g_timing_result.sum_hi = (uint32_t)(sum >> 32u);
     g_timing_result.error = g_example_error;
+
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+    g_timing_result.pendsv_save_min = g_pendsv_save_stats.min;
+    g_timing_result.pendsv_save_avg = g_pendsv_save_stats.avg;
+    g_timing_result.pendsv_save_max = g_pendsv_save_stats.max;
+    g_timing_result.pendsv_restore_min = g_pendsv_restore_stats.min;
+    g_timing_result.pendsv_restore_avg = g_pendsv_restore_stats.avg;
+    g_timing_result.pendsv_restore_max = g_pendsv_restore_stats.max;
+    g_timing_result.pendsv_software_min = g_pendsv_software_stats.min;
+    g_timing_result.pendsv_software_avg = g_pendsv_software_stats.avg;
+    g_timing_result.pendsv_software_max = g_pendsv_software_stats.max;
+    g_timing_result.pendsv_to_task_min = g_pendsv_to_task_stats.min;
+    g_timing_result.pendsv_to_task_avg = g_pendsv_to_task_stats.avg;
+    g_timing_result.pendsv_to_task_max = g_pendsv_to_task_stats.max;
+#else
+    g_timing_result.pendsv_save_min = 0u;
+    g_timing_result.pendsv_save_avg = 0u;
+    g_timing_result.pendsv_save_max = 0u;
+    g_timing_result.pendsv_restore_min = 0u;
+    g_timing_result.pendsv_restore_avg = 0u;
+    g_timing_result.pendsv_restore_max = 0u;
+    g_timing_result.pendsv_software_min = 0u;
+    g_timing_result.pendsv_software_avg = 0u;
+    g_timing_result.pendsv_software_max = 0u;
+    g_timing_result.pendsv_to_task_min = 0u;
+    g_timing_result.pendsv_to_task_avg = 0u;
+    g_timing_result.pendsv_to_task_max = 0u;
+#endif
 
     timing_target_reached(&g_timing_result);
 }
@@ -195,7 +228,8 @@ void TIM2_IRQHandler(void) {
     g_timing_start_cycles = cycles_now();
     g_event_armed = 1u;
 #elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
-    g_scheduler_measure_armed = 1u;
+    g_pendsv_sample_ready = 0u;
+    g_pendsv_measure_armed = 1u;
 #endif
 
     int should_switch = 0;
@@ -220,6 +254,18 @@ static void latency_task(void *arg) {
             const uint32_t end = cycles_now();
             hrt_timing_stats_record(&g_timing_stats, end - g_timing_start_cycles);
         }
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+        if (g_pendsv_sample_ready != 0u) {
+            const uint32_t task_end = cycles_now();
+            g_pendsv_sample_ready = 0u;
+
+            hrt_timing_stats_record(&g_pendsv_save_stats, g_pendsv_save_cycles);
+            hrt_timing_stats_record(&g_timing_stats, g_pendsv_scheduler_cycles);
+            hrt_timing_stats_record(&g_pendsv_restore_stats, g_pendsv_restore_cycles);
+            hrt_timing_stats_record(&g_pendsv_software_stats, g_pendsv_software_cycles);
+            hrt_timing_stats_record(&g_pendsv_to_task_stats,
+                                    task_end - g_pendsv_entry_cycles);
+        }
 #endif
 
         if (g_timing_stats.count >= g_timing_target_samples) {
@@ -243,6 +289,10 @@ int main(void) {
     hold_cm4();
     dwt_init();
     stats_init(&g_timing_stats);
+    stats_init(&g_pendsv_save_stats);
+    stats_init(&g_pendsv_restore_stats);
+    stats_init(&g_pendsv_software_stats);
+    stats_init(&g_pendsv_to_task_stats);
     hrt_sem_init(&g_event_sem, 0);
 
     const hrt_config_t cfg = {
