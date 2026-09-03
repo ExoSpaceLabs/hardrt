@@ -164,7 +164,9 @@ The runner calls `scripts/build-lib-stm32h7xx-dwt-timing.sh` separately for each
 
 ### Tick/sleeper scaling matrix
 
-The current `hrt__tick_isr()` scans the configured TCB table every tick. To measure that cost instead of arguing about asymptotic notation in the abstract, benchmark mode rebuilds HardRT at application-task capacities:
+The matrix was introduced to measure the former per-tick full-TCB sleeper scan and is intentionally retained after its replacement. It therefore provides a direct before/after contract instead of changing the benchmark whenever the implementation changes.
+
+Benchmark mode rebuilds HardRT at application-task capacities:
 
 ```text
 8, 16, 32
@@ -195,19 +197,41 @@ HARDRT_TIMING_PROFILE=none
 
 so the tick scaling result contains no kernel timing hooks and no replacement tick implementation.
 
-The task capacity is also a real HardRT build configuration, not merely a runtime worker count. `HARDRT_CFG_MAX_TASKS=8`, `16`, or `32` is passed when the library is built, then the benchmark fills all application slots with one setup task and the remaining worker tasks. The result therefore measures the actual configured O(`HARDRT_MAX_TASKS`) bound.
+TIM2 is one-shot for this matrix. After the measured tick call returns, the ISR wakes a lower-priority benchmark driver outside the measured interval. Any worker made READY by the tick has higher priority than that driver, so the worker runs and returns to its intended sleep/block state before the driver rearms the next sample. This ensures each sample begins from the workload state named by the scenario.
 
-`worker_wakes` is included in the debugger result as a workload sanity check: non-expiry scenarios must report zero wake completions during the sample window, while expiry scenarios must report non-zero wake activity.
+The task capacity is a real HardRT build configuration, not merely a runtime worker count. `HARDRT_CFG_MAX_TASKS=8`, `16`, or `32` is passed when the library is built, then the benchmark fills all application slots with one driver/setup task and the remaining workers.
 
-The matrix is deliberately broad enough to distinguish:
+`worker_wakes` is included in the debugger result as a workload sanity check. For the 10,000-sample one-shot fixture:
 
-- pure scan scaling with no sleepers;
-- extra branch/state cost from sleeping TCBs;
-- cost of one wake;
-- cost of many simultaneous wakes;
-- more representative staggered expiry behavior.
+- non-expiry scenarios must report zero wake completions;
+- `one_expiry` should report 9,999 completed wakes;
+- `simultaneous` should report `worker_count * 9,999`;
+- `staggered` should match the sum of the individual periodic wake counts.
 
-The measurements decide whether the simple TCB scan remains acceptable for the qualified task bound or whether #57 needs a sorted wake list/delta queue or another static sleeper structure.
+#### Baseline and current expectation
+
+The pre-delta baseline is physical run `20260903T212538Z_4ab7709a`, which completed **9/9 functional PASS and 22/22 benchmark PASS**. Average tick cycles were:
+
+| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 902 | 1050 | 1124 | 1367 | 2282 | 1700 |
+| 16 | 1389 | 1506 | 1761 | 1808 | 3990 | 2435 |
+| 32 | 1954 | 2597 | 3455 | 2952 | 8676 | 4413 |
+
+That baseline demonstrated material O(N) work even without expiries. At 32 application tasks, `none` averaged 1954 cycles and `all_sleep` averaged 3455 cycles.
+
+Current `develop` replaces the scan with a static intrusive delta sleeper queue. Its intended bounds are:
+
+```text
+hrt_sleep() insertion : O(N), bounded task-context work
+no-expiry tick        : O(1)
+K expiries            : O(K)
+sleeper metadata      : O(N), static
+```
+
+Equal deadlines use zero-delta followers and preserve FIFO wake order. Relative deltas make sleeper ordering independent of 32-bit absolute tick wrap. Hosted tests cover equal deadlines, staggered ordering, repeated sleep/wake cycles, and wraparound ordering.
+
+The post-change hardware run must use this **same 18-point matrix**. Acceptance is not a magic target cycle count: `none`, `one_sleep`, and `all_sleep` should stop growing materially with configured capacity, while `simultaneous` may still grow with the number of tasks that actually wake. Until that physical A/B exists, the documented delta-queue improvement is a structural bound, not a claimed measured speedup.
 
 ### Scheduler/PendSV benchmark output
 
