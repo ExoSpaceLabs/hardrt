@@ -148,9 +148,11 @@ fi
 SHA="$(git rev-parse HEAD)"
 SHORT_SHA="$(git rev-parse --short=8 HEAD)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
+TRACKED_STATUS="$(git status --porcelain --untracked-files=no -- . ':(exclude,glob)validation/stm32/*/**')"
+VALIDATION_STATUS="$(git status --porcelain --untracked-files=no -- ':(glob)validation/stm32/*/**')"
 UNTRACKED_STATUS="$(git ls-files --others --exclude-standard)"
 SOURCE_WORKTREE=clean; [[ -n "$TRACKED_STATUS" ]] && SOURCE_WORKTREE=DIRTY
+VALIDATION_WORKTREE=clean; [[ -n "$VALIDATION_STATUS" ]] && VALIDATION_WORKTREE=DIRTY
 UNTRACKED_STATE=none; [[ -n "$UNTRACKED_STATUS" ]] && UNTRACKED_STATE=present
 
 STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
@@ -183,6 +185,9 @@ if [[ "$SOURCE_WORKTREE" == DIRTY ]]; then
   echo "WARNING: tracked source files differ from HEAD:"; printf '%s\n' "$TRACKED_STATUS"
   yes_no "Continue and record a tracked-source DIRTY qualification" || exit 1
 fi
+if [[ "$VALIDATION_WORKTREE" == DIRTY ]]; then
+  echo "Note: tracked qualification evidence differs from HEAD; this is recorded separately and does not mark the HardRT source state dirty."
+fi
 if [[ "$UNTRACKED_STATE" == present ]]; then
   echo "Note: untracked workspace files remain and will be recorded, but they are not classified as tracked source modifications."
 fi
@@ -208,6 +213,7 @@ cat > "$REPORT" <<EOF
 - HardRT branch: \`$BRANCH\`
 - HardRT SHA: \`$SHA\`
 - HardRT tracked source state: **$SOURCE_WORKTREE**
+- Tracked qualification evidence state: **$VALIDATION_WORKTREE**
 - HardRT untracked workspace files: **$UNTRACKED_STATE**
 - STM32CubeH7 root: \`$STM32CUBE_H7_ROOT\`
 - STM32CubeH7 SHA/state: \`$CUBE_SHA\` / \`$CUBE_STATE\`
@@ -234,6 +240,9 @@ fi
 
 if [[ -n "$TRACKED_STATUS" ]]; then
   printf '## Tracked source changes\n\n```text\n%s\n```\n\n' "$TRACKED_STATUS" >> "$REPORT"
+fi
+if [[ -n "$VALIDATION_STATUS" ]]; then
+  printf '## Tracked qualification evidence changes\n\n```text\n%s\n```\n\n' "$VALIDATION_STATUS" >> "$REPORT"
 fi
 if [[ -n "$UNTRACKED_STATUS" ]]; then
   printf '## Untracked workspace files\n\n```text\n%s\n```\n\n' "$UNTRACKED_STATUS" >> "$REPORT"
