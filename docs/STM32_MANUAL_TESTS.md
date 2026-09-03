@@ -1,320 +1,279 @@
 # STM32H755 Manual Validation
 
-HardRT's hosted Linux/POSIX tests are automatic. STM32H755 runtime validation is intentionally manual until a hardware CI runner exists. Cross-compilation proves that firmware links; it does not prove interrupt, PendSV, GPIO, clock, or board behavior.
+HardRT's hosted Linux/POSIX tests are automatic. STM32H755 runtime validation remains manual until a hardware CI runner exists. Cross-compilation proves that firmware builds and links; it does not prove interrupt, PendSV, GPIO, clock, synchronization, or board behavior.
 
-Run these tests from the repository root on a NUCLEO-H755ZI-Q. The examples hold CM4 in reset and exercise CM7.
+The supported manual target is currently NUCLEO-H755ZI-Q, exercising CM7 while CM4 is held in reset.
+
+## One human-facing runner
+
+Run from the repository root:
+
+```bash
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7
+```
+
+The runner owns build, flash, OpenOCD/GDB sessions, result parsing, evidence capture, and final console/report summaries.
+
+Do not manually chain the individual build/GDB helper scripts for normal qualification. They remain implementation details used by the runner and CI.
+
+### Modes
+
+The mode logic is symmetric:
+
+```text
+(no --only)       = functional + scheduler
+--only functional = functional only
+--only scheduler  = scheduler only
+```
+
+Examples:
+
+```bash
+# Complete hardware run. This is the release-candidate path.
+./scripts/stm32_manual_test_full.sh \
+  /path/to/STM32CubeH7 \
+  --clean-builds
+
+# Repeat only the 13 functional contracts.
+./scripts/stm32_manual_test_full.sh \
+  /path/to/STM32CubeH7 \
+  --only functional
+
+# Repeat only the scheduler/PendSV timing investigation.
+./scripts/stm32_manual_test_full.sh \
+  /path/to/STM32CubeH7 \
+  --only scheduler
+```
+
+The default run is genuinely complete. Filtered modes exist only to avoid repeating unrelated hardware work during development.
+
+## Evidence location
+
+By default each run is written visibly under:
+
+```text
+validation/stm32/<UTC>_<short-sha>/
+```
+
+Timestamped development directories are gitignored.
+
+For a release candidate, run the default full mode from the exact final SHA. After inspection, manually copy or move the chosen run to:
+
+```text
+validation/stm32/releases/vX.Y.Z/
+```
+
+There is no separate qualification wrapper and no promotion script.
 
 ## Common requirements
 
 - ARM GNU bare-metal toolchain (`arm-none-eabi-*`).
 - OpenOCD with ST-Link support.
-- A local STM32CubeH7 checkout. Set `STM32CUBE_H7_ROOT` when the default path is not valid.
-- A clean working tree built from the exact HardRT commit being qualified.
+- `gdb-multiarch` or `arm-none-eabi-gdb`.
+- local STM32CubeH7 checkout supplied to the runner.
+- physical NUCLEO-H755ZI-Q connected through ST-Link.
 
-Normal STM32 examples expose `g_example_error` for debugger inspection. A successful running example keeps it at `0`.
+For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-Common failure codes used by the normal examples:
+## Functional matrix: 13 cases
 
-| Code | Meaning |
-|---:|---|
-| 0 | no detected example-level error |
-| 1 | `hrt_init()` failed |
-| 2 | first task creation failed |
-| 3 | second task creation failed |
-| 4 | `hrt_start()` unexpectedly returned |
+The 13 functional cases are:
 
-A failure path executes `BKPT` and then remains in `WFI`, making the failure deterministic under a debugger.
+1. **Board probe**
+   - OpenOCD connects to the STM32H755 before other tests run.
 
-Hosted CI cross-builds every firmware listed here. Hardware PASS/FAIL remains a manual release-qualification step.
+2. **C blinky**
+   - both task counters advance;
+   - `g_example_error == 0`;
+   - both LEDs visibly toggle;
+   - their configured relative rates are visibly distinguishable.
 
-## C blinky
+3. **C++ blinky**
+   - same acceptance principle as the C example using the C++ API.
 
-Build and flash:
+4. **Scheduler counter demo**
+   - both task-entry and post-sleep counters advance;
+   - no example error.
 
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-blinky.sh
+5. **DWT `event_to_task`**
+   - composite software ISR-to-awakened-task response;
+   - 10,000 samples by default;
+   - finite ordered min/avg/max and no example/kernel error.
+
+6. **DWT `sem_isr_ready`**
+   - ISR semaphore call entry to waiter READY transition;
+   - isolates ISR synchronization/wake work from later scheduling/return work.
+
+7. **DWT `ready_to_task`**
+   - waiter READY transition to continuation after blocked `hrt_sem_take()` returns;
+   - includes ISR tail, scheduler/context switch, exception return and blocked API continuation;
+   - not a pure context-switch microbenchmark.
+
+8. **Fixed-priority hardware preemption**
+   - TIM2 ISR wakes a blocked higher-priority task while lower-priority Thread mode is CPU-bound;
+   - high-priority task must execute before interrupted low-priority Thread mode continues.
+
+9. **`PRIORITY_RR` retained-quantum preemption**
+   - required trace is:
+
+   ```text
+   low-A -> IRQ -> high -> low-A -> low-B
+   ```
+
+   - asynchronous higher-priority preemption must not rotate low-A behind same-priority low-B;
+   - low-A must retain its unused RR quantum.
+
+10. **Semaphore hardware contract**
+    - counting/saturation behavior;
+    - actual TIM2 ISR wakes blocked higher-priority waiter;
+    - `need_switch` reports scheduler-preemption need correctly.
+
+11. **Queue hardware contract**
+    - FIFO/full/empty behavior;
+    - ISR send wakes blocked receiver with payload preserved;
+    - ISR receive wakes blocked sender with payload/order preserved;
+    - priority handoff occurs before lower-priority continuation.
+
+12. **Mutex hardware contract**
+    - ownership and blocking;
+    - direct ownership handoff on unlock;
+    - higher-priority new owner executes before lower-priority unlocker continues;
+    - mutex remains task-context only.
+
+13. **External tick hardware contract**
+    - SysTick disabled for the test;
+    - TIM2 periodic IRQ drives `hrt_tick_from_isr()`;
+    - sleep duration matches requested tick count;
+    - awakened high-priority task preempts lower-priority work;
+    - `hrt_now_ms()` and kernel tick agree for the 1 kHz fixture.
+
+## Human LED acceptance
+
+The LED check is intentionally qualitative. A human is not expected to confirm exact 100 ms, 250 ms, or 500 ms periods by eye.
+
+PASS means:
+
+- both LEDs visibly toggle;
+- the relative speed difference is obvious and consistent with configuration, for example one is roughly twice as fast.
+
+Automated task counters prove progress. DWT cases provide quantitative timing evidence.
+
+## Scheduler/PendSV diagnostics
+
+The scheduler mode uses the same ISR-wake workload but substitutes a measurement-only PendSV handler in the diagnostic image. Production HardRT scheduler code is not replaced.
+
+It reports:
+
+```text
+pendsv_save
+scheduler_decision
+pendsv_restore
+pendsv_software
+pendsv_to_task
+derived_software_other_avg
+derived_return_and_api_avg
 ```
 
-Expected behavior:
+Meaning:
 
-- LD1 / PB0 toggles every 250 ms.
-- LD2 / PE1 toggles every 500 ms.
-- `dbg_counterA` and `dbg_counterB` increase continuously.
-- `g_example_error == 0`.
+- `pendsv_save`: PendSV software entry to outgoing `r4-r11` save completion;
+- `scheduler_decision`: direct execution time of `hrt__schedule()`;
+- `pendsv_restore`: scheduler return to incoming `r4-r11`/PSP restoration;
+- `pendsv_software`: PendSV software entry to incoming context restored;
+- `pendsv_to_task`: PendSV entry to awakened task continuation after the blocked API returns.
 
-PASS: observe both distinct LED rates for at least 10 seconds and, when attached with GDB, both counters continue increasing with `g_example_error == 0`.
+The derived values are engineering decompositions, not WCET bounds.
 
-## C++ blinky
+The diagnostic handler performs extra DWT reads and stores. In particular, `pendsv_to_task - pendsv_software` includes diagnostic bookkeeping as well as exception return/API continuation and must not be interpreted as pure production exception-return latency.
 
-Build and flash:
+## 2026-09-03 duplicate-PendSV regression proof
 
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-blinky-cpp.sh
+The scheduler diagnostic was introduced to explain why the current Cortex-M composite response had risen from roughly the old 1.2k-cycle region to roughly 1.7k cycles.
+
+Before the port fix (`261e4a8e`):
+
+```text
+event_to_task avg       = 1705 cycles
+sem_isr_ready avg       =  328 cycles
+ready_to_task avg       = 1336 cycles
+scheduler_decision avg  =  331 cycles
+pendsv_software avg     =  430 cycles
+pendsv_to_task avg      = 1359 cycles
+derived return/API tail =  929 cycles
 ```
 
-Expected behavior:
+The Cortex-M port implemented both halves of the task-context reschedule contract by calling `_pend_pendsv()`:
 
-- LD1 / PB0 toggles every 100 ms.
-- LD2 / PE1 toggles every 250 ms.
-- `dbg_counterA` and `dbg_counterB` increase continuously.
-- `g_example_error == 0`.
-
-PASS: observe both distinct LED rates for at least 10 seconds and both debugger counters advancing.
-
-## Scheduler/demo counters
-
-Build:
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx.sh \
-  --app "$PWD/examples/hardrt_h755_demo" \
-  --build-type Release
+```c
+hrt__pend_context_switch();
+hrt_port_yield_to_scheduler();
 ```
 
-Flash:
+That created a redundant second PendSV request on task-context blocking/yield paths.
 
-```bash
-openocd -s /usr/share/openocd/scripts \
-  -f scripts/openocd_h755_clean.cfg \
-  -c "init; reset halt; stm32h7x mass_erase 0; stm32h7x mass_erase 1; \
-      program examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf verify; \
-      reset halt; shutdown"
+Commit:
+
+```text
+12f745673f8ce5069903eab314b38e43591b0899
+perf(hardrt): avoid duplicate Cortex-M PendSV request
 ```
 
-Use OpenOCD + GDB to inspect:
+removed the second Cortex-M hardware request while leaving POSIX behavior and scheduler semantics unchanged.
 
-- `dbg_counterA`: increments before each 500 ms sleep.
-- `dbg_exit_counterA`: increments after each 500 ms wake.
-- `dbg_counterB`: increments before each 1000 ms sleep.
-- `dbg_exit_counterB`: increments after each 1000 ms wake.
-- `g_example_error == 0`.
+After the fix (`12f74567`):
 
-PASS: all four counters increase at coherent relative rates for at least 10 seconds and no example error is reported.
-
-## Fixed-priority hardware preemption
-
-`examples/hardrt_h755_preemption` is a validation fixture, not a demonstration application. A TIM2 hardware interrupt wakes a blocked highest-priority task while a lower-priority task is executing a busy loop with no HardRT scheduling calls. This is the Cortex-M evidence that POSIX cannot provide.
-
-The firmware exports:
-
-- `g_validation_pass`, `g_example_error`, `g_validation_case`;
-- `g_irq_count`, `g_need_switch`, `g_high_runs`;
-- `g_low_a_counter`, `g_low_b_counter`;
-- `g_a_start_tick`, `g_irq_tick`, `g_high_tick`, `g_a_resume_tick`, `g_b_first_tick`;
-- `g_expected_remaining_ticks`, `g_observed_remaining_ticks`;
-- `g_sequence[5]`.
-
-Build and flash one case at a time.
-
-### Strict `HRT_SCHED_PRIORITY`
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-preemption.sh --case priority
+```text
+event_to_task avg       = 1183 cycles
+sem_isr_ready avg       =  334 cycles
+ready_to_task avg       =  780 cycles
+scheduler_decision avg  =  329 cycles
+pendsv_software avg     =  429 cycles
+pendsv_to_task avg      =  680 cycles
+derived return/API tail =  251 cycles
 ```
 
-Then:
+The functional hardware matrix remained **13/13 PASS**.
 
-```bash
-openocd -s /usr/share/openocd/scripts \
-  -f scripts/openocd_h755.cfg \
-  -c "init; reset halt"
+The A/B result is important: scheduler decision and PendSV software cost stayed essentially unchanged while the excess tail dropped by roughly 678 cycles. This is direct evidence that the dominant regression came from the redundant reschedule request rather than the scheduler-correctness logic itself.
+
+Full evidence and interpretation are recorded in `docs/STATISTICS.md`.
+
+## Fixed-priority and PRIORITY_RR acceptance detail
+
+The preemption fixture exports a trace and result variables so pass/fail is deterministic under GDB.
+
+Strict priority requires the beginning of the sequence to represent:
+
+```text
+low-A -> IRQ -> high -> resumed low-A
 ```
 
-```bash
-gdb-multiarch -q \
-  examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf \
-  -batch -x scripts/gdb/preemption.dbg
-```
-
-Required behavior:
-
-1. high-priority task starts first and blocks on a semaphore;
-2. low-A starts and remains CPU-bound;
-3. TIM2 ISR wakes high and `need_switch` is asserted;
-4. PendSV runs high before Thread mode resumes low-A;
-5. high blocks again;
-6. the interrupted low-A resumes from its saved execution context.
-
-PASS requires:
-
-- `g_validation_pass == 1`;
-- `g_example_error == 0`;
-- `g_irq_count == 1`;
-- `g_need_switch == 1`;
-- `g_high_runs == 1`;
-- sequence slots begin `[1, 2, 3, 4]` = low-A, IRQ, high, resumed low-A.
-
-Error `20` specifically means low-A executed after the IRQ but before high ran, so fixed-priority preemption was not immediate at the earliest safe exception-return point.
-
-### `HRT_SCHED_PRIORITY_RR` retained quantum
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-preemption.sh --case priority_rr
-```
-
-Run the same OpenOCD/GDB procedure above.
-
-This case adds low-B at the same priority as low-A with a 20-tick RR quantum. TIM2 fires a few ticks into A's first quantum. Required sequence:
+The `PRIORITY_RR` case requires:
 
 ```text
 low-A -> IRQ -> high -> low-A -> low-B
 ```
 
-The high-priority interruption must not itself rotate A behind B. After high blocks, A must resume with its unused quantum. B may run only when A's retained quantum expires or A explicitly yields.
-
-The firmware derives the remaining quantum from the actual observed tick at which the IRQ arrived:
+with:
 
 ```text
-expected_remaining = 20 - (irq_tick - a_start_tick)
+expected_remaining = configured_quantum - (irq_tick - a_start_tick)
 observed_remaining = b_first_tick - a_resume_tick
 ```
 
-One tick of boundary tolerance is allowed.
+One tick of boundary tolerance is accepted. A higher-priority asynchronous interruption must preserve the interrupted task's same-priority queue precedence and remaining quantum.
 
-PASS requires:
+## Result summary
 
-- `g_validation_pass == 1` and `g_example_error == 0`;
-- sequence `[1, 2, 3, 4, 5]`;
-- A resumes before B;
-- observed remaining quantum matches expected remaining quantum within one tick.
+The runner prints and writes:
 
-This contract has been physically validated on NUCLEO-H755ZI-Q. Keep this case in every hardware qualification run because scheduler data-structure or PendSV changes can regress queue precedence even when hosted ordering tests remain green.
+- HardRT SHA and tracked source state;
+- STM32CubeH7 SHA/state;
+- each functional case result;
+- functional `N/13 PASS`, failure and not-run counts;
+- timing min/avg/max;
+- scheduler/PendSV breakdown when scheduler mode is included;
+- PRIORITY_RR trace/quantum evidence;
+- raw build/OpenOCD/GDB log locations.
 
-Preemption validator error codes:
-
-| Code | Meaning |
-|---:|---|
-| 0 | validation passed / no error |
-| 1 | `hrt_init()` failed |
-| 2 | high task creation failed |
-| 3 | low-A creation failed |
-| 4 | low-B creation failed |
-| 5 | `hrt_start()` unexpectedly returned |
-| 10 | high semaphore take failed |
-| 11 | high task unexpectedly resumed after its long sleep |
-| 20 | low-A ran after IRQ before high task ran |
-| 21 | unexpected IRQ count |
-| 22 | ISR wake did not report `need_switch == 1` |
-| 23 | unexpected high-task run count |
-| 24 | IRQ occurred outside A's first RR quantum; fixture timing invalid |
-| 30 | low-B ran before the preemption IRQ; fixture timing invalid |
-| 31 | low-B ran after IRQ but before high task |
-| 32 | low-B ran before interrupted low-A resumed; priority-preemption queue-order failure |
-| 33 | low-A resumed, but its observed remaining quantum did not match the retained quantum |
-
-## Isolated DWT timing fixture
-
-The timing firmware runs exactly one measurement case per image. Do not combine cases inside one firmware image when collecting reference numbers. The full qualification runner builds and flashes the images sequentially.
-
-### Composite ISR software point -> task continuation
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-dwt-timing.sh \
-  --case event_to_task \
-  --samples 10000
-```
-
-This build uses `HARDRT_TIMING_PROFILE=none`. It contains no kernel timing hooks. The interval starts at a DWT timestamp inside the TIM2 ISR and ends when the awakened latency task continues. It is a composite software ISR-to-task response metric, not hardware event-to-ISR latency.
-
-PASS:
-
-- debugger reaches `timing_target_reached`;
-- `g_example_error == 0`;
-- result `case_id == 1`;
-- result count equals the configured sample target;
-- min/avg/max are finite and ordered (`min <= avg <= max`).
-
-### Semaphore ISR call -> waiter READY
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-dwt-timing.sh \
-  --case sem_isr_ready \
-  --samples 10000
-```
-
-This build uses `HARDRT_TIMING_PROFILE=ipc` and enables only the IPC entry and waiter-READY measurement points needed by this metric. The end DWT timestamp is taken before statistics bookkeeping.
-
-PASS:
-
-- debugger reaches `timing_target_reached`;
-- `g_example_error == 0`;
-- result `case_id == 2`;
-- result count equals the configured sample target;
-- min/avg/max are finite and ordered.
-
-### Waiter READY -> resumed task continuation
-
-```bash
-STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
-  ./scripts/build-lib-stm32h7xx-dwt-timing.sh \
-  --case ready_to_task \
-  --samples 10000
-```
-
-This build also uses `HARDRT_TIMING_PROFILE=ipc`, but with a separate hook definition that takes the start timestamp exactly after the semaphore waiter is marked READY. The end timestamp is taken in the latency task immediately after the blocked `hrt_sem_take()` returns.
-
-The interval therefore includes the remainder of the ISR-facing semaphore path, critical-section exit, PendSV/scheduler selection, task context restore, exception return, and blocked API return. It is the hardware dispatch-response metric used to isolate the scheduler/context part of the composite `event_to_task` number. It is **not** a pure context-switch microbenchmark.
-
-PASS:
-
-- debugger reaches `timing_target_reached`;
-- `g_example_error == 0`;
-- result `case_id == 3`;
-- result count equals the configured sample target;
-- min/avg/max are finite and ordered.
-
-For any timing case, start OpenOCD in one terminal and run the repository GDB reader in another:
-
-```bash
-openocd -s /usr/share/openocd/scripts \
-  -f scripts/openocd_h755.cfg \
-  -c "init; reset halt"
-```
-
-```bash
-gdb-multiarch -q \
-  examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf \
-  -batch -x scripts/gdb/timing.dbg
-```
-
-Record at minimum the HardRT commit SHA, timing case/profile, `SystemCoreClock`, sample count, timer PSC/ARR, toolchain version, board, date, and reported min/avg/max values.
-
-## Full qualification runner
-
-The preferred hardware workflow runs the complete matrix and writes a timestamped evidence directory:
-
-```bash
-./scripts/stm32_manual_test_full.sh \
-  /path/to/STM32CubeH7 \
-  --clean-builds
-```
-
-The current runner executes nine cases: board probe, C blinky, C++ blinky, scheduler counter demo, the three isolated DWT timing images, fixed-priority hardware preemption, and `PRIORITY_RR` retained-quantum preemption.
-
-## Manual qualification record
-
-For a release candidate, record:
-
-```text
-HardRT SHA:
-Toolchain:
-Board / MCU revision:
-Date:
-Tester:
-C blinky: PASS/FAIL
-C++ blinky: PASS/FAIL
-Counter demo: PASS/FAIL
-Priority preemption: PASS/FAIL + trace reference
-Priority+RR preemption/retained quantum: PASS/FAIL + trace reference
-DWT event_to_task: PASS/FAIL + result reference
-DWT sem_isr_ready: PASS/FAIL + result reference
-DWT ready_to_task: PASS/FAIL + result reference
-Notes:
-```
+A default full run is the only run mode intended to become complete release evidence. Filtered modes are development shortcuts.
