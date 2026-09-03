@@ -1,5 +1,5 @@
 # HardRT isolated timing helper for STM32H755 (OpenOCD)
-# The firmware exposes exactly one active result set per build.
+# The firmware passes one fixed-layout result record to timing_target_reached().
 
 set confirm off
 set pagination off
@@ -14,17 +14,19 @@ break hrt_error
 commands
   silent
   printf "\n*** hrt_error hit ***\n"
-  printf "g_error = "
-  p/x (unsigned)g_error
   bt
+  detach
+  quit
 end
 
 break example_fail
 commands
   silent
   printf "\n*** timing example failure ***\n"
-  printf "g_example_error = %u\n", (unsigned)g_example_error
+  printf "g_example_error = %u\n", (unsigned)$r0
   bt
+  detach
+  quit
 end
 
 break timing_target_reached
@@ -32,10 +34,33 @@ commands
   silent
   printf "\n--- Timing target reached ---\n"
 
-  set $hz = (unsigned int)SystemCoreClock
-  set $case = (unsigned int)g_timing_case_id
-  set $event_hz = (unsigned int)g_timing_event_hz
-  set $target = (unsigned int)g_timing_target_samples
+  # hrt_timing_result_t is an explicit 13 x u32 qualification ABI:
+  #  +0  case_id
+  #  +4  event_hz
+  #  +8  target_samples
+  # +12  core_hz
+  # +16  tim2_psc
+  # +20  tim2_arr
+  # +24  min_cycles
+  # +28  avg_cycles
+  # +32  max_cycles
+  # +36  count
+  # +40  sum_lo
+  # +44  sum_hi
+  # +48  error
+  set $base = (unsigned int)$r0
+  set $case = *(unsigned int*)($base + 0)
+  set $event_hz = *(unsigned int*)($base + 4)
+  set $target = *(unsigned int*)($base + 8)
+  set $hz = *(unsigned int*)($base + 12)
+  set $psc = *(unsigned int*)($base + 16)
+  set $arr = *(unsigned int*)($base + 20)
+  set $min = *(unsigned int*)($base + 24)
+  set $avg = *(unsigned int*)($base + 28)
+  set $max = *(unsigned int*)($base + 32)
+  set $cnt = *(unsigned int*)($base + 36)
+  set $sum = ((unsigned long long)*(unsigned int*)($base + 40)) | (((unsigned long long)*(unsigned int*)($base + 44)) << 32)
+  set $error = *(unsigned int*)($base + 48)
 
   printf "SystemCoreClock=%u Hz\n", $hz
   printf "event_hz=%u target_samples=%u\n", $event_hz, $target
@@ -55,30 +80,24 @@ commands
     end
   end
 
-  # hrt_timing_stats_t layout:
-  #  +0  min   (u32)
-  #  +4  max   (u32)
-  #  +8  avg   (u32)
-  # +12  count (u32)
-  # +16  sum   (u64: low word +16, high word +20)
-  set $base = (unsigned int)&g_timing_stats
-  set $min  = *(unsigned int*)($base + 0)
-  set $max  = *(unsigned int*)($base + 4)
-  set $avg  = *(unsigned int*)($base + 8)
-  set $cnt  = *(unsigned int*)($base + 12)
-  set $sum  = ((unsigned long long)*(unsigned int*)($base + 16)) | (((unsigned long long)*(unsigned int*)($base + 20)) << 32)
-
   printf "\n[RESULT]\n"
   printf "count=%u\n", $cnt
   printf "min=%u cycles, avg=%u cycles (sum/count=%u), max=%u cycles\n", \
          $min, $avg, (unsigned int)($sum / ($cnt ? $cnt : 1)), $max
   printf "min=%u ns, avg=%u ns, max=%u ns\n", \
-         (unsigned int)(($min * 1000000000ull) / $hz), \
-         (unsigned int)(($avg * 1000000000ull) / $hz), \
-         (unsigned int)(($max * 1000000000ull) / $hz)
+         (unsigned int)(($min * 1000000000ull) / ($hz ? $hz : 1)), \
+         (unsigned int)(($avg * 1000000000ull) / ($hz ? $hz : 1)), \
+         (unsigned int)(($max * 1000000000ull) / ($hz ? $hz : 1))
+  printf "error=%u\n", $error
 
   printf "\n[TIMER CFG]\n"
-  printf "TIM2: PSC=%u ARR=%u\n", *(unsigned int*)&tim2_psc_dbg, *(unsigned int*)&tim2_arr_dbg
+  printf "TIM2: PSC=%u ARR=%u\n", $psc, $arr
+
+  if $error == 0
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", $error
+  end
 
   detach
   quit
