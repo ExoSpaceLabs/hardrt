@@ -34,7 +34,7 @@ commands
   silent
   printf "\n--- Timing target reached ---\n"
 
-  # hrt_timing_result_t is an explicit 13 x u32 qualification ABI:
+  # The first 13 x u32 fields retain the original timing result ABI:
   #  +0  case_id
   #  +4  event_hz
   #  +8  target_samples
@@ -48,6 +48,11 @@ commands
   # +40  sum_lo
   # +44  sum_hi
   # +48  error
+  # Scheduler/PendSV diagnostic extension:
+  # +52/+56/+60  pendsv_save min/avg/max
+  # +64/+68/+72  pendsv_restore min/avg/max
+  # +76/+80/+84  pendsv_software min/avg/max
+  # +88/+92/+96  pendsv_to_task min/avg/max
   set $base = (unsigned int)$r0
   set $case = *(unsigned int*)($base + 0)
   set $event_hz = *(unsigned int*)($base + 4)
@@ -84,8 +89,8 @@ commands
       else
         if $case == 4
           printf "case=scheduler_decision\n"
-          printf "metric=entry to hrt__schedule -> return from hrt__schedule for TIM2 ISR wake\n"
-          printf "NOTE: diagnostic image uses GNU ld --wrap around hrt__schedule; production HardRT kernel code is unchanged.\n"
+          printf "metric=direct hrt__schedule call inside diagnostic PendSV handler\n"
+          printf "NOTE: diagnostic image substitutes a measurement-only PendSV handler; production HardRT scheduler code is unchanged.\n"
           printf "HardRT timing profile=none\n"
         else
           printf "case=UNKNOWN (%u)\n", $case
@@ -103,6 +108,31 @@ commands
          (unsigned int)(($avg * 1000000000ull) / ($hz ? $hz : 1)), \
          (unsigned int)(($max * 1000000000ull) / ($hz ? $hz : 1))
   printf "error=%u\n", $error
+
+  if $case == 4
+    set $save_min = *(unsigned int*)($base + 52)
+    set $save_avg = *(unsigned int*)($base + 56)
+    set $save_max = *(unsigned int*)($base + 60)
+    set $restore_min = *(unsigned int*)($base + 64)
+    set $restore_avg = *(unsigned int*)($base + 68)
+    set $restore_max = *(unsigned int*)($base + 72)
+    set $software_min = *(unsigned int*)($base + 76)
+    set $software_avg = *(unsigned int*)($base + 80)
+    set $software_max = *(unsigned int*)($base + 84)
+    set $task_min = *(unsigned int*)($base + 88)
+    set $task_avg = *(unsigned int*)($base + 92)
+    set $task_max = *(unsigned int*)($base + 96)
+
+    printf "\n[SWITCH BREAKDOWN]\n"
+    printf "pendsv_save=%u / %u / %u cycles (min/avg/max)\n", $save_min, $save_avg, $save_max
+    printf "scheduler_decision=%u / %u / %u cycles (min/avg/max)\n", $min, $avg, $max
+    printf "pendsv_restore=%u / %u / %u cycles (min/avg/max)\n", $restore_min, $restore_avg, $restore_max
+    printf "pendsv_software=%u / %u / %u cycles (min/avg/max)\n", $software_min, $software_avg, $software_max
+    printf "pendsv_to_task=%u / %u / %u cycles (min/avg/max)\n", $task_min, $task_avg, $task_max
+    printf "derived_software_other_avg=%u cycles\n", $software_avg - $save_avg - $avg - $restore_avg
+    printf "derived_return_and_api_avg=%u cycles\n", $task_avg - $software_avg
+    printf "NOTE: derived values are engineering decompositions of separately instrumented segments, not WCET bounds.\n"
+  end
 
   printf "\n[TIMER CFG]\n"
   printf "TIM2: PSC=%u ARR=%u\n", $psc, $arr
