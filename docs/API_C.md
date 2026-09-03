@@ -107,14 +107,14 @@ The function requests initial scheduling and enters the selected port scheduler.
 
 ## Scheduling policies
 
-Ready tasks are currently stored in one FIFO queue per priority. Priority-based policies always select from the highest non-empty priority class.
+Ready tasks use a policy-specific intrusive FIFO representation. `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR` use one FIFO per priority plus the non-empty priority bitmap. `HRT_SCHED_RR` uses one global FIFO and ignores priority.
 
 - `HRT_SCHED_PRIORITY` uses strict fixed-priority selection without tick-driven slice accounting. A strictly higher-priority wake requests preemption; equal- and lower-priority wakes do not force a switch merely because they became READY.
 - `HRT_SCHED_PRIORITY_RR` uses the same priority dominance and rotates tasks only within the selected priority class. Higher-priority preemption preserves the interrupted task's queue precedence and unused quantum; explicit yield or quantum expiry rotates it to the tail exactly once and refreshes the next quantum.
-- `HRT_SCHED_RR` still uses the transitional per-priority representation on `develop`; the final global priority-independent RR contract is tracked by #28.
-- `timeslice == 0` disables tick-driven rotation for that task.
+- `HRT_SCHED_RR` is true global round-robin on `develop`: every READY application task participates in one FIFO regardless of its priority value. A wake joins the global tail and does not steal the running task's remaining quantum. Explicit yield or quantum expiry rotates to the global tail.
+- `timeslice == 0` disables tick-driven rotation for that task under either RR-capable policy.
 
-A timeslice is measured in ticks. See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition, scheduler-entry, and `need_switch` contract.
+A timeslice is measured in ticks. See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition, runtime policy-switching, scheduler-entry, and `need_switch` contract.
 
 ## Task control and time
 
@@ -138,7 +138,7 @@ Positive durations shorter than one tick sleep for one tick. In v0.4.0 and the c
 
 ### `hrt_yield`
 
-The current READY task is rotated to the tail of its priority queue exactly once, its configured slice is refreshed, rescheduling is requested, and task context is transferred to the port scheduler.
+The current READY task is rotated to the tail of the active policy queue exactly once, its configured slice is refreshed, rescheduling is requested, and task context is transferred to the port scheduler. Under global RR this is the single global FIFO; under priority-based policies it is the task's priority FIFO.
 
 ### `hrt_task_delete`
 
@@ -155,7 +155,9 @@ void hrt_set_policy(hrt_policy_t policy);
 void hrt_set_default_timeslice(uint16_t ticks);
 ```
 
-`hrt_set_policy()` stores the new value without validation or rebuilding ready queues. The next scheduling decision uses the new value.
+`hrt_set_policy()` supports runtime switching among `HRT_SCHED_PRIORITY`, `HRT_SCHED_RR`, and `HRT_SCHED_PRIORITY_RR`. If the requested policy differs from the active one, queued READY tasks are snapshotted and rebuilt under the target representation while the kernel critical section is held. READY-task quanta are refreshed, and a running application task treats the change as a scheduling point and rejoins the target policy at its tail. Selecting the already-active policy is a no-op. Policy switching is task-context-only.
+
+For priority-to-global conversion, queued tasks are flattened from highest to lowest priority while preserving FIFO order inside each class. For global-to-priority conversion, global FIFO order is preserved within each resulting priority class.
 
 `hrt_set_default_timeslice()` affects tasks created later with `attr == NULL`. Existing task configurations are unchanged. Setting the default to zero makes later default-created tasks cooperative.
 
@@ -193,7 +195,7 @@ Current `develop` behavior:
 - that preemption is not treated as explicit yield, so an interrupted PRIORITY_RR task retains precedence and unused quantum;
 - ISR give sets `need_switch` to the same scheduler-aware decision and requests the switch internally when required.
 
-For priority-based policies, `need_switch == 1` means the awakened waiter has strictly higher priority than the current READY task, or there is no normal READY current task. It does not merely mean that some waiter was awakened.
+For priority-based policies, `need_switch == 1` means the awakened waiter has strictly higher priority than the current READY task, or there is no normal READY current task. Under global RR, a wake joins the global FIFO tail and reports `need_switch == 0` while a normal READY task is still running; if no normal task is running, scheduling is requested.
 
 See [SEMAPHORES.md](SEMAPHORES.md).
 

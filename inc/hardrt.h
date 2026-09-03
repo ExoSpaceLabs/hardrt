@@ -59,10 +59,12 @@ typedef enum {
 } hrt_err;
 
 /**
- * @brief Scheduler policy used by the v0.4.0 implementation.
+ * @brief Scheduler policy.
  *
- * Ready tasks are stored in FIFO queues per priority and all policies currently
- * select from the highest non-empty priority queue.
+ * `HRT_SCHED_PRIORITY` uses strict fixed-priority FIFO scheduling.
+ * `HRT_SCHED_RR` uses one global FIFO and ignores task priority.
+ * `HRT_SCHED_PRIORITY_RR` uses strict priority with round-robin rotation
+ * inside each priority class.
  */
 typedef enum {
     HRT_SCHED_PRIORITY = 0,
@@ -144,7 +146,12 @@ uint32_t hrt_tick_now(void);
 /** Return elapsed system time in milliseconds. */
 uint32_t hrt_now_ms(void);
 
-/** Store a new scheduler policy value. */
+/**
+ * @brief Switch scheduler policy at runtime.
+ *
+ * READY queues are rebuilt for the target policy under the kernel critical
+ * section. A running application task treats the change as a scheduling point.
+ */
 void hrt_set_policy(hrt_policy_t p);
 
 /** Set the default timeslice for subsequently created tasks. */

@@ -44,10 +44,15 @@ volatile uint32_t dbg_pend_from_core;
 #endif
 
 /*
- * Ready queues are intrusive task-ID FIFOs. Each task contributes one next-ID
- * byte, while each priority owns only head/tail/count state. This keeps ready
- * storage O(HARDRT_MAX_TASKS + HARDRT_MAX_PRIO) and removes ring-buffer modulo
- * arithmetic from the scheduler hot path.
+ * Ready tasks use one intrusive next-ID array with a policy-selected queue
+ * representation:
+ *
+ * - PRIORITY / PRIORITY_RR: one FIFO per priority plus a non-empty bitmap;
+ * - RR: one global FIFO that ignores task priority entirely.
+ *
+ * Only the active representation owns READY membership. Policy changes rebuild
+ * the queues under the scheduler critical section, so a task is never present
+ * in both representations at once.
  */
 #define HRT_RQ_NONE UINT8_MAX
 
@@ -55,9 +60,10 @@ typedef struct {
     uint8_t head;
     uint8_t tail;
     uint8_t count;
-} prio_q_t;
+} ready_q_t;
 
-static prio_q_t g_rq[HARDRT_MAX_PRIO];
+static ready_q_t g_rq[HARDRT_MAX_PRIO];
+static ready_q_t g_rrq;
 static uint8_t g_rq_next[HARDRT_MAX_TASKS];
 
 /*
@@ -84,10 +90,22 @@ void hrt_port_enter_scheduler(void);
 void hrt_port_yield_to_scheduler(void);
 
 /* ------------- Queue helpers ------------- */
+static void readyq_reset_storage(void) {
+    memset(g_rq, 0, sizeof(g_rq));
+    memset(&g_rrq, 0, sizeof(g_rrq));
+    memset(g_rq_next, HRT_RQ_NONE, sizeof(g_rq_next));
+    g_ready_prio_mask = 0u;
+
+    g_rrq.head = HRT_RQ_NONE;
+    g_rrq.tail = HRT_RQ_NONE;
+    for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
+        g_rq[p].head = HRT_RQ_NONE;
+        g_rq[p].tail = HRT_RQ_NONE;
+    }
+}
+
 #if HARDRT_DEBUG == 1
-static int rq_contains(const uint8_t p, const int id) {
-    if (p >= HARDRT_MAX_PRIO) return 0;
-    const prio_q_t *q = &g_rq[p];
+static int readyq_contains(const ready_q_t *q, const int id) {
     uint8_t current = q->head;
     for (uint8_t n = 0u; n < q->count; ++n) {
         if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) return 0;
@@ -95,6 +113,14 @@ static int rq_contains(const uint8_t p, const int id) {
         current = g_rq_next[current];
     }
     return 0;
+}
+
+static int ready_contains(const int id) {
+    if (g_policy == HRT_SCHED_RR) return readyq_contains(&g_rrq, id);
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return 0;
+    const _hrt_tcb_t *t = hrt__tcb(id);
+    if (t == NULL || t->prio >= HARDRT_MAX_PRIO) return 0;
+    return readyq_contains(&g_rq[t->prio], id);
 }
 #endif
 
@@ -113,29 +139,23 @@ static uint8_t rq_first_ready_priority(const uint32_t mask) {
 #endif
 }
 
-static int rq_validate_push(const uint8_t p, const int id) {
-    if (p >= HARDRT_MAX_PRIO) {
-#if HARDRT_DEBUG == 1
-        dbg_tsk_q = p;
-#endif
-        hrt_error(ERR_INVALID_PRIO);
-        return 0;
-    }
+static int ready_validate_push(const ready_q_t *q, const int id) {
+    (void)id;
 #if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         dbg_tsk_q = (uint32_t)id;
         hrt_error(ERR_INVALID_ID);
         return 0;
     }
-    if (rq_contains(p, id)) {
+    if (ready_contains(id)) {
         dbg_tsk_q = (uint32_t)id;
         hrt_error(ERR_DUP_READY);
         return 0;
     }
 #endif
-    if (g_rq[p].count >= HARDRT_MAX_TASKS) {
+    if (q->count >= HARDRT_MAX_TASKS) {
 #if HARDRT_DEBUG == 1
-        dbg_tsk_q = g_rq[p].count;
+        dbg_tsk_q = q->count;
 #endif
         hrt_error(ERR_RQ_OVERFLOW);
         return 0;
@@ -143,9 +163,8 @@ static int rq_validate_push(const uint8_t p, const int id) {
     return 1;
 }
 
-static void rq_push(const uint8_t p, const int id) {
-    if (!rq_validate_push(p, id)) return;
-    prio_q_t *q = &g_rq[p];
+static void readyq_push_tail(ready_q_t *q, const int id) {
+    if (!ready_validate_push(q, id)) return;
     const uint8_t task_id = (uint8_t)id;
 
     g_rq_next[task_id] = HRT_RQ_NONE;
@@ -156,42 +175,26 @@ static void rq_push(const uint8_t p, const int id) {
     }
     q->tail = task_id;
     q->count++;
-    g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
 }
 
-static void rq_push_front(const uint8_t p, const int id) {
-    if (!rq_validate_push(p, id)) return;
-    prio_q_t *q = &g_rq[p];
+static void readyq_push_front(ready_q_t *q, const int id) {
+    if (!ready_validate_push(q, id)) return;
     const uint8_t task_id = (uint8_t)id;
 
     g_rq_next[task_id] = q->head;
     q->head = task_id;
     if (q->count == 0u) q->tail = task_id;
     q->count++;
-    g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
 }
 
-static int rq_pop(const uint8_t p) {
-#if HARDRT_DEBUG == 1
-    if (p >= HARDRT_MAX_PRIO) {
-        dbg_tsk_q = p;
-        hrt_error(ERR_INVALID_PRIO);
-        return -1;
-    }
-#endif
-    prio_q_t *q = &g_rq[p];
-    if (q->count == 0u) {
-#if HARDRT_DEBUG == 1
-        dbg_tsk_q = 0u;
-#endif
-        return -1;
-    }
+static int readyq_pop(ready_q_t *q) {
+    if (q->count == 0u) return -1;
 
     const uint8_t task_id = q->head;
 #if HARDRT_DEBUG == 1
@@ -208,12 +211,79 @@ static int rq_pop(const uint8_t p) {
     if (q->count == 0u) {
         q->head = HRT_RQ_NONE;
         q->tail = HRT_RQ_NONE;
-        g_ready_prio_mask &= ~(uint32_t)(1u << p);
     }
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
     return (int)task_id;
+}
+
+static void ready_push_tail(const int id) {
+    const _hrt_tcb_t *t = hrt__tcb(id);
+    if (t == NULL) return;
+
+    if (g_policy == HRT_SCHED_RR) {
+        readyq_push_tail(&g_rrq, id);
+        return;
+    }
+
+    if (t->prio >= HARDRT_MAX_PRIO) {
+        hrt_error(ERR_INVALID_PRIO);
+        return;
+    }
+    readyq_push_tail(&g_rq[t->prio], id);
+    g_ready_prio_mask |= (uint32_t)(1u << t->prio);
+}
+
+static void ready_push_front(const int id) {
+    const _hrt_tcb_t *t = hrt__tcb(id);
+    if (t == NULL) return;
+
+    if (g_policy == HRT_SCHED_RR) {
+        readyq_push_front(&g_rrq, id);
+        return;
+    }
+
+    if (t->prio >= HARDRT_MAX_PRIO) {
+        hrt_error(ERR_INVALID_PRIO);
+        return;
+    }
+    readyq_push_front(&g_rq[t->prio], id);
+    g_ready_prio_mask |= (uint32_t)(1u << t->prio);
+}
+
+static int ready_pop(void) {
+    if (g_policy == HRT_SCHED_RR) return readyq_pop(&g_rrq);
+    if (g_ready_prio_mask == 0u) return -1;
+
+    const uint8_t p = rq_first_ready_priority(g_ready_prio_mask);
+    const int id = readyq_pop(&g_rq[p]);
+    if (g_rq[p].count == 0u) g_ready_prio_mask &= ~(uint32_t)(1u << p);
+    return id;
+}
+
+static uint8_t ready_snapshot(uint8_t order[HARDRT_MAX_TASKS]) {
+    uint8_t count = 0u;
+
+    if (g_policy == HRT_SCHED_RR) {
+        uint8_t current = g_rrq.head;
+        for (uint8_t n = 0u; n < g_rrq.count; ++n) {
+            if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) break;
+            order[count++] = current;
+            current = g_rq_next[current];
+        }
+        return count;
+    }
+
+    for (uint8_t p = 0u; p < HARDRT_MAX_PRIO; ++p) {
+        uint8_t current = g_rq[p].head;
+        for (uint8_t n = 0u; n < g_rq[p].count; ++n) {
+            if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) break;
+            order[count++] = current;
+            current = g_rq_next[current];
+        }
+    }
+    return count;
 }
 
 static void sleepq_insert(const int id, const uint32_t ticks) {
@@ -262,20 +332,14 @@ void _set_sp(const int id, uint32_t *sp) {
 /* ------------- Core API ------------- */
 int hrt_init(const hrt_config_t *cfg) {
     memset(g_tcbs, 0, sizeof(g_tcbs));
-    memset(g_rq, 0, sizeof(g_rq));
-    memset(g_rq_next, HRT_RQ_NONE, sizeof(g_rq_next));
+    readyq_reset_storage();
     memset(g_sleep_next, HRT_SLEEP_NONE, sizeof(g_sleep_next));
     memset(g_sleep_delta, 0, sizeof(g_sleep_delta));
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
-    for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
-        g_rq[p].head = HRT_RQ_NONE;
-        g_rq[p].tail = HRT_RQ_NONE;
-    }
 
     g_tick = 0;
     g_current = -1;
     g_explicit_yield = 0u;
-    g_ready_prio_mask = 0u;
     g_sleep_head = HRT_SLEEP_NONE;
 
     if (cfg) {
@@ -338,7 +402,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 #endif
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
-    rq_push(t->prio, id);
+    ready_push_tail(id);
     return id;
 }
 
@@ -433,7 +497,47 @@ uint32_t hrt_now_ms(void) {
     return (uint32_t)(((uint64_t)g_tick * 1000ULL) / (uint64_t)g_tick_hz);
 }
 
-void hrt_set_policy(const hrt_policy_t p) { g_policy = p; }
+void hrt_set_policy(const hrt_policy_t p) {
+    if (p == g_policy) return;
+    if (p != HRT_SCHED_PRIORITY &&
+        p != HRT_SCHED_RR &&
+        p != HRT_SCHED_PRIORITY_RR) {
+        return;
+    }
+
+    uint8_t order[HARDRT_MAX_TASKS];
+    int yield_current = 0;
+    hrt_port_crit_enter();
+
+    const uint8_t count = ready_snapshot(order);
+    readyq_reset_storage();
+    g_policy = p;
+
+    for (uint8_t i = 0u; i < count; ++i) {
+        const int id = (int)order[i];
+        _hrt_tcb_t *t = hrt__tcb(id);
+        if (t == NULL || t->state != HRT_READY || id == HRT_IDLE_ID) continue;
+        t->slice_left = t->timeslice_cfg;
+        ready_push_tail(id);
+    }
+
+    const int cur = g_current;
+    if (cur >= 0 && cur < HARDRT_MAX_TASKS && cur != HRT_IDLE_ID) {
+        _hrt_tcb_t *t = hrt__tcb(cur);
+        if (t != NULL && t->state == HRT_READY) {
+            t->slice_left = t->timeslice_cfg;
+            /* A policy change is a scheduling point. The current task joins
+             * the target policy at the tail when scheduler entry occurs. */
+            g_explicit_yield = 1u;
+            yield_current = 1;
+            hrt__pend_context_switch();
+        }
+    }
+
+    hrt_port_crit_exit();
+
+    if (yield_current != 0) hrt_port_yield_to_scheduler();
+}
 void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 
 /* ------------- Internal helpers used by scheduler/time/IPC ------------- */
@@ -460,7 +564,7 @@ void hrt__make_ready(const int id) {
 
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
-    rq_push(t->prio, id);
+    ready_push_tail(id);
 }
 
 void hrt__requeue_noreset(const int id) {
@@ -477,7 +581,7 @@ void hrt__requeue_noreset(const int id) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) rq_push(t->prio, id);
+    if (t->state == HRT_READY) ready_push_tail(id);
 }
 
 void hrt__requeue_front_noreset(const int id) {
@@ -494,7 +598,7 @@ void hrt__requeue_front_noreset(const int id) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) rq_push_front(t->prio, id);
+    if (t->state == HRT_READY) ready_push_front(id);
 }
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
@@ -520,12 +624,12 @@ void hrt__prepare_current_for_reschedule(void) {
     const int rr_policy = (g_policy == HRT_SCHED_RR || g_policy == HRT_SCHED_PRIORITY_RR);
     if (g_explicit_yield != 0u) {
         t->slice_left = t->timeslice_cfg;
-        rq_push(t->prio, cur);
+        ready_push_tail(cur);
     } else if (rr_policy && t->timeslice_cfg > 0u && t->slice_left == 0u) {
         t->slice_left = t->timeslice_cfg;
-        rq_push(t->prio, cur);
+        ready_push_tail(cur);
     } else {
-        rq_push_front(t->prio, cur);
+        ready_push_front(cur);
     }
 
     g_explicit_yield = 0u;
@@ -546,9 +650,9 @@ int hrt__should_preempt_after_wake(const int woken_id) {
         return woken->prio < current->prio;
     }
 
-    /* Global RR wake semantics are finalized in #28. Preserve the legacy
-       scheduling opportunity for HRT_SCHED_RR until that policy is rebuilt. */
-    if (g_policy == HRT_SCHED_RR) return 1;
+    /* Global RR ignores priority. A newly READY task joins the global FIFO
+       behind the running task and does not steal its remaining quantum. */
+    if (g_policy == HRT_SCHED_RR) return 0;
     return 0;
 }
 
@@ -589,11 +693,8 @@ int hrt__sleep_tick(void) {
 
 int hrt__pick_next_ready(void) {
     int id = HRT_IDLE_ID;
-    if (g_ready_prio_mask != 0u) {
-        const uint8_t p = rq_first_ready_priority(g_ready_prio_mask);
-        const int candidate = rq_pop(p);
-        if (candidate >= 0) id = candidate;
-    }
+    const int candidate = ready_pop();
+    if (candidate >= 0) id = candidate;
 #if HARDRT_DEBUG == 1
     dbg_pick = id;
 #endif
@@ -661,8 +762,19 @@ uint16_t hrt__test_task_slice_left(int id) {
 int hrt__test_ready_occurrences(int id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) return 0;
     int count = 0;
+
+    if (g_policy == HRT_SCHED_RR) {
+        uint8_t current = g_rrq.head;
+        for (uint8_t n = 0u; n < g_rrq.count; ++n) {
+            if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) break;
+            if ((int)current == id) count++;
+            current = g_rq_next[current];
+        }
+        return count;
+    }
+
     for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
-        const prio_q_t *q = &g_rq[p];
+        const ready_q_t *q = &g_rq[p];
         uint8_t current = q->head;
         for (uint8_t n = 0u; n < q->count; ++n) {
             if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) break;

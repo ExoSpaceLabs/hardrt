@@ -2,16 +2,18 @@
 
 This page documents the scheduler semantics implemented on `develop` for the v0.5 line. It intentionally distinguishes the current development contract from behavior shipped in v0.4.0.
 
-Priority `0` is the highest priority. Unless otherwise stated, READY tasks are ordered FIFO within a priority class.
+Priority `0` is the highest priority. Priority values affect the two priority-based policies and are intentionally ignored by global round-robin.
 
 ## Policies
 
 ### `HRT_SCHED_PRIORITY`
 
+- READY tasks use one FIFO per priority class.
 - The highest-priority READY class always dominates lower-priority classes.
 - A newly READY task preempts the running task only when it has strictly higher priority, or when no normal task is running.
 - Equal- and lower-priority wakes do not request a policy-visible context switch merely because they became READY.
 - There is no tick-driven round-robin quantum under this policy.
+- An explicit `hrt_yield()` moves the task to the tail of its own priority FIFO.
 
 ### `HRT_SCHED_PRIORITY_RR`
 
@@ -33,13 +35,67 @@ The validator also checks that low-A's observed remaining quantum matches the ex
 
 ### `HRT_SCHED_RR`
 
-The current implementation still stores READY work in per-priority queues. The final global priority-independent RR contract is tracked separately by #28. Code that depends on global RR ordering should not infer that contract from the current transitional representation.
+`HRT_SCHED_RR` is true global round-robin on `develop`.
+
+- All READY application tasks share one intrusive FIFO regardless of priority.
+- Task priority does not affect selection, wake order, or rotation under this policy.
+- Initial READY order follows insertion order.
+- A task that yields or exhausts a non-zero quantum moves to the global FIFO tail and receives a fresh quantum.
+- A task made READY after sleeping or blocking joins the global FIFO tail with a fresh quantum.
+- A wake does not steal the currently running task's remaining quantum merely because the woken task has a numerically higher priority.
+- When no normal task is running, a wake requests scheduling as usual.
+- `timeslice == 0` keeps the task cooperative: ticks do not rotate it, but explicit yield/block/sleep still creates scheduling points.
+
+This is intentionally distinct from v0.4.0, where `HRT_SCHED_RR` still selected through the per-priority queues.
+
+## READY representations
+
+HardRT uses one intrusive task-ID link per task. Only the representation required by the active policy owns READY membership:
+
+```text
+PRIORITY / PRIORITY_RR:
+    priority bitmap -> per-priority FIFO -> task IDs
+
+RR:
+    one global FIFO -> task IDs
+```
+
+A task is never simultaneously a member of both representations. The idle task is not part of either application READY queue.
+
+This preserves the ready-side structural properties established during the v0.5 scheduler work:
+
+- static storage only;
+- no dynamic allocation;
+- O(1) FIFO insertion/removal;
+- fixed-word highest-priority selection for priority-based policies;
+- O(1) global FIFO selection for `HRT_SCHED_RR`.
+
+## Runtime policy switching
+
+`hrt_set_policy()` supports switching among all three policies.
+
+The core performs the transition under the scheduler critical section:
+
+1. snapshot the queued READY tasks in the old policy's deterministic selection order;
+2. clear the old READY representation;
+3. select the target policy;
+4. rebuild the target READY representation exactly once per queued task;
+5. refresh READY-task quanta;
+6. treat a running application task as reaching a scheduling point and rejoin it at the target policy's tail.
+
+For priority-to-global conversion, the old priority queues are flattened from highest to lowest priority while preserving FIFO order inside each priority class. Once global RR is active, subsequent rotation is priority-independent.
+
+For global-to-priority conversion, global FIFO order is preserved within each resulting priority class.
+
+Changing to the already-active policy is a no-op.
+
+Policy switching is a task-context operation. ISR code should not change scheduler policy.
 
 ## READY transition and `need_switch`
 
 All wake paths use the same scheduler-aware decision.
 
-For priority-based policies, a wake requires rescheduling when:
+For `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a wake requires rescheduling when:
 
 1. no normal task is currently running; or
 2. the current task is not READY; or
@@ -47,9 +103,14 @@ For priority-based policies, a wake requires rescheduling when:
 
 An equal- or lower-priority wake does not force a context switch solely because the task became READY.
 
+For `HRT_SCHED_RR`:
+
+1. if no normal READY task is currently running, the wake requests scheduling;
+2. otherwise the awakened task joins the global FIFO tail and does not preempt the current task.
+
 ISR-facing synchronization APIs expose this decision through `need_switch`:
 
-- `need_switch == 1` means the awakened task should run before the interrupted/current task under the active scheduler contract, or no normal task is running;
+- `need_switch == 1` means the active scheduler requires an immediate handoff, or no normal task is running;
 - `need_switch == 0` means the wake does not require an immediate scheduler handoff;
 - ISR APIs never block;
 - when a switch is required, the HardRT ISR API requests it internally. Application ISR code does not call a second yield hook.
@@ -61,9 +122,11 @@ The core owns the outgoing READY-task transition exactly once. Ports request sch
 | Cause | Outgoing task handling |
 |---|---|
 | task blocks, sleeps, is deleted, or returns | do not requeue |
-| explicit `hrt_yield()` | requeue at tail once; refresh quantum |
-| RR quantum expiry | requeue at tail once; refresh quantum |
-| higher-priority asynchronous preemption | requeue at front precedence; preserve remaining quantum |
+| explicit `hrt_yield()` | requeue at active-policy tail once; refresh quantum |
+| RR quantum expiry | requeue at active-policy tail once; refresh quantum |
+| priority-policy higher-priority asynchronous preemption | requeue at front precedence; preserve remaining quantum |
+| scheduling request with no rotation cause | requeue at front; preserve remaining quantum |
+| runtime policy change | rebuild queued READY tasks; running task rejoins target-policy tail |
 | first dispatch / idle | no normal outgoing task to requeue |
 
 This prevents duplicate READY membership and keeps Cortex-M and POSIX on one logical scheduler contract even though their context-switch mechanisms differ.
@@ -71,8 +134,8 @@ This prevents duplicate READY membership and keeps Cortex-M and POSIX on one log
 ```mermaid
 flowchart TD
     A[Scheduling requested] --> B{Normal current task READY?}
-    B -- no --> P[Pick highest eligible READY task]
-    B -- yes --> C{Explicit yield?}
+    B -- no --> P[Pick next READY task using active policy]
+    B -- yes --> C{Policy change or explicit yield?}
     C -- yes --> D[Tail requeue + fresh quantum]
     C -- no --> E{RR quantum expired?}
     E -- yes --> D

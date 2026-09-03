@@ -117,16 +117,22 @@ See [BUILD.md](docs/BUILD.md) for the current prerequisites and CMake options.
 
 ## Scheduling in the current implementation
 
-Priority `0` is the highest priority. Ready tasks are stored in one FIFO queue per priority, and the scheduler always selects the first task from the highest non-empty priority queue.
+The `develop` branch contains the v0.5 scheduler contract; the released v0.4.0 behavior is noted separately where it differs.
 
-- `HRT_SCHED_PRIORITY` uses fixed-priority selection without tick-driven time-slice rotation.
-- `HRT_SCHED_RR` enables time-slice accounting, but task selection still uses the priority queues in v0.4.0.
-- `HRT_SCHED_PRIORITY_RR` also uses fixed-priority selection and rotates time-sliced tasks within the same priority class.
+Priority `0` is the highest priority.
+
+- `HRT_SCHED_PRIORITY` uses strict fixed-priority FIFO scheduling. A strictly higher-priority wake preempts; equal- and lower-priority wakes wait.
+- `HRT_SCHED_RR` is true global round-robin on `develop`: all READY application tasks share one FIFO and task priority is ignored. Yield or quantum expiry rotates to the global tail. A wake joins the global tail without stealing the current task's remaining quantum.
+- `HRT_SCHED_PRIORITY_RR` uses strict priority selection and round-robin only inside the selected priority class. A task interrupted by higher-priority work retains its queue precedence and unused quantum.
 - A task with `timeslice == 0` is cooperative and is not rotated when ticks expire.
 
-Consequently, `HRT_SCHED_RR` is not a priority-independent global round-robin policy in the current implementation.
+Runtime switching among the three policies rebuilds READY membership under the kernel critical section. The running task treats a policy change as a scheduling point and joins the target policy at its tail.
+
+v0.4.0 did **not** provide true global RR: `HRT_SCHED_RR` still selected through the priority queues in that release.
 
 A timeslice is expressed in **ticks**, not milliseconds. Its wall-clock duration depends on `tick_hz`.
+
+See [SCHEDULING.md](docs/SCHEDULING.md) for the complete policy and READY-transition contract.
 
 ## Tick sources
 
