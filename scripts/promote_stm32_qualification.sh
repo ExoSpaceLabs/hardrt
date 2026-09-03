@@ -30,7 +30,7 @@ VERSION="$2"
 REPORT="$RUN_DIR/qualification.md"
 [[ -f "$REPORT" ]] || { echo "Missing qualification.md in $RUN_DIR" >&2; exit 2; }
 
-grep -q -- '- Overall: \*\*PASS\*\*' "$REPORT" || { echo "Refusing to promote a non-PASS run" >&2; exit 1; }
+grep -q -- '- Full matrix overall: \*\*PASS\*\*' "$REPORT" || { echo "Refusing to promote an incomplete or non-PASS full hardware matrix" >&2; exit 1; }
 grep -q -- '- HardRT tracked source state: \*\*clean\*\*' "$REPORT" || { echo "Refusing to promote a dirty-source run" >&2; exit 1; }
 grep -qE -- '- STM32CubeH7 SHA/state: `[^`]+` / `clean`' "$REPORT" || { echo "Refusing to promote a run with dirty/unrecorded STM32CubeH7" >&2; exit 1; }
 
