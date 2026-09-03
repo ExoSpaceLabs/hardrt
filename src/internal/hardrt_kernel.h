@@ -68,6 +68,7 @@ void hrt__test_set_tick(uint32_t v);
 uint32_t hrt__test_get_tick(void);
 uint16_t hrt__test_task_slice_left(int id);
 int hrt__test_ready_occurrences(int id);
+uint32_t hrt__test_ready_prio_mask(void);
 #endif
 
 #ifdef __cplusplus
