@@ -112,7 +112,7 @@ collect_generated_dirs() {
     [[ -d "$p" ]] && found+=("$p")
   done
   shopt -u nullglob
-  printf '%s\n' "${found[@]}"
+  ((${#found[@]})) && printf '%s\n' "${found[@]}"
 }
 
 clean_generated_dirs() {
