@@ -8,9 +8,16 @@ Each run creates a timestamped directory named `<UTC>_<short-sha>` containing:
 - `qualification.md`: qualification metadata, explicit PASS criteria, per-test results, tester feedback, and the overall verdict;
 - `raw/`: build/flash, OpenOCD, and GDB output used to support the report.
 
-For release qualification, run from a clean HardRT checkout at the exact commit being
-qualified and commit the complete generated run directory. Do not hand-edit a passing
-report to change test outcomes; rerun the qualification instead.
+For release qualification, run from the exact HardRT commit being qualified and commit the
+complete generated run directory. Tracked source modifications are reported separately from
+untracked workspace files.
+
+If generated HardRT/example build or install directories are present, the interactive runner
+can remove only those known generated directories before the run. Use `--clean-builds` to do
+this without the prompt, or `--no-clean-builds` to retain them. The runner deliberately does
+not use broad `git clean` commands and does not delete arbitrary untracked files.
+
+Do not hand-edit a passing report to change test outcomes; rerun the qualification instead.
 
 The full runner delegates build/flash work to the repository's individual STM32 scripts.
 When a new Cortex-M hardware test is added, add its individual build/validator first and
