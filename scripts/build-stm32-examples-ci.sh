@@ -23,6 +23,14 @@ if [[ ! -d "$STM32CUBE_H7_ROOT/Drivers/CMSIS/Core/Include" ]] ||
   exit 1
 fi
 
+bash -n \
+  "$ROOT_DIR/scripts/stm32_manual_test_full.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-demo.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh"
+
 configure_base_library() {
   if [[ ! -f "$BASE_BUILD/libhardrt.a" ]]; then
     cmake -S "$ROOT_DIR" -B "$BASE_BUILD" -G "$GENERATOR" \
