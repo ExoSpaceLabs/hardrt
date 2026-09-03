@@ -1,1 +1,0 @@
-One promoted qualification directory per released version. Development runs belong in .qualification/stm32/ and are never committed.
