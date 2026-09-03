@@ -16,7 +16,7 @@ ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
 FUNCTIONAL_TOTAL=9
-BENCHMARK_TOTAL=4
+BENCHMARK_TOTAL=22
 
 NAMES=()
 STATUSES=()
@@ -403,6 +403,35 @@ timing_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+tick_benchmark_case() {
+  local scenario="$1" tasks="$2"
+  local title="DWT tick_${scenario}_tasks${tasks} timing"
+  local prefix="tick_${scenario}_tasks${tasks}" status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_tick_benchmark/build-cortex_m/hardrt_h755_tick_benchmark.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Production hrt_tick_from_isr() completes for the configured task capacity/workload; target sample count is reached; min <= avg <= max; expected wake activity matches the scenario."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-tick-benchmark.sh" --scenario "$scenario" --tasks "$tasks" --samples "$TIMING_SAMPLES"; then
+    status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/tick_benchmark.dbg" "$prefix"; then
+    status=FAIL; notes="Tick benchmark GDB run failed or timed out."
+  else
+    local count target capacity workers wakes min avg max
+    count="$(sed -n 's/^count=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    target="$(sed -n 's/^event_hz=[0-9][0-9]* target_samples=\([0-9][0-9]*\) final_tick=[0-9][0-9]*$/\1/p' "$glog" | tail -n1)"
+    capacity="$(sed -n 's/^configured_app_tasks=\([0-9][0-9]*\) worker_tasks=[0-9][0-9]*$/\1/p' "$glog" | tail -n1)"
+    workers="$(sed -n 's/^configured_app_tasks=[0-9][0-9]* worker_tasks=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    wakes="$(sed -n 's/^worker_wakes=\([0-9][0-9]*\) error=[0-9][0-9]*$/\1/p' "$glog" | tail -n1)"
+    read -r min avg max < <(sed -n 's/^min=\([0-9][0-9]*\) cycles, avg=\([0-9][0-9]*\) cycles (sum\/count=[0-9][0-9]*), max=\([0-9][0-9]*\) cycles$/\1 \2 \3/p' "$glog" | tail -n1) || true
+    if ! grep -q '^RESULT: PASS$' "$glog" || [[ -z "$count" || -z "$target" || -z "$capacity" || -z "$workers" || -z "$wakes" || -z "${min:-}" || -z "${avg:-}" || -z "${max:-}" ]] || (( count != TIMING_SAMPLES || target != TIMING_SAMPLES || capacity != tasks || min > avg || avg > max )); then
+      status=FAIL; notes="Automated tick benchmark acceptance failed."
+    else
+      notes="scenario=$scenario, app_tasks=$capacity, workers=$workers, wakes=$wakes, count=$count, min=$min cycles, avg=$avg cycles, max=$max cycles."
+    fi
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 preemption_case() {
   local case="$1" title="$2" prefix="preemption_$1" status=PASS notes=""
   local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
@@ -483,12 +512,20 @@ run_functional_matrix() {
 }
 
 run_benchmarks() {
-  # Every benchmark gets its own build and flash. build-lib-stm32h7xx-dwt-timing.sh
-  # selects HARDRT_TIMING_PROFILE/hooks per case so normal builds stay clean.
+  # Every benchmark gets its own build and flash. The timing helper selects
+  # HARDRT_TIMING_PROFILE/hooks per case; the tick matrix uses profile=none and
+  # application-side DWT around the production external-tick API.
   timing_case event_to_task "DWT event_to_task timing"
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
   timing_case ready_to_task "DWT ready_to_task timing"
   timing_case scheduler_decision "DWT scheduler_decision timing"
+
+  local tasks scenario
+  for tasks in 8 16 32; do
+    for scenario in none one_sleep all_sleep one_expiry simultaneous staggered; do
+      tick_benchmark_case "$scenario" "$tasks"
+    done
+  done
 }
 
 PROBE="$RAW/00_probe.log"
@@ -610,7 +647,7 @@ for i in "${!NAMES[@]}"; do
       avg="$(sed -n 's/.*avg=\([0-9][0-9]*\) cycles.*/\1/p' <<< "${NOTES[$i]}")"
       max="$(sed -n 's/.*max=\([0-9][0-9]*\) cycles.*/\1/p' <<< "${NOTES[$i]}")"
       label="${NAMES[$i]#DWT }"; label="${label% timing}"
-      [[ -n "$min" && -n "$avg" && -n "$max" ]] && printf '  %-24s %s / %s / %s\n' "$label" "$min" "$avg" "$max"
+      [[ -n "$min" && -n "$avg" && -n "$max" ]] && printf '  %-32s %s / %s / %s\n' "$label" "$min" "$avg" "$max"
       ;;
   esac
 done
