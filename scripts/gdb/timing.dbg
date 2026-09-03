@@ -19,7 +19,7 @@ commands
   quit
 end
 
-break example_fail
+break *example_fail
 commands
   silent
   printf "\n*** timing example failure ***\n"
@@ -29,7 +29,7 @@ commands
   quit
 end
 
-break timing_target_reached
+break *timing_target_reached
 commands
   silent
   printf "\n--- Timing target reached ---\n"
