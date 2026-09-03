@@ -1,6 +1,6 @@
 # Semaphores
 
-HardRT v0.4.0 provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering.
+HardRT provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering. This page describes the current `develop` behavior; v0.4.0 used a less selective wake/reschedule rule.
 
 ## Modes
 
@@ -49,28 +49,36 @@ int hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 4. marks the task `HRT_BLOCKED`;
 5. requests rescheduling and transfers to the scheduler.
 
-There is no timeout variant in v0.4.0.
+There is currently no timeout variant.
 
 ### Task-context give
 
-When a waiter exists, `hrt_sem_give()` removes exactly one FIFO waiter and passes it to the ready-queue insertion path. The token is handed directly to that waiter rather than incrementing the stored count.
+When a waiter exists, `hrt_sem_give()` removes exactly one FIFO waiter, performs direct handoff, and makes that task READY rather than incrementing the stored token count.
 
-The current implementation then calls `hrt_yield()` whenever a waiter was awakened. It does this regardless of the relative priorities of the giver and waiter.
+The wake is then evaluated by the common scheduler-aware rule:
+
+- under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a strictly higher-priority waiter preempts the current READY task;
+- an equal- or lower-priority waiter does not force a context switch solely because it woke;
+- if no normal task is running, or the recorded current task is not READY, the wake requests scheduling.
+
+When task-context preemption is required, the scheduler request is **not** treated as an explicit yield. The interrupted task therefore retains queue precedence and any unused RR quantum.
 
 When no waiter exists, the stored count is incremented up to `max_count`.
 
-### ISR give
+### ISR give and `need_switch`
 
 `hrt_sem_give_from_isr()` performs the same direct handoff without blocking.
 
-In v0.4.0:
+`need_switch` has one scheduler-aware meaning:
 
-- `*need_switch` is set to `1` whenever any waiter was awakened;
-- the value does not specifically mean that a higher-priority task was awakened;
-- the function calls `hrt__pend_context_switch()` itself when a waiter is awakened;
-- the ISR does not call an additional yield function.
+- `1`: the awakened waiter should run before the interrupted/current task under the active scheduler contract, or no normal task is running;
+- `0`: the wake does not require an immediate scheduler handoff.
+
+When a switch is required, `hrt_sem_give_from_isr()` requests it internally through the port-independent reschedule hook. Application ISR code does not call a second yield hook.
 
 The selected port's ISR critical-section rules apply. Cortex-M callers must use an interrupt priority compatible with the configured `BASEPRI` syscall ceiling.
+
+See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition and retained-quantum contract.
 
 ## Binary semaphore example
 
@@ -146,4 +154,3 @@ A semaphore does not carry payload data. When every produced item must be retain
 - No cancellation API for a blocked waiter.
 - No priority ordering of waiter queues.
 - No dynamic allocation.
-- `need_switch` reports that a waiter was awakened, not a completed priority comparison.
