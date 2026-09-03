@@ -13,7 +13,7 @@ usage() {
 Usage: scripts/build-lib-stm32h7xx-dwt-timing.sh [options]
 
 Options:
-  --case event_to_task|sem_isr_ready
+  --case event_to_task|sem_isr_ready|ready_to_task
   --event-hz HZ
   --samples N
   --no-flash
@@ -26,6 +26,10 @@ Cases:
 
   sem_isr_ready  Builds HardRT with only the private `ipc` timing profile.
                  Measures hrt_sem_give_from_isr entry -> waiter marked READY.
+
+  ready_to_task  Builds HardRT with the private `ipc` timing profile and a
+                 waiter-READY start marker. Measures waiter marked READY ->
+                 latency task continuation after the blocked semaphore returns.
 USAGE
 }
 
@@ -48,6 +52,10 @@ case "$CASE" in
   sem_isr_ready)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=ipc")
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_HOOK_HEADER=$APP_DIR/inc/hardrt_timing_hooks.h")
+    ;;
+  ready_to_task)
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=ipc")
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_HOOK_HEADER=$APP_DIR/inc/hardrt_timing_ready_hooks.h")
     ;;
   *)
     echo "Unsupported timing case: $CASE" >&2
