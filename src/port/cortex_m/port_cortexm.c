@@ -170,7 +170,18 @@ void hrt__pend_context_switch(void) {
 }
 
 void hrt_port_yield_to_scheduler(void) {
-    _pend_pendsv();
+    /* Core task-context paths follow a two-stage contract:
+     *   hrt__pend_context_switch();
+     *   hrt_port_yield_to_scheduler();
+     *
+     * On POSIX the first stage sets a pending flag and the second performs the
+     * host context hop. On Cortex-M, however, the first stage already requests
+     * PendSV and the DSB/ISB in _pend_pendsv() makes that request visible at the
+     * architectural exception boundary. Re-pending here can make a task that
+     * has just resumed from a blocking call enter PendSV a second time before
+     * the API returns. The task-context yield stage therefore has no additional
+     * hardware action on Cortex-M.
+     */
 }
 
 void hrt_port_start_systick(uint32_t tick_hz) {
