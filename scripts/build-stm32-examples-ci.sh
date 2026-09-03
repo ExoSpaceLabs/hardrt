@@ -28,7 +28,8 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" \
-  "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh"
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"
 
 configure_base_library() {
   if [[ ! -f "$BASE_BUILD/libhardrt.a" ]]; then
@@ -77,6 +78,7 @@ build_app hardrt_h755_preemption_priority_rr "$ROOT_DIR/examples/hardrt_h755_pre
 build_app hardrt_h755_ipc_semaphore "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=semaphore
 build_app hardrt_h755_ipc_queue "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=queue
 build_app hardrt_h755_ipc_mutex "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=mutex
+build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 
 IPC_BUILD="$ROOT_DIR/build-cortex_m-timing-ipc-ci"; IPC_INSTALL="$ROOT_DIR/install-cortexm-timing-ipc-ci"; IPC_HOOK_HEADER="$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_hooks.h"
