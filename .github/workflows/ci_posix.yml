@@ -55,6 +55,19 @@ jobs:
         run: |
           ctest -V --test-dir build-posix --output-on-failure
 
+      - name: Validate installed public API
+        run: |
+          rm -rf install-posix-ci build-installed-consumer
+          cmake --install build-posix --prefix "$PWD/install-posix-ci"
+
+          test ! -e install-posix-ci/include/hardrt_port_int.h
+          test ! -e install-posix-ci/include/hardrt_kernel.h
+          test ! -e install-posix-ci/include/hardrt_port_contract.h
+
+          cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-posix-ci"
+          cmake --build build-installed-consumer --parallel
+
       - name: Install ARM bare-metal toolchain (22.04 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
