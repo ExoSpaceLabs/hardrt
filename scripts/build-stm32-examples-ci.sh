@@ -74,6 +74,25 @@ build_app() {
   echo "[STM32 CI] PASS $name -> $elf"
 }
 
+configure_timing_library() {
+  local build_dir="$1"
+  local install_dir="$2"
+  local hook_header="$3"
+
+  rm -rf "$build_dir" "$install_dir"
+  cmake -S "$ROOT_DIR" -B "$build_dir" -G "$GENERATOR" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DHARDRT_PORT=cortex_m \
+    -DHARDRT_BUILD_TESTS=OFF \
+    -DHARDRT_BUILD_EXAMPLES=OFF \
+    -DHARDRT_ENABLE_CPP=OFF \
+    -DHARDRT_TIMING_PROFILE=ipc \
+    -DHARDRT_TIMING_HOOK_HEADER="$hook_header" \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
+  cmake --build "$build_dir" --parallel "$JOBS"
+  cmake --install "$build_dir" --prefix "$install_dir"
+}
+
 configure_base_library
 rm -rf "$APP_BUILD_ROOT"
 mkdir -p "$APP_BUILD_ROOT"
@@ -97,24 +116,22 @@ build_app hardrt_h755_dwt_event_to_task \
 
 IPC_BUILD="$ROOT_DIR/build-cortex_m-timing-ipc-ci"
 IPC_INSTALL="$ROOT_DIR/install-cortexm-timing-ipc-ci"
-TIMING_HOOK_HEADER="$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_hooks.h"
-
-rm -rf "$IPC_BUILD" "$IPC_INSTALL"
-cmake -S "$ROOT_DIR" -B "$IPC_BUILD" -G "$GENERATOR" \
-  -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-  -DHARDRT_PORT=cortex_m \
-  -DHARDRT_BUILD_TESTS=OFF \
-  -DHARDRT_BUILD_EXAMPLES=OFF \
-  -DHARDRT_ENABLE_CPP=OFF \
-  -DHARDRT_TIMING_PROFILE=ipc \
-  -DHARDRT_TIMING_HOOK_HEADER="$TIMING_HOOK_HEADER" \
-  -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
-cmake --build "$IPC_BUILD" --parallel "$JOBS"
-cmake --install "$IPC_BUILD" --prefix "$IPC_INSTALL"
+IPC_HOOK_HEADER="$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_hooks.h"
+configure_timing_library "$IPC_BUILD" "$IPC_INSTALL" "$IPC_HOOK_HEADER"
 
 build_app hardrt_h755_dwt_sem_isr_ready \
   "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$IPC_INSTALL" \
   -DHARDRT_TIMING_CASE=sem_isr_ready \
+  -DHARDRT_TIMING_TARGET_SAMPLES=8
+
+READY_BUILD="$ROOT_DIR/build-cortex_m-timing-ready-ci"
+READY_INSTALL="$ROOT_DIR/install-cortexm-timing-ready-ci"
+READY_HOOK_HEADER="$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_ready_hooks.h"
+configure_timing_library "$READY_BUILD" "$READY_INSTALL" "$READY_HOOK_HEADER"
+
+build_app hardrt_h755_dwt_ready_to_task \
+  "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$READY_INSTALL" \
+  -DHARDRT_TIMING_CASE=ready_to_task \
   -DHARDRT_TIMING_TARGET_SAMPLES=8
 
 echo "[STM32 CI] All STM32H755 examples cross-built successfully."
