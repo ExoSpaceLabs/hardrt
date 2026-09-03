@@ -12,6 +12,7 @@ GDB_BIN=""
 OPENOCD_PID=""
 FINALIZED=0
 CLEAN_BUILDS_MODE="ask"
+ONLY_CASE=""
 CLEANED_BUILD_DIRS=()
 
 NAMES=()
@@ -26,7 +27,7 @@ Usage:
   scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 [options]
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
-Runs the complete 13-case NUCLEO-H755ZI-Q hardware qualification matrix.
+Runs the complete 14-case NUCLEO-H755ZI-Q hardware qualification matrix.
 Development evidence is written under gitignored .qualification/stm32/.
 For a release, manually copy/move the selected final passing run to:
   validation/stm32/releases/vX.Y.Z/
@@ -40,6 +41,9 @@ Options:
   --openocd-scripts DIR   OpenOCD scripts directory.
   --clean-builds          Remove known generated build/install directories before qualification.
   --no-clean-builds       Never offer pre-run generated-build cleanup.
+  --only scheduler_decision
+                          Run only board probe + scheduler-decision timing diagnostic.
+                          This is for targeted performance investigation, not release qualification.
   -h, --help              Show help.
 USAGE
 }
@@ -54,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --openocd-scripts) OPENOCD_SCRIPTS="$2"; shift 2 ;;
     --clean-builds) CLEAN_BUILDS_MODE="yes"; shift ;;
     --no-clean-builds) CLEAN_BUILDS_MODE="no"; shift ;;
+    --only) ONLY_CASE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
     *)
@@ -62,6 +67,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -n "$ONLY_CASE" && "$ONLY_CASE" != "scheduler_decision" ]]; then
+  echo "Unsupported --only case: $ONLY_CASE" >&2
+  exit 2
+fi
 
 [[ -n "$STM32CUBE_H7_ROOT" ]] || { usage >&2; exit 2; }
 STM32CUBE_H7_ROOT="$(cd "$STM32CUBE_H7_ROOT" 2>/dev/null && pwd)" || { echo "Invalid STM32CubeH7 root" >&2; exit 2; }
@@ -216,18 +226,15 @@ cat > "$REPORT" <<EOF
 - Host: \`$(uname -a)\`
 - Timing samples per case: \`$TIMING_SAMPLES\`
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
-- Matrix size: **13 cases**
+- Matrix size: **14 cases**
+- Selected mode: **${ONLY_CASE:-full matrix}**
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
 
 EOF
 
 if ((${#CLEANED_BUILD_DIRS[@]})); then
-  {
-    echo "## Pre-run generated build cleanup"; echo
-    printf -- '- `%s`\n' "${CLEANED_BUILD_DIRS[@]}"
-    echo
-  } >> "$REPORT"
+  { echo "## Pre-run generated build cleanup"; echo; printf -- '- `%s`\n' "${CLEANED_BUILD_DIRS[@]}"; echo; } >> "$REPORT"
 fi
 if [[ -n "$TRACKED_STATUS" ]]; then printf '## Tracked source changes\n\n```text\n%s\n```\n\n' "$TRACKED_STATUS" >> "$REPORT"; fi
 if [[ -n "$UNTRACKED_STATUS" ]]; then printf '## Untracked workspace files\n\n```text\n%s\n```\n\n' "$UNTRACKED_STATUS" >> "$REPORT"; fi
@@ -343,9 +350,7 @@ visual_blinky() {
     echo "$expected"
     echo "Human acceptance is qualitative: both LEDs toggle and the relative speed is obvious."
     echo "Observe for ${OBSERVE_SECONDS}s..."; sleep "$OBSERVE_SECONDS"
-    if ! yes_no "Did both LEDs toggle with the expected relative speed"; then
-      status=FAIL; notes="User rejected visual criterion. $(ask_optional "Optional observation note")"
-    fi
+    if ! yes_no "Did both LEDs toggle with the expected relative speed"; then status=FAIL; notes="User rejected visual criterion. $(ask_optional "Optional observation note")"; fi
   fi
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
@@ -389,17 +394,13 @@ preemption_case() {
   local case="$1" title="$2" prefix="preemption_$1" status=PASS notes=""
   local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
   local glog="$RAW/${prefix}_gdb.log" criterion
-  if [[ "$case" == priority ]]; then
-    criterion="ISR wake dispatches the higher-priority task before interrupted lower-priority Thread mode continues."
-  else
-    criterion="Trace is low-A -> high -> low-A -> low-B and low-A retains unused RR quantum."
-  fi
+  if [[ "$case" == priority ]]; then criterion="ISR wake dispatches the higher-priority task before interrupted lower-priority Thread mode continues."
+  else criterion="Trace is low-A -> high -> low-A -> low-B and low-A retains unused RR quantum."; fi
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
   elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/preemption.dbg" "$prefix"; then status=FAIL; notes="Preemption GDB run failed or timed out."
   elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
-  else notes="$(grep -E '^(case=|irq_count=|ticks:|RR remaining:|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  fi
+  else notes="$(grep -E '^(case=|irq_count=|ticks:|RR remaining:|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
@@ -416,8 +417,7 @@ ipc_case() {
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
   elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/ipc_validation.dbg" "$prefix"; then status=FAIL; notes="IPC GDB run failed or timed out."
   elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
-  else notes="$(grep -E '^(case=|irq_count=|need_switch|observed|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  fi
+  else notes="$(grep -E '^(case=|irq_count=|need_switch|observed|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
@@ -431,8 +431,7 @@ external_tick_case() {
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"; then status=FAIL; notes="Build/flash failed."
   elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/external_tick_validation.dbg" "$prefix"; then status=FAIL; notes="External-tick GDB run failed or timed out."
   elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
-  else notes="$(grep -E '^(case=|irq_count=|tick|wake|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  fi
+  else notes="$(grep -E '^(case=|irq_count=|tick|wake|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
@@ -442,23 +441,28 @@ if ! run_logged "$PROBE" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/ope
   record "Board probe" FAIL "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" "Probe failed; remaining tests skipped."
 else
   record "Board probe" PASS "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" ""
-  visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 should be visibly about 2x faster than LD2/PE1 (250 ms vs 500 ms configured)." c_blinky
-  visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 should be clearly faster than LD2/PE1 (100 ms vs 250 ms configured)." cpp_blinky
-  counter_demo
-  timing_case event_to_task "DWT event_to_task timing"
-  timing_case sem_isr_ready "DWT sem_isr_ready timing"
-  timing_case ready_to_task "DWT ready_to_task timing"
-  preemption_case priority "Fixed-priority hardware preemption"
-  preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
-  ipc_case semaphore "Semaphore hardware contract"
-  ipc_case queue "Queue hardware contract"
-  ipc_case mutex "Mutex hardware contract"
-  external_tick_case
+  if [[ "$ONLY_CASE" == "scheduler_decision" ]]; then
+    timing_case scheduler_decision "DWT scheduler_decision timing"
+  else
+    visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 should be visibly about 2x faster than LD2/PE1 (250 ms vs 500 ms configured)." c_blinky
+    visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 should be clearly faster than LD2/PE1 (100 ms vs 250 ms configured)." cpp_blinky
+    counter_demo
+    timing_case event_to_task "DWT event_to_task timing"
+    timing_case sem_isr_ready "DWT sem_isr_ready timing"
+    timing_case ready_to_task "DWT ready_to_task timing"
+    timing_case scheduler_decision "DWT scheduler_decision timing"
+    preemption_case priority "Fixed-priority hardware preemption"
+    preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
+    ipc_case semaphore "Semaphore hardware contract"
+    ipc_case queue "Queue hardware contract"
+    ipc_case mutex "Mutex hardware contract"
+    external_tick_case
+  fi
 fi
 
 PASS=0; FAIL=0
 for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
-NOT_RUN=$((13 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
+NOT_RUN=$((14 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
 
 {
   echo "## Test results"; echo
@@ -469,7 +473,7 @@ NOT_RUN=$((13 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
     printf '| %s | **%s** | %s | `%s` | %s |\n' "$n" "${STATUSES[$i]}" "$c" "$e" "${note:- }"
   done
   echo; echo "## Qualification verdict"; echo
-  echo "- Passed: **$PASS / 13**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
+  echo "- Passed: **$PASS / 14**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
   if (( FAIL == 0 && NOT_RUN == 0 )); then echo "- Overall: **PASS**"
   elif (( FAIL > 0 )); then echo "- Overall: **FAIL**"
   else echo "- Overall: **PARTIAL**"; fi
@@ -487,7 +491,7 @@ echo "HardRT STM32 hardware qualification summary"
 echo "============================================================"
 echo "HardRT SHA : $SHA"
 echo "Cube SHA   : $CUBE_SHA ($CUBE_STATE)"
-printf 'Cases      : %d/13 PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$FAIL" "$NOT_RUN"
+printf 'Cases      : %d/14 PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$FAIL" "$NOT_RUN"
 echo
 printf '%-44s %s\n' "CASE" "RESULT"
 printf '%-44s %s\n' "--------------------------------------------" "------"
@@ -495,7 +499,7 @@ for i in "${!NAMES[@]}"; do printf '%-44s %s\n' "${NAMES[$i]}" "${STATUSES[$i]}"
 if (( NOT_RUN > 0 )); then printf '%-44s %s\n' "remaining matrix cases" "$NOT_RUN NOT RUN"; fi
 
 echo
- echo "Timing (cycles, min / avg / max):"
+echo "Timing (cycles, min / avg / max):"
 for i in "${!NAMES[@]}"; do
   case "${NAMES[$i]}" in
     "DWT "*" timing")
@@ -524,7 +528,11 @@ else echo "Overall    : PARTIAL"; fi
 
 echo "Report     : $REPORT"
 echo "Raw logs   : $RAW"
-echo "Release evidence: manually copy/move this run to validation/stm32/releases/vX.Y.Z/."
+if [[ -z "$ONLY_CASE" ]]; then
+  echo "Release evidence: manually copy/move this run to validation/stm32/releases/vX.Y.Z/."
+else
+  echo "Diagnostic-only run: do not use as release qualification evidence."
+fi
 echo "============================================================"
 
-(( FAIL == 0 && NOT_RUN == 0 ))
+(( FAIL == 0 ))
