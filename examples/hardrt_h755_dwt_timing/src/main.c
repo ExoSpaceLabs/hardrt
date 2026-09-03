@@ -1,295 +1,195 @@
 #include <stdint.h>
-#include <stdbool.h>
 
 #include "hardrt.h"
 #include "hardrt_sem.h"
 #include "stm32h7xx.h"
+#include "timing_shared.h"
 
-/* -------------------- DWT cycle counter -------------------- */
-#define DEMCR      (*(volatile uint32_t*)0xE000EDFCu)
-#define DWT_CTRL   (*(volatile uint32_t*)0xE0001000u)
-#define DWT_CYCCNT (*(volatile uint32_t*)0xE0001004u)
+#define DEMCR      (*(volatile uint32_t *)0xE000EDFCu)
+#define DWT_CTRL   (*(volatile uint32_t *)0xE0001000u)
+#define DWT_CYCCNT (*(volatile uint32_t *)0xE0001004u)
 
-static inline void dwt_init(void) {
-    DEMCR |= (1u << 24);     /* TRCENA */
+volatile hrt_timing_stats_t g_timing_stats;
+volatile uint32_t g_timing_start_cycles = 0;
+volatile uint32_t g_timing_case_id = HRT_TIMING_CASE_ID;
+volatile uint32_t g_timing_event_hz = HRT_TIMING_EVENT_HZ;
+volatile uint32_t g_timing_target_samples = HRT_TIMING_TARGET_SAMPLES;
+volatile uint32_t g_example_error = 0;
+
+volatile uint32_t tim2_psc_dbg __attribute__((used)) = 0;
+volatile uint32_t tim2_arr_dbg __attribute__((used)) = 0;
+
+static hrt_sem_t g_event_sem;
+static volatile uint32_t g_event_armed = 0;
+
+#define STACK_WORDS 1024
+static uint32_t g_latency_stack[STACK_WORDS] __attribute__((aligned(8)));
+static uint32_t g_starter_stack[STACK_WORDS] __attribute__((aligned(8)));
+
+extern void SystemInit(void);
+extern uint32_t SystemCoreClock;
+
+static inline uint32_t cycles_now(void) {
+    return DWT_CYCCNT;
+}
+
+static void dwt_init(void) {
+    DEMCR |= (1u << 24);
     DWT_CYCCNT = 0;
-    DWT_CTRL |= 1u;          /* CYCCNTENA */
-}
-static inline uint32_t cycles_now(void) { return DWT_CYCCNT; }
-
-__attribute__((noinline)) void timing_target_reached(void) {
-    __asm volatile("bkpt 0");
+    DWT_CTRL |= 1u;
 }
 
-/* -------------------- Targets -------------------- */
-#define TICK_TARGET_SAMPLES 10000u
-#define EVT_TARGET_SAMPLES  10000u
-
-/* -------------------- Stats struct (same layout your GDB script assumes) -------------------- */
-typedef struct {
-    volatile uint32_t min;   /* +0 */
-    volatile uint32_t max;   /* +4 */
-    volatile uint32_t avg;   /* +8 */
-    volatile uint32_t count; /* +12 */
-    volatile uint64_t sum;   /* +16 */
-} hrt_stats_t;
-
-/* Make them GLOBAL (not static) so GDB sees them as symbols reliably */
-volatile hrt_stats_t g_tick_stats;
-volatile hrt_stats_t g_sem_stats;
-
-static inline void stats_init(volatile hrt_stats_t* s) {
+static void stats_init(volatile hrt_timing_stats_t *s) {
     s->min = 0xFFFFFFFFu;
     s->max = 0u;
     s->avg = 0u;
     s->count = 0u;
     s->sum = 0u;
 }
-static inline void stats_record(volatile hrt_stats_t* s, uint32_t v) {
-    if (v < s->min) s->min = v;
-    if (v > s->max) s->max = v;
-    s->sum += v;
-    s->count++;
-    s->avg = (uint32_t)(s->sum / s->count);
+
+__attribute__((noinline, used))
+void timing_target_reached(void) {
+    __asm volatile("bkpt 0");
+    for (;;) __asm volatile("wfi");
 }
 
-/* -------------------- Completion flags -------------------- */
-static volatile uint32_t g_tick_done = 0;
-static volatile uint32_t g_evt_done  = 0;
-
-static inline void maybe_finish(void) {
-    if (g_tick_done && g_evt_done) timing_target_reached();
+__attribute__((noinline, used))
+static void example_fail(uint32_t code) {
+    g_example_error = code;
+    __asm volatile("bkpt 0");
+    for (;;) __asm volatile("wfi");
 }
 
-/* -------------------- Hold CM4 in reset (H755 dual-core) -------------------- */
-static inline void hold_cm4(void){
+static inline void hold_cm4(void) {
 #define RCC_BASE_NEW   0x58024400UL
-#define RCC_GCR        (*(volatile uint32_t*)(RCC_BASE_NEW + 0x0))
-#define RCC_GRSTCSETR  (*(volatile uint32_t*)(RCC_BASE_NEW + 0x8))
-    RCC_GCR &= ~(1u<<0);
-    RCC_GRSTCSETR = (1u<<0);
+#define RCC_GCR        (*(volatile uint32_t *)(RCC_BASE_NEW + 0x0))
+#define RCC_GRSTCSETR  (*(volatile uint32_t *)(RCC_BASE_NEW + 0x8))
+    RCC_GCR &= ~(1u << 0);
+    RCC_GRSTCSETR = (1u << 0);
 }
 
-/* -------------------- External symbols -------------------- */
-extern void SystemInit(void);
-extern uint32_t SystemCoreClock;
-
-/* -------------------- Debug-export timer config (force symbol retention) -------------------- */
-volatile uint32_t tim2_psc_dbg __attribute__((used)) = 0;
-volatile uint32_t tim2_arr_dbg __attribute__((used)) = 0;
-volatile uint32_t tim3_psc_dbg __attribute__((used)) = 0;
-volatile uint32_t tim3_arr_dbg __attribute__((used)) = 0;
-
-/* -------------------- Semaphores -------------------- */
-static hrt_sem_t sem_tick;
-static hrt_sem_t sem_evt;
-
-/* -------------------- Arming + timestamps -------------------- */
-static volatile uint32_t t0_tick = 0;
-static volatile uint32_t t0_evt  = 0;
-static volatile uint32_t tick_armed = 0;
-static volatile uint32_t evt_armed  = 0;
-
-/* Gate interrupts until tasks are alive */
-static volatile uint32_t g_irqs_enabled = 0;
-
-/* -------------------- Tasks and stacks -------------------- */
-#define STACK_WORDS 1024
-static uint32_t stackTick[STACK_WORDS] __attribute__((aligned(8)));
-static uint32_t stackEvt[STACK_WORDS]  __attribute__((aligned(8)));
-
-static void TaskTickLatency(void* arg)
-{
-    (void)arg;
-    g_irqs_enabled = 1;
-
-    for (;;) {
-        hrt_sem_take(&sem_tick);
-
-        if (tick_armed) {
-            uint32_t t1 = cycles_now();
-            uint32_t d  = t1 - t0_tick;
-            tick_armed = 0;
-
-            stats_record(&g_tick_stats, d);
-
-            if (g_tick_stats.count >= TICK_TARGET_SAMPLES) {
-                g_tick_done = 1;
-                maybe_finish();
-            }
-        }
-    }
-}
-
-static void TaskEventLatency(void* arg)
-{
-    (void)arg;
-
-    for (;;) {
-        hrt_sem_take(&sem_evt);
-
-        if (evt_armed) {
-            uint32_t t1 = cycles_now();
-            uint32_t d  = t1 - t0_evt;
-            evt_armed = 0;
-
-            stats_record(&g_sem_stats, d);
-
-            if (g_sem_stats.count >= EVT_TARGET_SAMPLES) {
-                g_evt_done = 1;
-                maybe_finish();
-            }
-        }
-    }
-}
-
-/* -------------------- TIM2: "Tick event" producer -------------------- */
-/* This is NOT the RTOS tick. It's just a periodic interrupt used as an event source.
-   If you also run HardRT external tick mode, keep that separate. */
-static void tim2_init_event(uint32_t hz)
-{
+static void tim2_init_event(uint32_t hz) {
     RCC->APB1LENR |= RCC_APB1LENR_TIM2EN;
-    __asm volatile ("dsb 0xF" ::: "memory");
+    __asm volatile("dsb 0xF" ::: "memory");
 
     RCC->APB1LRSTR |= RCC_APB1LRSTR_TIM2RST;
     RCC->APB1LRSTR &= ~RCC_APB1LRSTR_TIM2RST;
 
-    /* Keep your "rough" clock for now, but expose PSC/ARR so you can confirm actual rate */
-    uint32_t tim_clk = SystemCoreClock / 2u;
-    uint32_t psc = (tim_clk / 1000000u);
-    if (psc == 0) psc = 1;
+    const uint32_t tim_clk = SystemCoreClock / 2u;
+    uint32_t psc = tim_clk / 1000000u;
+    if (psc == 0u) psc = 1u;
     psc -= 1u;
 
-    if (hz == 0) hz = 1000;
-    uint32_t arr = (1000000u / hz);
-    if (arr == 0) arr = 1;
+    if (hz == 0u) hz = 1000u;
+    uint32_t arr = 1000000u / hz;
+    if (arr == 0u) arr = 1u;
     arr -= 1u;
 
     TIM2->PSC = psc;
     TIM2->ARR = arr;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->SR = 0;
+    TIM2->DIER = TIM_DIER_UIE;
+    TIM2->CR1 = 0;
 
     tim2_psc_dbg = psc;
     tim2_arr_dbg = arr;
 
-    TIM2->EGR  = TIM_EGR_UG;
-    TIM2->SR   = 0;
-    TIM2->DIER = TIM_DIER_UIE;
-    TIM2->CR1  = TIM_CR1_CEN;
-
     NVIC_SetPriority(TIM2_IRQn, 12);
     NVIC_ClearPendingIRQ(TIM2_IRQn);
+    NVIC_DisableIRQ(TIM2_IRQn);
+}
+
+static void tim2_arm_one_shot(void) {
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+    TIM2->CNT = 0;
+    TIM2->SR = 0;
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
     NVIC_EnableIRQ(TIM2_IRQn);
+    TIM2->CR1 |= TIM_CR1_CEN;
 }
 
-void TIM2_IRQHandler(void)
-{
-    if (TIM2->SR & TIM_SR_UIF) {
-        TIM2->SR &= ~TIM_SR_UIF;
+void TIM2_IRQHandler(void) {
+    if ((TIM2->SR & TIM_SR_UIF) == 0u) return;
 
-        if (!g_irqs_enabled) return;
-        if (g_tick_stats.count >= TICK_TARGET_SAMPLES) return;
+    TIM2->SR &= ~TIM_SR_UIF;
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+    NVIC_DisableIRQ(TIM2_IRQn);
 
-        if (!tick_armed) {
-            t0_tick = cycles_now();
-            tick_armed = 1;
+    if (g_timing_stats.count >= g_timing_target_samples) return;
+
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_TO_TASK
+    g_timing_start_cycles = cycles_now();
+    g_event_armed = 1u;
+#endif
+
+    int should_switch = 0;
+    (void)hrt_sem_give_from_isr(&g_event_sem, &should_switch);
+    (void)should_switch;
+}
+
+static void latency_task(void *arg) {
+    (void)arg;
+
+    for (;;) {
+        (void)hrt_sem_take(&g_event_sem);
+
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_TO_TASK
+        if (g_event_armed != 0u) {
+            const uint32_t end = cycles_now();
+            g_event_armed = 0u;
+            hrt_timing_stats_record(&g_timing_stats, end - g_timing_start_cycles);
+        }
+#endif
+
+        if (g_timing_stats.count >= g_timing_target_samples) {
+            timing_target_reached();
         }
 
-        int should_switch = 0;
-        hrt_sem_give_from_isr(&sem_tick, &should_switch);
-        (void)should_switch;
+        /* One-shot re-arm leaves a full timer period for this task to block. */
+        tim2_arm_one_shot();
     }
 }
 
-/* -------------------- TIM3: external event producer -------------------- */
-static void tim3_init_event(uint32_t hz)
-{
-    RCC->APB1LENR |= RCC_APB1LENR_TIM3EN;
-    __asm volatile ("dsb 0xF" ::: "memory");
-
-    RCC->APB1LRSTR |= RCC_APB1LRSTR_TIM3RST;
-    RCC->APB1LRSTR &= ~RCC_APB1LRSTR_TIM3RST;
-
-    uint32_t tim_clk = SystemCoreClock / 2u;
-    uint32_t psc = (tim_clk / 1000000u);
-    if (psc == 0) psc = 1;
-    psc -= 1u;
-
-    if (hz == 0) hz = 200;
-    uint32_t arr = (1000000u / hz);
-    if (arr == 0) arr = 1;
-    arr -= 1u;
-
-    TIM3->PSC = psc;
-    TIM3->ARR = arr;
-
-    tim3_psc_dbg = psc;
-    tim3_arr_dbg = arr;
-
-    TIM3->EGR  = TIM_EGR_UG;
-    TIM3->SR   = 0;
-    TIM3->DIER = TIM_DIER_UIE;
-    TIM3->CR1  = TIM_CR1_CEN;
-
-    NVIC_SetPriority(TIM3_IRQn, 12);
-    NVIC_ClearPendingIRQ(TIM3_IRQn);
-    NVIC_EnableIRQ(TIM3_IRQn);
+static void timer_starter_task(void *arg) {
+    (void)arg;
+    tim2_init_event(g_timing_event_hz);
+    tim2_arm_one_shot();
+    hrt_task_delete();
 }
 
-void TIM3_IRQHandler(void)
-{
-    if (TIM3->SR & TIM_SR_UIF) {
-        TIM3->SR &= ~TIM_SR_UIF;
-
-        if (!g_irqs_enabled) return;
-        if (g_sem_stats.count >= EVT_TARGET_SAMPLES) return;
-
-        if (!evt_armed) {
-            t0_evt = cycles_now();
-            evt_armed = 1;
-        }
-
-        int should_switch = 0;
-        hrt_sem_give_from_isr(&sem_evt, &should_switch);
-        (void)should_switch;
-    }
-}
-
-/* -------------------- main -------------------- */
-int main(void)
-{
+int main(void) {
     SystemInit();
     hold_cm4();
     dwt_init();
+    stats_init(&g_timing_stats);
+    hrt_sem_init(&g_event_sem, 0);
 
-    stats_init(&g_tick_stats);
-    stats_init(&g_sem_stats);
-
-    /* Keep your kernel tick config as-is (internal or external).
-       This test measures event->task, independent of how time advances. */
-    hrt_config_t cfg = {
-        .tick_hz        = 1000,
-        .policy         = HRT_SCHED_PRIORITY_RR,
-        .default_slice  = 5,
-        .core_hz        = SystemCoreClock,
-        .tick_src       = HRT_TICK_SYSTICK   /* or HRT_TICK_EXTERNAL if you want */
+    const hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = HRT_SCHED_PRIORITY,
+        .default_slice = 0,
+        .core_hz = SystemCoreClock,
+        .tick_src = HRT_TICK_SYSTICK
     };
 
-    hrt_init(&cfg);
+    if (hrt_init(&cfg) != 0) example_fail(1u);
 
-    hrt_sem_init(&sem_tick, 0);
-    hrt_sem_init(&sem_evt, 0);
+    const hrt_task_attr_t latency_attr = { .priority = HRT_PRIO0, .timeslice = 0 };
+    const hrt_task_attr_t starter_attr = { .priority = HRT_PRIO1, .timeslice = 0 };
 
-    /* Latency tasks should be the highest priority */
-    hrt_task_attr_t p_tick = { .priority = HRT_PRIO0, .timeslice = 0 };
-    hrt_task_attr_t p_evt  = { .priority = HRT_PRIO1, .timeslice = 0 };
-
-    hrt_create_task(TaskTickLatency, 0, stackTick, (uint32_t)(sizeof(stackTick)/sizeof(stackTick[0])), &p_tick);
-    hrt_create_task(TaskEventLatency, 0, stackEvt, (uint32_t)(sizeof(stackEvt)/sizeof(stackEvt[0])), &p_evt);
-
-    /* Start event sources */
-    tim2_init_event(1000);  /* "tick-like" event at 1 kHz */
-    tim3_init_event(200);   /* slower event */
+    if (hrt_create_task(latency_task, 0, g_latency_stack,
+                        sizeof(g_latency_stack) / sizeof(g_latency_stack[0]),
+                        &latency_attr) < 0) {
+        example_fail(2u);
+    }
+    if (hrt_create_task(timer_starter_task, 0, g_starter_stack,
+                        sizeof(g_starter_stack) / sizeof(g_starter_stack[0]),
+                        &starter_attr) < 0) {
+        example_fail(3u);
+    }
 
     hrt_start();
-    return 0;
+    example_fail(4u);
+    return 1;
 }

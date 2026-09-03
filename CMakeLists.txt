@@ -14,6 +14,32 @@ option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable ASan/UBSan on POSIX tests" OFF)
 
+# Private timing instrumentation. `none` is the production/default profile and
+# produces no timing hook code. Additional profiles are enabled only after their
+# concrete hook points exist and are validated.
+set(HARDRT_TIMING_PROFILE "none" CACHE STRING "Private timing profile: none|ipc")
+set_property(CACHE HARDRT_TIMING_PROFILE PROPERTY STRINGS none ipc)
+set(HARDRT_TIMING_HOOK_HEADER "" CACHE FILEPATH "Benchmark-provided timing hook header (required for active timing profiles)")
+
+set(HARDRT_TIMING_PROFILE_ID 0)
+set(HARDRT_TIMING_ENABLED 0)
+set(HARDRT_TIMING_HOOK_HEADER_CMAKE "")
+if(HARDRT_TIMING_PROFILE STREQUAL "none")
+  # Production/default build: all hook macros resolve to no code.
+elseif(HARDRT_TIMING_PROFILE STREQUAL "ipc")
+  if(HARDRT_TIMING_HOOK_HEADER STREQUAL "")
+    message(FATAL_ERROR "HARDRT_TIMING_PROFILE=ipc requires -DHARDRT_TIMING_HOOK_HEADER=<header>")
+  endif()
+  if(NOT EXISTS "${HARDRT_TIMING_HOOK_HEADER}")
+    message(FATAL_ERROR "HARDRT_TIMING_HOOK_HEADER does not exist: ${HARDRT_TIMING_HOOK_HEADER}")
+  endif()
+  set(HARDRT_TIMING_PROFILE_ID 1)
+  set(HARDRT_TIMING_ENABLED 1)
+  file(TO_CMAKE_PATH "${HARDRT_TIMING_HOOK_HEADER}" HARDRT_TIMING_HOOK_HEADER_CMAKE)
+else()
+  message(FATAL_ERROR "Unknown HARDRT_TIMING_PROFILE=${HARDRT_TIMING_PROFILE}; supported values are none|ipc")
+endif()
+
 set(HARDRT_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
 set(HARDRT_CFG_MAX_PRIO 4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
 
@@ -26,6 +52,7 @@ message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
 message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
 message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
+message("-- HARDRT_TIMING_PROFILE        : ${HARDRT_TIMING_PROFILE}")
 message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} + 1 for IDLE task")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
@@ -47,8 +74,10 @@ set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/src")
 set(SOURCE_CORE_DIR "${SOURCE_DIR}/core")
 set(SOURCE_PORT_DIR "${SOURCE_DIR}/port")
 set(SOURCE_INTERNAL_DIR "${SOURCE_DIR}/internal")
+set(GENERATED_PRIVATE_DIR "${CMAKE_BINARY_DIR}/generated_private")
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${GENERATED_PRIVATE_DIR}")
 
 set(HARDRT_PORT_STRING "${HARDRT_PORT}")
 if(HARDRT_PORT STREQUAL "null")
@@ -81,6 +110,11 @@ configure_file(
   "${CMAKE_BINARY_DIR}/generated/hardrt_version.h"
   @ONLY
 )
+configure_file(
+  "${SOURCE_INTERNAL_DIR}/hardrt_timing_config.h.in"
+  "${GENERATED_PRIVATE_DIR}/hardrt_timing_config.h"
+  @ONLY
+)
 
 set(LIBRARY_SOURCES
   "${SOURCE_CORE_DIR}/hardrt_core.c"
@@ -111,6 +145,7 @@ target_include_directories(${LIB_NAME}
   $<INSTALL_INTERFACE:include>
   PRIVATE
   ${SOURCE_INTERNAL_DIR}
+  ${GENERATED_PRIVATE_DIR}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
@@ -168,8 +203,6 @@ if(HARDRT_ENABLE_CPP)
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
-# Only application-facing headers are installed. All kernel/port contracts live
-# under src/internal and therefore cannot leak into the package include tree.
 install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h"
   PATTERN "hardrt_port_int.h" EXCLUDE)
@@ -219,9 +252,6 @@ endif()
 if(HARDRT_BUILD_TESTS)
   include(${CMAKE_CURRENT_LIST_DIR}/cmake/hardrt_tester.cmake)
 
-  # Compile-only contract fixture. It implements every required port hook and
-  # references the approved port->core surface without linking any duplicate
-  # implementations into the HardRT library.
   add_library(hardrt_port_contract_fixture OBJECT tests/port_contract_fixture.c)
   target_link_libraries(hardrt_port_contract_fixture PRIVATE ${LIB_NAME})
   target_include_directories(hardrt_port_contract_fixture PRIVATE ${SOURCE_INTERNAL_DIR})
