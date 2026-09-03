@@ -11,6 +11,8 @@ The roadmap and GitHub issues may describe later work. A planned API or behavior
 | [Main README](../README.md) | Project overview and current behavior |
 | [INTRODUCTION.md](INTRODUCTION.md) | Scope and design goals |
 | [HARD_REAL_TIME.md](HARD_REAL_TIME.md) | Hard real-time qualification direction and evidence requirements |
+| [QUALIFICATION.md](QUALIFICATION.md) | Current STM32 hardware qualification policy, runner modes, and release-evidence workflow |
+| [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) | Single-runner STM32H755 functional matrix and scheduler/PendSV diagnostics |
 | [BUILD.md](BUILD.md) | Current CMake prerequisites, options, build, and install behavior |
 | [API_C.md](API_C.md) | Current C API behavior |
 | [SCHEDULING.md](SCHEDULING.md) | Current `develop` scheduler, preemption, RR-retention, and `need_switch` contract |
@@ -23,7 +25,7 @@ The roadmap and GitHub issues may describe later work. A planned API or behavior
 | [EXAMPLES_C.md](EXAMPLES_C.md) | Bundled example overview |
 | [MODULE_STATUS.md](MODULE_STATUS.md) | Current source-module status |
 | [TESTS_POSIX.md](TESTS_POSIX.md) | POSIX test-harness behavior and limits |
-| [STATISTICS.md](STATISTICS.md) | Recorded STM32H755 timing measurements and their scope |
+| [STATISTICS.md](STATISTICS.md) | Recorded STM32H755 timing measurements, regression evidence, and interpretation limits |
 | [ROADMAP.md](ROADMAP.md) | Non-binding work planned toward 1.0.0 |
 | [DOCUMENTATION.md](DOCUMENTATION.md) | Doxygen and documentation guidance |
 
