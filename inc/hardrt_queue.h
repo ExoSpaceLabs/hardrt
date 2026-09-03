@@ -70,7 +70,9 @@ int hrt_queue_try_send(hrt_queue_t *q, const void *item);
  * @brief Try to send from ISR context (non-blocking).
  * @param q Queue.
  * @param item Pointer to item to copy.
- * @param need_switch Optional out: set to 1 if a waiter was woken and a switch is advised.
+ * @param need_switch Optional out: set to 1 when the awakened waiter should
+ * run before the interrupted/current task under the active scheduler contract,
+ * or when no normal task is running. HardRT requests the switch internally.
  * @return 0 on success, -1 if full.
  */
 int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_switch);
@@ -93,7 +95,9 @@ int hrt_queue_try_recv(hrt_queue_t *q, void *out);
  * @brief Try to receive from ISR context (non-blocking).
  * @param q Queue.
  * @param out Destination buffer.
- * @param need_switch Optional out: set to 1 if a waiter was woken and a switch is advised.
+ * @param need_switch Optional out: set to 1 when the awakened waiter should
+ * run before the interrupted/current task under the active scheduler contract,
+ * or when no normal task is running. HardRT requests the switch internally.
  * @return 0 on success, -1 if empty.
  */
 int hrt_queue_try_recv_from_isr(hrt_queue_t *q, void *out, int *need_switch);
