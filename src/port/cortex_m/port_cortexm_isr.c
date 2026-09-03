@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "hardrt.h"
-#include "hardrt_port_int.h"
+#include "hardrt_port_contract.h"
 
 #ifndef HARDRT_DEBUG
 #define HARDRT_DEBUG 0

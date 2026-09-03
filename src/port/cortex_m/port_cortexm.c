@@ -3,13 +3,12 @@
 #include <stddef.h>
 #include "hardrt.h"
 #include "hardrt_time.h"
-#include "hardrt_port_int.h"
+#include "hardrt_port_contract.h"
 
 #ifndef HARDRT_DEBUG
 #define HARDRT_DEBUG 0
 #endif
 
-/* Minimal CMSIS-like register definitions; no HAL dependency. */
 typedef struct {
     volatile uint32_t CTRL;
     volatile uint32_t LOAD;
@@ -50,8 +49,6 @@ volatile uint32_t dbg_pend_from_cortexm = 0;
 volatile uint32_t dbg_basperi;
 #endif
 
-/* Port-private idle storage. Application translation units must not receive
- * mutable idle/kernel state through the public HardRT headers. */
 static _hrt_tcb_t g_idle_tcb;
 static uint32_t g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned(8)));
 

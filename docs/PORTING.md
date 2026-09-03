@@ -1,8 +1,16 @@
 # HardRT Porting Guide
 
-This guide describes the port interface used by HardRT v0.4.0 on the `develop` branch. It documents the hooks that the current core and reference ports actually call. It does not describe planned v0.5.0 interfaces.
+This guide describes the port interface used by the current HardRT implementation on the `develop` branch. The authoritative non-installed declaration surface is [`src/internal/hardrt_port_contract.h`](../src/internal/hardrt_port_contract.h).
 
 HardRT separates the portable scheduler and synchronization code from architecture-specific tick, critical-section, stack, idle, and context-switch operations.
+
+## Contract rules
+
+- A port includes `hardrt_port_contract.h`; it does not redeclare kernel-private functions locally.
+- The contract header declares every hook a port must implement and identifies the core-private services a port is allowed to call.
+- Private port/kernel headers live under `src/internal` and are not part of an installed HardRT package.
+- `tests/port_contract_fixture.c` is a compile-only skeleton implementation. Changing a required hook without updating the fixture is a build failure.
+- Cortex-M ports intended for hard-real-time qualification must give every timing-sensitive hook bounded behavior under the supported configuration. POSIX follows the logical contract but is not timing-qualified.
 
 ## Current execution model
 
@@ -10,193 +18,113 @@ HardRT separates the portable scheduler and synchronization code from architectu
 - A port owns stack-frame construction and context transfer.
 - Tick handlers update kernel state and request rescheduling; they do not directly run application task code.
 - Blocking APIs transfer control back to the scheduler from task context.
-- All storage is static.
+- Kernel runtime storage is static.
 
 ## Hooks implemented by a port
 
-### `void hrt_port_start_systick(uint32_t tick_hz)`
+### `hrt_port_start_systick(uint32_t tick_hz)`
 
-Called by `hrt_init()`.
+Caller: `hrt_init()` during startup. Context: non-ISR. It must not block or dispatch a task. It configures the port-owned tick when `HRT_TICK_SYSTICK` is selected, leaves it disabled for `HRT_TICK_EXTERNAL`, and configures any context-switch exception/interrupt required by the port.
 
-Responsibilities:
+The current `hrt_init()` ordering starts this hook before idle initialization; #33 tightens that lifecycle ordering. A port must not enter the scheduler from this hook.
 
-- start the port-owned periodic tick when `HRT_TICK_SYSTICK` is selected;
-- leave the periodic tick disabled when `HRT_TICK_EXTERNAL` is selected;
-- configure any context-switch interrupt required by the port;
-- make the requested tick frequency as accurate as the platform permits.
+### `hrt_port_enter_scheduler()`
 
-The current `hrt_init()` call order invokes this hook before `hrt__init_idle_task()`. A port must not enter the scheduler or dispatch a task from this hook. The scheduler is entered later by `hrt_start()`.
+Caller: `hrt_start()` after an initial reschedule request. Cortex-M enables interrupts, pends PendSV, and remains in the idle path. POSIX enters the hosted scheduler loop. The null port returns without executing tasks.
 
-For a port-owned tick, the port handler calls the private core function `hrt__tick_isr()`. It does not call the public external-tick API.
+### `hrt_port_yield_to_scheduler()`
 
-### `void hrt_port_enter_scheduler(void)`
+Caller: task-context sleep, yield, delete, and blocking synchronization paths. Task-context-only. It may transfer control immediately or pend an architecture-specific switch, but it is never the ISR reschedule API.
 
-Called by `hrt_start()` after the core requests an initial reschedule.
+### `hrt__pend_context_switch()`
 
-- Cortex-M enables interrupts, pends PendSV, and remains in its idle loop.
-- POSIX enters the hosted scheduler loop and transfers between `ucontext` objects.
-- The null port returns without running tasks.
+Caller: task paths and supported ISR/tick paths. It must be non-blocking, ISR-safe for the configured kernel-aware interrupt range, and safe to invoke repeatedly. Cortex-M sets `PENDSVSET`; POSIX sets its pending scheduler flag. It requests a switch but does not directly run a task from ISR context.
 
-### `void hrt_port_yield_to_scheduler(void)`
+### `hrt_port_idle_wait()`
 
-Called from task context by sleep, yield, task deletion, and blocking synchronization paths.
+Caller: scheduler/idle context. Cortex-M executes `WFI`; POSIX uses a short sleep. It must not alter scheduler queues.
 
-- Cortex-M pends PendSV; the context change occurs through exception handling.
-- POSIX swaps from the current task context to the scheduler context with `SIGALRM` masked.
+### `hrt_port_prepare_task_stack(int id, void (*tramp)(void), uint32_t *stack_base, size_t words)`
 
-This hook is task-context-only.
+Caller: `hrt_create_task()` before the task becomes READY. It builds or records the initial execution context. The stack remains application-owned for the task lifetime. The operation must not block.
 
-### `void hrt__pend_context_switch(void)`
+### `hrt__task_trampoline()`
 
-Requests a context switch at the port's next safe scheduling point.
+Runs on first task entry. It invokes the current task function with its stored argument and calls `hrt_task_delete()` if that function returns.
 
-- Cortex-M sets `PENDSVSET`.
-- POSIX sets a `sig_atomic_t` pending flag.
+### `hrt_port_crit_enter()` / `hrt_port_crit_exit()`
 
-The current core calls this function from task paths and tick/ISR-style paths. It must be safe to call repeatedly.
+Caller: scheduler/synchronization code in task context and supported kernel-aware ISR APIs. The pair must be non-blocking and nestable. The outermost exit restores the previous protection state. No partially updated scheduler state may be exposed.
 
-### `void hrt_port_idle_wait(void)`
-
-Called when no application task is selected.
-
-- Cortex-M executes `WFI`.
-- POSIX performs a short `nanosleep()` to avoid a busy loop.
-
-### `void hrt_port_prepare_task_stack(int id, void (*tramp)(void), uint32_t *stack_base, size_t words)`
-
-Builds or records the initial execution context for a task.
-
-The current Cortex-M port creates an exception-return frame and saves the resulting stack pointer in the task control block. The POSIX port initializes a `ucontext_t` using the application-provided stack buffer.
-
-The stack must remain valid for the task lifetime. `hrt_create_task()` currently rejects stacks smaller than 64 words before this hook is called.
-
-### `void hrt__task_trampoline(void)`
-
-Starts the current task's entry function with its stored argument. If the task returns, both current reference ports call `hrt_task_delete()`. Returning tasks are therefore marked unused and are not requeued.
-
-### `void hrt_port_crit_enter(void)` / `void hrt_port_crit_exit(void)`
-
-Protect scheduler and synchronization data.
-
-The current core uses these hooks from ordinary task APIs and from the semaphore/queue `_from_isr` paths. A compatible port must therefore support the contexts in which its ISR-facing APIs are permitted.
-
-Requirements of the current implementation:
-
-- nesting must work;
-- the outermost exit restores or releases the protection;
-- scheduler data must not be observed partially updated;
-- the implementation must not mask faults that are required for platform safety.
-
-The Cortex-M port uses `BASEPRI`. Its defaults are:
+The Cortex-M reference port uses `BASEPRI` with current defaults:
 
 ```c
 HARDRT_NVIC_PRIO_BITS       = 4
 HARDRT_MAX_SYSCALL_IRQ_PRIO = 5
 ```
 
-An interrupt that calls HardRT ISR APIs must be configured at a priority compatible with that `BASEPRI` ceiling. Numerically lower Cortex-M priority values are more urgent and may not be masked by the critical section.
+Any IRQ calling HardRT ISR APIs must obey the configured syscall-priority ceiling. The duration of these masked regions is part of the hard-real-time qualification work in #53.
 
-The POSIX port blocks `SIGALRM` and uses a nesting counter.
+### `hrt_port_sp_valid(uintptr_t sp)`
 
-### `void hrt_port_sp_valid(uintptr_t sp)`
+Port-specific stack-pointer validation. Cortex-M checks RAM range and 8-byte alignment; POSIX currently accepts the value. It must not block.
 
-Performs port-specific stack-pointer validation. The Cortex-M implementation checks RAM range and 8-byte alignment. The POSIX implementation currently accepts the supplied value.
+### `hrt__init_idle_task()`
 
-### `void hrt__init_idle_task(void)`
+Initializes the port's idle representation during startup. Cortex-M constructs the idle context; POSIX currently handles idle behavior in the scheduler loop and leaves this hook empty.
 
-Initializes the port's idle representation.
+## Core-private services available to ports
 
-The Cortex-M port constructs the idle task context. The POSIX port currently leaves this hook empty and handles idle waiting in the scheduler loop.
-
-## Core-private functions used by ports
-
-The current private port header and source files use functions including:
+The allowed current port-to-core surface is declared through the contract header and includes:
 
 ```c
 uint32_t          hrt__cfg_core_hz(void);
 hrt_tick_source_t hrt__cfg_tick_src(void);
 uint32_t          hrt__cfg_tick_hz(void);
-int               hrt__get_current(void);
-int               hrt__pick_next_ready(void);
-void              hrt__save_current_sp(uintptr_t sp);
-uintptr_t         hrt__load_next_sp_and_set_current(int next_id);
 void              hrt__tick_isr(void);
+int               hrt__get_current(void);
+void              hrt__set_current(int id);
+int               hrt__pick_next_ready(void);
+void              hrt__on_scheduler_entry(void);
+uintptr_t         hrt__schedule(uintptr_t old_sp);
 ```
 
-Some declarations are still repeated directly in port source files in v0.4.0. A new port must follow the current implementation and `inc/hardrt_port_int.h`; these symbols are not application APIs.
+The current reference ports also require private TCB/context helpers for task trampoline and stack setup. They are deliberately private and may be narrowed further without changing the application ABI.
 
 ## Tick handling
 
 ### Port-owned tick
 
-When `HRT_TICK_SYSTICK` is selected, the port's timer handler calls:
-
-```c
-hrt__tick_isr();
-```
-
-The core handler:
-
-- increments the tick counter;
-- wakes expired sleeping tasks;
-- decrements the current task's non-zero timeslice under RR-enabled policies;
-- pends a context switch only when a wake-up or slice expiry requires rescheduling.
+With `HRT_TICK_SYSTICK`, the port timer handler calls private `hrt__tick_isr()`. That increments time, wakes expired sleepers, accounts for RR slices, and requests a reschedule when required. A tick handler never directly switches application context.
 
 ### Application-owned external tick
 
-When `HRT_TICK_EXTERNAL` is selected, the application timer ISR calls:
-
-```c
-hrt_tick_from_isr();
-```
-
-That public function delegates to the same core tick path. If it is called while the configured source is not `HRT_TICK_EXTERNAL`, the current implementation returns without advancing time.
-
-The caller does not need to invoke a second yield function. Tick processing requests rescheduling internally when required.
+With `HRT_TICK_EXTERNAL`, the application timer ISR calls public `hrt_tick_from_isr()`. It reaches the same core tick path. Calling it in internal-tick mode is currently ignored; #27 tracks tightening that misuse contract.
 
 ## Context switching
 
 ### Cortex-M
 
-The current Cortex-M port:
-
-- uses PSP for task stacks;
-- saves/restores `r4-r11` in PendSV assembly;
-- relies on the hardware exception frame for the remaining basic registers;
-- requires 8-byte stack alignment;
-- sets PendSV below SysTick in interrupt priority.
-
-The current implementation does not document or implement floating-point context preservation as part of the task-switch contract.
+The reference Cortex-M port uses PSP task stacks, PendSV, hardware exception frames, software save/restore of `r4-r11`, and 8-byte stack alignment. PendSV is lower priority than SysTick. Floating-point context preservation is not currently part of the documented task-switch contract.
 
 ### POSIX
 
-The POSIX port uses `ucontext` on Linux/glibc and `SIGALRM` for tick accounting.
-
-The signal handler calls `hrt__tick_isr()` and sets a pending flag. It does not call `swapcontext()`. A task reaches the scheduler only through a HardRT scheduling point such as:
-
-- `hrt_yield()`;
-- `hrt_sleep()`;
-- blocking semaphore, mutex, or queue operations;
-- `hrt_task_delete()`;
-- returning from the task function.
-
-For that reason, the current POSIX port provides cooperative context handoff even though tick accounting and slice expiration are signal-driven. A CPU-bound task without HardRT scheduling points can prevent other tasks from running.
-
-`ucontext` is treated as a Linux/glibc dependency. The port is not claimed to support musl or macOS.
+The POSIX port uses `ucontext` and `SIGALRM`. The signal handler performs tick accounting and requests scheduling but never calls `swapcontext()`. A task returns to the hosted scheduler only at a HardRT scheduling point, so this port is functional/cooperative rather than a timing-accurate Cortex-M model.
 
 ## Validation checklist
 
 Before adding a port, verify at least:
 
+- [ ] the port compiles using only `hardrt_port_contract.h` plus platform headers;
 - [ ] internal and external tick modes advance time exactly once per tick;
-- [ ] no task context switch is performed directly by a hardware tick handler;
+- [ ] no task context switch occurs directly in a hardware tick handler;
 - [ ] task-context yield reaches the scheduler safely;
-- [ ] nested critical sections preserve state;
-- [ ] every ISR-facing synchronization API is called only from supported interrupt priorities;
-- [ ] initial task stacks satisfy ABI alignment and frame requirements;
-- [ ] task return calls `hrt_task_delete()`;
-- [ ] the idle path does not consume an application ready-queue entry;
-- [ ] stack and scheduler state remain valid under repeated wake, yield, block, and delete operations.
+- [ ] nested critical sections preserve prior protection state;
+- [ ] ISR-facing APIs are called only from supported interrupt priorities;
+- [ ] initial stacks satisfy the target ABI and alignment requirements;
+- [ ] task return reaches `hrt_task_delete()`;
+- [ ] idle does not enter an application ready queue;
+- [ ] repeated wake, yield, block, and delete operations preserve scheduler state.
 
 ## Reference ports
 

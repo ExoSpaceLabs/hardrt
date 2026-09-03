@@ -33,9 +33,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build make g++
 
-      # --------------------------
-      # POSIX build + tests
-      # --------------------------
+      - name: Configure & build (null port contract)
+        run: |
+          cmake -S . -B build-null -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=null \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF
+          cmake --build build-null --parallel
+
       - name: Configure & build (POSIX)
         run: |
           cmake -S . -B build-posix -G Ninja \
@@ -49,10 +55,6 @@ jobs:
         run: |
           ctest -V --test-dir build-posix --output-on-failure
 
-      # --------------------------
-      # Cortex-M library build (toolchain validation)
-      # Runs on ubuntu-22.04 only, and ONLY after POSIX tests in this job succeeded
-      # --------------------------
       - name: Install ARM bare-metal toolchain (22.04 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -71,13 +73,6 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
           cmake --build build-cortex_m --parallel
 
-      # --------------------------
-      # Packaging (only on tags, only from ubuntu-22.04, only if everything above succeeded)
-      # Produces:
-      #  - hardrt-posix-<tag>.tar.gz
-      #  - hardrt-cortexm-<tag>.tar.gz
-      #  - hardrt-bundle-<tag>.tar.gz (both in one)
-      # --------------------------
       - name: Install (POSIX + Cortex-M) and create tarballs (tag builds, 22.04 only)
         if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
         run: |
@@ -85,19 +80,14 @@ jobs:
           rm -rf packages install-posix install-cortexm bundle
           mkdir -p packages
 
-          # POSIX install
           cmake --install build-posix --prefix install-posix
-
-          # Cortex-M install (library + headers + CMake package files)
           cmake --install build-cortex_m --prefix install-cortexm
 
-          # Create separate tarballs
-          tar -C install-posix   -czf packages/hardrt-posix-${{ github.ref_name }}.tar.gz .
+          tar -C install-posix -czf packages/hardrt-posix-${{ github.ref_name }}.tar.gz .
           tar -C install-cortexm -czf packages/hardrt-cortexm-${{ github.ref_name }}.tar.gz .
 
-          # Combined bundle
           mkdir -p bundle/posix bundle/cortex_m
-          cp -a install-posix/*   bundle/posix/
+          cp -a install-posix/* bundle/posix/
           cp -a install-cortexm/* bundle/cortex_m/
           tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
 

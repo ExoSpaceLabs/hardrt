@@ -1,12 +1,10 @@
 # HardRT: licensed under the Apache License, Version 2.0
 cmake_minimum_required(VERSION 3.16)
 
-# ---- Project ----
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
 project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C CXX ASM)
 
-# ---- Options ----
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
 option(HARDRT_BUILD_EXAMPLES "Build examples" ON)
@@ -16,11 +14,8 @@ option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable ASan/UBSan on POSIX tests" OFF)
 
-# ---- Kernel sizing knobs (public compile definitions) ----
-# These control the number of concurrent tasks and the number of priority classes.
-# They are wired into the public headers via HARDRT_MAX_TASKS/HARDRT_MAX_PRIO.
 set(HARDRT_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
-set(HARDRT_CFG_MAX_PRIO  4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
+set(HARDRT_CFG_MAX_PRIO 4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
 
 message("-- Definitions --")
 message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
@@ -34,11 +29,6 @@ message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
 message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} + 1 for IDLE task")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
-# Validate sizing knobs at configure time (no kernel source changes needed)
-# Constraints:
-# - 1 <= HARDRT_CFG_MAX_PRIO <= 12 (physical limit in current enum)
-# - HARDRT_CFG_MAX_TASKS >= 1
-# - HARDRT_CFG_MAX_TASKS >= HARDRT_CFG_MAX_PRIO
 math(EXPR _HRT_CFG_PRIO "${HARDRT_CFG_MAX_PRIO}")
 math(EXPR _HRT_CFG_TASKS "${HARDRT_CFG_MAX_TASKS}")
 
@@ -48,19 +38,16 @@ endif()
 if(_HRT_CFG_TASKS LESS 1)
   message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be >= 1. Got ${HARDRT_CFG_MAX_TASKS}.")
 endif()
-
 if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
   message(FATAL_ERROR "Invalid configuration: HARDRT_CFG_MAX_TASKS (${HARDRT_CFG_MAX_TASKS}) must be >= HARDRT_CFG_MAX_PRIO (${HARDRT_CFG_MAX_PRIO}).")
 endif()
 
-# ---- Paths ----
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/inc")
-set(SOURCE_DIR  "${CMAKE_SOURCE_DIR}/src")
+set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/src")
 set(SOURCE_CORE_DIR "${SOURCE_DIR}/core")
 set(SOURCE_PORT_DIR "${SOURCE_DIR}/port")
 set(SOURCE_INTERNAL_DIR "${SOURCE_DIR}/internal")
 
-# ---- Generated headers (version + port identity) ----
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 
 set(HARDRT_PORT_STRING "${HARDRT_PORT}")
@@ -80,162 +67,139 @@ endif()
 
 if(HARDRT_DEBUG)
   set(HARDRT_DEBUG 1)
-else ()
+else()
   set(HARDRT_DEBUG 0)
-endif ()
+endif()
 
 configure_file(
-        "${CMAKE_SOURCE_DIR}/inc/hardrt_port.h.in"
-        "${CMAKE_BINARY_DIR}/generated/hardrt_port.h"
-        @ONLY
-)
-
-configure_file(
-        "${CMAKE_SOURCE_DIR}/inc/hardrt_version.h.in"
-        "${CMAKE_BINARY_DIR}/generated/hardrt_version.h"
-        @ONLY
+  "${CMAKE_SOURCE_DIR}/inc/hardrt_port.h.in"
+  "${CMAKE_BINARY_DIR}/generated/hardrt_port.h"
+  @ONLY
 )
 configure_file(
-        "${CMAKE_SOURCE_DIR}/inc/hardrt_port.h.in"
-        "${CMAKE_BINARY_DIR}/generated/hardrt_port.h"
-        @ONLY
+  "${CMAKE_SOURCE_DIR}/inc/hardrt_version.h.in"
+  "${CMAKE_BINARY_DIR}/generated/hardrt_version.h"
+  @ONLY
 )
 
-# ---- Library sources ----
 set(LIBRARY_SOURCES
-        "${SOURCE_CORE_DIR}/hardrt_core.c"
-        "${SOURCE_CORE_DIR}/hardrt_sched.c"
-        "${SOURCE_CORE_DIR}/hardrt_time.c"
-        "${SOURCE_CORE_DIR}/hardrt_version.c"
-        "${SOURCE_CORE_DIR}/hardrt_portinfo.c"
-        "${SOURCE_CORE_DIR}/hardrt_sem.c"
-        "${SOURCE_CORE_DIR}/hardrt_queue.c"
-        "${SOURCE_CORE_DIR}/hardrt_mutex.c"
+  "${SOURCE_CORE_DIR}/hardrt_core.c"
+  "${SOURCE_CORE_DIR}/hardrt_sched.c"
+  "${SOURCE_CORE_DIR}/hardrt_time.c"
+  "${SOURCE_CORE_DIR}/hardrt_version.c"
+  "${SOURCE_CORE_DIR}/hardrt_portinfo.c"
+  "${SOURCE_CORE_DIR}/hardrt_sem.c"
+  "${SOURCE_CORE_DIR}/hardrt_queue.c"
+  "${SOURCE_CORE_DIR}/hardrt_mutex.c"
 )
 
-# ---- Library target ----
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
 
 math(EXPR HARDRT_MAX_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 target_compile_definitions(${LIB_NAME}
-        PUBLIC
-        HARDRT_MAX_TASKS=${HARDRT_MAX_TASKS_VALUE}
-        HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
-        HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
-        HARDRT_DEBUG=${HARDRT_DEBUG}
+  PUBLIC
+  HARDRT_MAX_TASKS=${HARDRT_MAX_TASKS_VALUE}
+  HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
+  HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
+  HARDRT_DEBUG=${HARDRT_DEBUG}
 )
 
 target_include_directories(${LIB_NAME}
-        PUBLIC
-        $<BUILD_INTERFACE:${INCLUDE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
-        $<INSTALL_INTERFACE:include>
-        PRIVATE
-        ${SOURCE_INTERNAL_DIR}
+  PUBLIC
+  $<BUILD_INTERFACE:${INCLUDE_DIR}>
+  $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
+  $<INSTALL_INTERFACE:include>
+  PRIVATE
+  ${SOURCE_INTERNAL_DIR}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
-
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
 
 if(HARDRT_PORT STREQUAL "posix" AND HARDRT_STRICT)
   message(STATUS "HARDRT_STRICT enabled (POSIX warnings on)")
-
   set(HARDRT_STRICT_WARNINGS
-          -Wall
-          -Wextra
-          -Wpedantic
-          -Wconversion
-          -Wcast-qual
-          -Wshadow
+    -Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow
   )
-
   add_compile_options(${HARDRT_STRICT_WARNINGS})
-endif ()
+endif()
 
 set_target_properties(${LIB_NAME} PROPERTIES
-        VERSION   ${PROJECT_VERSION}
-        SOVERSION ${PROJECT_VERSION_MAJOR}
-        OUTPUT_NAME ${LIB_NAME}
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+  OUTPUT_NAME ${LIB_NAME}
 )
 
-# ---- Select port ----
 if(HARDRT_PORT STREQUAL "null")
   target_sources(${LIB_NAME} PRIVATE "${SOURCE_PORT_DIR}/null/port_null.c")
 elseif(HARDRT_PORT STREQUAL "posix")
   target_sources(${LIB_NAME} PRIVATE "${SOURCE_PORT_DIR}/posix/port_posix.c")
 elseif(HARDRT_PORT STREQUAL "cortex_m")
   target_sources(${LIB_NAME} PRIVATE
-          "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
-          "${SOURCE_PORT_DIR}/cortex_m/port_cortexm_isr.c"
-          "${SOURCE_PORT_DIR}/cortex_m/hardfault_diag.c"
-          "${SOURCE_PORT_DIR}/cortex_m/hrt_pendsv_handler.s"
+    "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
+    "${SOURCE_PORT_DIR}/cortex_m/port_cortexm_isr.c"
+    "${SOURCE_PORT_DIR}/cortex_m/hardfault_diag.c"
+    "${SOURCE_PORT_DIR}/cortex_m/hrt_pendsv_handler.s"
   )
 else()
   message(FATAL_ERROR "Unknown HARDRT_PORT=${HARDRT_PORT}")
 endif()
 
-# ---- Optional C++ wrappers ----
 if(HARDRT_ENABLE_CPP)
   add_library(${LIB_NAME_CPP} INTERFACE)
   target_link_libraries(${LIB_NAME_CPP} INTERFACE ${LIB_NAME})
   target_compile_features(${LIB_NAME_CPP} INTERFACE cxx_std_17)
   target_include_directories(${LIB_NAME_CPP} INTERFACE
-          $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/cpp>
-          $<BUILD_INTERFACE:${INCLUDE_DIR}>
-          $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
-          $<INSTALL_INTERFACE:include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/cpp>
+    $<BUILD_INTERFACE:${INCLUDE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
+    $<INSTALL_INTERFACE:include>
   )
 endif()
 
-# ---- Install / export package ----
 include(GNUInstallDirs)
 
 install(TARGETS ${LIB_NAME}
-        EXPORT HardRTTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  EXPORT HardRTTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 if(HARDRT_ENABLE_CPP)
   install(TARGETS ${LIB_NAME_CPP}
-          EXPORT HardRTTargets
-          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-endif ()
+    EXPORT HardRTTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 
-# Install only the application-facing headers. Private kernel/port contracts live
-# under src/internal and the transitional hardrt_port_int.h shim is excluded.
+# Only application-facing headers are installed. All kernel/port contracts live
+# under src/internal and therefore cannot leak into the package include tree.
 install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        FILES_MATCHING PATTERN "*.h"
-        PATTERN "hardrt_port_int.h" EXCLUDE)
-
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN "hardrt_port_int.h" EXCLUDE)
 install(DIRECTORY "${CMAKE_BINARY_DIR}/generated/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(HARDRT_ENABLE_CPP)
-  install(DIRECTORY "${CMAKE_SOURCE_DIR}/cpp/"
-          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-endif ()
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/cpp/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 
-# Package config
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfigVersion.cmake"
-        VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion
+  "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
 )
 configure_package_config_file(
-        "${CMAKE_CURRENT_LIST_DIR}/cmake/HardRTConfig.cmake.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfig.cmake"
-        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/HardRTConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
 )
 install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfigVersion.cmake"
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
+  "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/HardRTConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
 )
 install(EXPORT HardRTTargets
-        NAMESPACE HardRT::
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
+  NAMESPACE HardRT::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HardRT
 )
 
-# ---- Examples ----
 if(HARDRT_BUILD_EXAMPLES)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix)
@@ -252,7 +216,14 @@ if(HARDRT_BUILD_EXAMPLES)
   endif()
 endif()
 
-# ---- Tests ----
 if(HARDRT_BUILD_TESTS)
   include(${CMAKE_CURRENT_LIST_DIR}/cmake/hardrt_tester.cmake)
+
+  # Compile-only contract fixture. It implements every required port hook and
+  # references the approved port->core surface without linking any duplicate
+  # implementations into the HardRT library.
+  add_library(hardrt_port_contract_fixture OBJECT tests/port_contract_fixture.c)
+  target_link_libraries(hardrt_port_contract_fixture PRIVATE ${LIB_NAME})
+  target_include_directories(hardrt_port_contract_fixture PRIVATE ${SOURCE_INTERNAL_DIR})
+  target_compile_features(hardrt_port_contract_fixture PRIVATE c_std_11)
 endif()

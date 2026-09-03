@@ -10,7 +10,7 @@
 
 #include "hardrt.h"
 #include "hardrt_time.h"
-#include "hardrt_port_int.h"
+#include "hardrt_port_contract.h"
 
 static int g_crit_depth = 0;
 static sigset_t g_saved_mask;
