@@ -91,6 +91,8 @@ hrt_tick_from_isr();
 
 These images use `HARDRT_TIMING_PROFILE=none`. No kernel timing hooks or replacement tick implementation are enabled. This makes the measurement directly representative of the configured production external-tick API, including the current O(`HARDRT_MAX_TASKS`) sleeper scan, wake processing, RR accounting, and reschedule request work reached by the selected scenario.
 
+TIM2 is run as a one-shot source for this matrix. After each measured tick, the ISR wakes a lower-priority benchmark driver **outside the measured interval**. Any worker tasks made READY by that tick have higher priority than the driver, so they run and return to their intended sleeping/blocked state before the driver can rearm the next timer shot. This prevents a later sample, especially the 32-task `simultaneous` case, from starting while the previous sample's workers are still recovering.
+
 The three configured capacities are real library builds, not partially populated instances of one fixed-capacity build. This lets the measured slope be compared against the configured task bound.
 
 Instrumentation is therefore enabled only in benchmark images that need private hooks. Normal HardRT builds remain uninstrumented, and the tick-scaling benchmark itself requires no kernel instrumentation.
