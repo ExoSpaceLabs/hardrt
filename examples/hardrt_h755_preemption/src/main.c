@@ -51,9 +51,10 @@ extern uint32_t SystemCoreClock;
 __attribute__((noinline, used))
 void preemption_validation_stop(uint32_t error, uint32_t passed)
 {
+    /* Keep all debugger-visible result state live in the linked image. */
+    g_validation_case = HRT_PREEMPT_CASE_ID;
     g_example_error = error;
     g_validation_pass = passed;
-    __asm volatile("bkpt 0");
     for (;;) __asm volatile("wfi");
 }
 
