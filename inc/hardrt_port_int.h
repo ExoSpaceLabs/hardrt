@@ -1,29 +1,9 @@
 #pragma once
-#include <stdint.h>
-#include "hardrt.h"   // for hrt_tick_source_t
 
-#include <stdint.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
-    /* Core-private accessors for port code. Do NOT install this header. */
-    uint32_t          hrt__cfg_core_hz(void);
-    hrt_tick_source_t hrt__cfg_tick_src(void);
-    uint32_t          hrt__cfg_tick_hz(void);
-
-    void hrt__save_current_sp(uintptr_t sp);   // store PSP into current TCB if current>=0
-    uintptr_t hrt__load_next_sp_and_set_current(int next_id); // set current=next, return next->sp
-    int  hrt__get_current(void);
-    int  hrt__pick_next_ready(void);
-    uintptr_t hrt__schedule(uintptr_t old_sp);
-
-
-    /**
-     * @brief function to identify the stack pointer validity.
-     *
-     * @param sp  stack pointer
-     */
-    void hrt_port_sp_valid(uintptr_t sp);
-#ifdef __cplusplus
-}
-#endif
+/*
+ * Transitional private include used by existing kernel/port translation units.
+ * New internal code should include hardrt_kernel.h and/or
+ * hardrt_port_contract.h directly. This file is excluded from installation.
+ */
+#include "hardrt_kernel.h"
+#include "hardrt_port_contract.h"

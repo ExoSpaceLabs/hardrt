@@ -49,7 +49,6 @@ if(_HRT_CFG_TASKS LESS 1)
   message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be >= 1. Got ${HARDRT_CFG_MAX_TASKS}.")
 endif()
 
-# this is not actually fatal, but makes no sense to have priority to whom no available task is associated.
 if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
   message(FATAL_ERROR "Invalid configuration: HARDRT_CFG_MAX_TASKS (${HARDRT_CFG_MAX_TASKS}) must be >= HARDRT_CFG_MAX_PRIO (${HARDRT_CFG_MAX_PRIO}).")
 endif()
@@ -59,12 +58,11 @@ set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/inc")
 set(SOURCE_DIR  "${CMAKE_SOURCE_DIR}/src")
 set(SOURCE_CORE_DIR "${SOURCE_DIR}/core")
 set(SOURCE_PORT_DIR "${SOURCE_DIR}/port")
+set(SOURCE_INTERNAL_DIR "${SOURCE_DIR}/internal")
 
 # ---- Generated headers (version + port identity) ----
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 
-# helper vars so the @HARDRT_PORT@_STR_EQ_* trick in hardrt_port.h.in works
-# ---- Port ID/name for generated header ----
 set(HARDRT_PORT_STRING "${HARDRT_PORT}")
 if(HARDRT_PORT STREQUAL "null")
   set(HARDRT_PORT_ID 0)
@@ -109,7 +107,7 @@ set(LIBRARY_SOURCES
         "${SOURCE_CORE_DIR}/hardrt_sched.c"
         "${SOURCE_CORE_DIR}/hardrt_time.c"
         "${SOURCE_CORE_DIR}/hardrt_version.c"
-        "${SOURCE_CORE_DIR}/hardrt_portinfo.c"   # provides hrt_port_name()/hrt_port_id()
+        "${SOURCE_CORE_DIR}/hardrt_portinfo.c"
         "${SOURCE_CORE_DIR}/hardrt_sem.c"
         "${SOURCE_CORE_DIR}/hardrt_queue.c"
         "${SOURCE_CORE_DIR}/hardrt_mutex.c"
@@ -118,9 +116,6 @@ set(LIBRARY_SOURCES
 # ---- Library target ----
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
 
-# Propagate sizing knobs to all consumers (library PUBLIC interface)
-# so examples/tests and downstream apps see consistent limits.
-# HARDRT_CFG_MAX_TASKS + 1 as the extra task is taken by the idle task.
 math(EXPR HARDRT_MAX_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 target_compile_definitions(${LIB_NAME}
         PUBLIC
@@ -136,7 +131,7 @@ target_include_directories(${LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<INSTALL_INTERFACE:include>
         PRIVATE
-        ${INCLUDE_DIR}    # so ports can include hardrt_port_int.h
+        ${SOURCE_INTERNAL_DIR}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 
@@ -157,19 +152,17 @@ if(HARDRT_PORT STREQUAL "posix" AND HARDRT_STRICT)
   add_compile_options(${HARDRT_STRICT_WARNINGS})
 endif ()
 
-# Mark library version (handy if you ever switch to SHARED)
 set_target_properties(${LIB_NAME} PROPERTIES
         VERSION   ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
         OUTPUT_NAME ${LIB_NAME}
 )
 
-# ---- Select port (device-agnostic here) ----
+# ---- Select port ----
 if(HARDRT_PORT STREQUAL "null")
   target_sources(${LIB_NAME} PRIVATE "${SOURCE_PORT_DIR}/null/port_null.c")
 elseif(HARDRT_PORT STREQUAL "posix")
   target_sources(${LIB_NAME} PRIVATE "${SOURCE_PORT_DIR}/posix/port_posix.c")
-  # setitimer/nanosleep are in libc; no extra link flags required on glibc
 elseif(HARDRT_PORT STREQUAL "cortex_m")
   target_sources(${LIB_NAME} PRIVATE
           "${SOURCE_PORT_DIR}/cortex_m/port_cortexm.c"
@@ -181,7 +174,7 @@ else()
   message(FATAL_ERROR "Unknown HARDRT_PORT=${HARDRT_PORT}")
 endif()
 
-# ---- Optional C++ wrappers (header-only) ----
+# ---- Optional C++ wrappers ----
 if(HARDRT_ENABLE_CPP)
   add_library(${LIB_NAME_CPP} INTERFACE)
   target_link_libraries(${LIB_NAME_CPP} INTERFACE ${LIB_NAME})
@@ -192,26 +185,23 @@ if(HARDRT_ENABLE_CPP)
           $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
           $<INSTALL_INTERFACE:include>
   )
-
 endif()
 
-# ---- Install / export package (find_package support) ----
+# ---- Install / export package ----
 include(GNUInstallDirs)
 
 install(TARGETS ${LIB_NAME}
         EXPORT HardRTTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-# Install/export the interface target so downstream can link HardRT::hardrtpp
 if(HARDRT_ENABLE_CPP)
   install(TARGETS ${LIB_NAME_CPP}
           EXPORT HardRTTargets
           ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif ()
 
-# public + generated headers
-
-# Install only public headers; exclude the internal one
+# Install only the application-facing headers. Private kernel/port contracts live
+# under src/internal and the transitional hardrt_port_int.h shim is excluded.
 install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.h"
         PATTERN "hardrt_port_int.h" EXCLUDE)
@@ -219,7 +209,6 @@ install(DIRECTORY ${INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 install(DIRECTORY "${CMAKE_BINARY_DIR}/generated/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(HARDRT_ENABLE_CPP)
-  # Install the wrapper header
   install(DIRECTORY "${CMAKE_SOURCE_DIR}/cpp/"
           DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif ()
@@ -248,7 +237,6 @@ install(EXPORT HardRTTargets
 
 # ---- Examples ----
 if(HARDRT_BUILD_EXAMPLES)
-  # Examples have their own CMakeLists.txt; include them directly
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/queue_posix)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
@@ -264,7 +252,7 @@ if(HARDRT_BUILD_EXAMPLES)
   endif()
 endif()
 
-# ---- Tests (POSIX only) ----
+# ---- Tests ----
 if(HARDRT_BUILD_TESTS)
   include(${CMAKE_CURRENT_LIST_DIR}/cmake/hardrt_tester.cmake)
 endif()
