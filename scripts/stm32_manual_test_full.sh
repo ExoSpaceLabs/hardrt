@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STM32CUBE_H7_ROOT=""
-OUTPUT_BASE="$ROOT_DIR/.qualification/stm32"
+OUTPUT_BASE="$ROOT_DIR/validation/stm32"
 TIMING_SAMPLES=10000
 OBSERVE_SECONDS=10
 DEBUG_TIMEOUT=90
@@ -27,14 +27,14 @@ Usage:
   scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 [options]
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
-Runs the complete 14-case NUCLEO-H755ZI-Q hardware qualification matrix.
-Development evidence is written under gitignored .qualification/stm32/.
-For a release, manually copy/move the selected final passing run to:
+Runs the complete 13-case NUCLEO-H755ZI-Q hardware qualification matrix.
+Development evidence is written under validation/stm32/.
+Timestamped development runs are gitignored; release evidence remains trackable under:
   validation/stm32/releases/vX.Y.Z/
 
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
-  --output-dir DIR        Evidence root (default: .qualification/stm32).
+  --output-dir DIR        Evidence root (default: validation/stm32).
   --timing-samples N      Samples per DWT case (default: 10000).
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
@@ -226,7 +226,7 @@ cat > "$REPORT" <<EOF
 - Host: \`$(uname -a)\`
 - Timing samples per case: \`$TIMING_SAMPLES\`
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
-- Matrix size: **14 cases**
+- Functional matrix size: **13 cases**
 - Selected mode: **${ONLY_CASE:-full matrix}**
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
@@ -450,7 +450,6 @@ else
     timing_case event_to_task "DWT event_to_task timing"
     timing_case sem_isr_ready "DWT sem_isr_ready timing"
     timing_case ready_to_task "DWT ready_to_task timing"
-    timing_case scheduler_decision "DWT scheduler_decision timing"
     preemption_case priority "Fixed-priority hardware preemption"
     preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
     ipc_case semaphore "Semaphore hardware contract"
@@ -462,7 +461,13 @@ fi
 
 PASS=0; FAIL=0
 for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
-NOT_RUN=$((14 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
+if [[ "$ONLY_CASE" == "scheduler_decision" ]]; then
+  TOTAL_CASES=${#STATUSES[@]}
+  NOT_RUN=0
+else
+  TOTAL_CASES=13
+  NOT_RUN=$((TOTAL_CASES - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
+fi
 
 {
   echo "## Test results"; echo
@@ -473,7 +478,7 @@ NOT_RUN=$((14 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
     printf '| %s | **%s** | %s | `%s` | %s |\n' "$n" "${STATUSES[$i]}" "$c" "$e" "${note:- }"
   done
   echo; echo "## Qualification verdict"; echo
-  echo "- Passed: **$PASS / 14**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
+  echo "- Passed: **$PASS / $TOTAL_CASES**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
   if (( FAIL == 0 && NOT_RUN == 0 )); then echo "- Overall: **PASS**"
   elif (( FAIL > 0 )); then echo "- Overall: **FAIL**"
   else echo "- Overall: **PARTIAL**"; fi
@@ -491,7 +496,7 @@ echo "HardRT STM32 hardware qualification summary"
 echo "============================================================"
 echo "HardRT SHA : $SHA"
 echo "Cube SHA   : $CUBE_SHA ($CUBE_STATE)"
-printf 'Cases      : %d/14 PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$FAIL" "$NOT_RUN"
+printf 'Cases      : %d/%d PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$TOTAL_CASES" "$FAIL" "$NOT_RUN"
 echo
 printf '%-44s %s\n' "CASE" "RESULT"
 printf '%-44s %s\n' "--------------------------------------------" "------"
