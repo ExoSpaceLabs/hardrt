@@ -129,6 +129,8 @@ const test_case_t *get_tests_rr_yield(int *out_count);
 
 const test_case_t *get_tests_rr_sleep(int *out_count);
 
+const test_case_t *get_tests_sleep_queue(int *out_count);
+
 const test_case_t *get_tests_priority(int *out_count);
 
 const test_case_t *get_tests_preemption_contract(int *out_count);
