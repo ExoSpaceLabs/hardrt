@@ -14,23 +14,7 @@ volatile uint32_t ipsr;
 
 void hrt__tick_isr(void) {
     hrt__inc_tick();
-    uint8_t trigger_pendsv = 0u;
-
-    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
-        _hrt_tcb_t *t = hrt__tcb(i);
-        if (!t) continue;
-        if (t->state == HRT_SLEEP &&
-            (int32_t)(t->wake_tick - hrt_tick_now()) <= 0) {
-            /* Decide before changing the task state. This matters when the
-             * sleeper is still recorded as g_current while the scheduler is
-             * idle: after make_ready(), comparing the task with itself would
-             * incorrectly look like an equal-priority running-task wake and
-             * suppress the scheduling opportunity. */
-            const int should_switch = hrt__should_preempt_after_wake(i);
-            hrt__make_ready(i);
-            if (should_switch) trigger_pendsv = 1u;
-        }
-    }
+    uint8_t trigger_pendsv = (uint8_t)(hrt__sleep_tick() != 0);
 
     const int cur = hrt__get_current();
     if (cur < 0 || cur >= HARDRT_MAX_TASKS) {
