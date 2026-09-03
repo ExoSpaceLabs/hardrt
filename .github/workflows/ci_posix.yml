@@ -31,7 +31,7 @@ jobs:
       - name: Install base build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build make g++
+          sudo apt-get install -y cmake ninja-build make g++ binutils
 
       - name: Configure & build (null port contract)
         run: |
@@ -41,6 +41,33 @@ jobs:
             -DHARDRT_BUILD_TESTS=ON \
             -DHARDRT_BUILD_EXAMPLES=OFF
           cmake --build build-null --parallel
+
+      - name: Validate timing profile isolation
+        run: |
+          set -euxo pipefail
+
+          if nm build-null/libhardrt.a | grep -q hrt_timing_fixture_counter; then
+            echo "default timing profile unexpectedly references timing fixture"
+            exit 1
+          fi
+
+          cmake -S . -B build-timing-ipc -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=null \
+            -DHARDRT_BUILD_TESTS=OFF \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_TIMING_PROFILE=ipc \
+            -DHARDRT_TIMING_HOOK_HEADER="$PWD/tests/timing_profile_consumer/timing_ipc_hooks_compile.h"
+          cmake --build build-timing-ipc --parallel
+
+          nm build-timing-ipc/libhardrt.a | grep -q hrt_timing_fixture_counter
+
+          rm -rf install-timing-ipc build-timing-profile-consumer
+          cmake --install build-timing-ipc --prefix "$PWD/install-timing-ipc"
+          cmake -S tests/timing_profile_consumer -B build-timing-profile-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-timing-ipc"
+          cmake --build build-timing-profile-consumer --parallel
+          ./build-timing-profile-consumer/timing_profile_smoke
 
       - name: Configure & build (POSIX)
         run: |
@@ -67,6 +94,8 @@ jobs:
           test ! -e install-posix-ci/include/hardrt_port_int.h
           test ! -e install-posix-ci/include/hardrt_kernel.h
           test ! -e install-posix-ci/include/hardrt_port_contract.h
+          test ! -e install-posix-ci/include/hardrt_timing.h
+          test ! -e install-posix-ci/include/hardrt_timing_config.h
 
           cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
             -DCMAKE_PREFIX_PATH="$PWD/install-posix-ci"
