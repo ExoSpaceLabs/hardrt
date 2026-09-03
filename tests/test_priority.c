@@ -4,19 +4,21 @@
 
 static volatile int g_prio_high_iters = 0;
 static volatile int g_prio_low_iters = 0;
-static volatile int g_prio_high_slept = 0; /* flag set by high when it sleeps */
-static volatile int g_prio_low_before_sleep = 0; /* low-prio runs counted before high-ever-slept */
+static volatile int g_prio_high_slept = 0; /* flag set by high when it blocks */
+static volatile int g_prio_low_before_sleep = 0; /* low-prio runs counted before high-ever-blocked */
 
 static void prio_high_task(void *arg) {
     (void) arg;
     for (;;) {
         ++g_prio_high_iters;
-        /* Keep yielding to re-enter scheduler; with PRIORITY policy, low prio must not run */
+        /* Keep yielding to re-enter scheduler; with PRIORITY policy, low prio must not run. */
         if (g_prio_high_iters >= 2000) {
-            /* allow low priority to run once */
+            /* Block for a deliberately long interval. The low-priority task
+             * stops the test as soon as it is dispatched, so this does not
+             * add wall-clock delay and cannot race a one-tick wakeup. */
             g_prio_high_slept = 1;
-            hrt_sleep(1);
-            /* after wake, stop */
+            hrt_sleep(1000);
+            /* Reaching here would mean the lower task failed to stop the test. */
             hrt__test_stop_scheduler();
             hrt_yield();
         }
@@ -31,8 +33,13 @@ static void prio_low_task(void *arg) {
             ++g_prio_low_before_sleep;
         }
         ++g_prio_low_iters;
-        /* Once it runs, nap to avoid hogging and loop */
-        hrt_sleep(1);
+
+        if (g_prio_high_slept) {
+            hrt__test_stop_scheduler();
+            hrt_yield();
+        }
+
+        hrt_yield();
     }
 }
 
@@ -56,8 +63,7 @@ static void test_priority_dominance_priority_policy(void) {
 
     T_ASSERT_EQ_INT(0, g_prio_low_before_sleep, "low prio should not run while high prio remained READY");
     T_ASSERT_TRUE(g_prio_high_iters >= 2000, "high prio performed expected iterations");
-    /* After high prio slept once, low prio should have run at least once before stop */
-    T_ASSERT_TRUE(g_prio_low_iters >= 1, "low prio should run after high prio sleeps");
+    T_ASSERT_TRUE(g_prio_low_iters >= 1, "low prio should run after high prio blocks");
 }
 
 static const test_case_t CASES[] = {
