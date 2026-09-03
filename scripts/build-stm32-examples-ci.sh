@@ -25,9 +25,21 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-tick-benchmark.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"
+
+configure_library() {
+  local build_dir="$1" install_dir="$2"; shift 2
+  rm -rf "$build_dir" "$install_dir"
+  cmake -S "$ROOT_DIR" -B "$build_dir" -G "$GENERATOR" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DHARDRT_PORT=cortex_m \
+    -DHARDRT_BUILD_TESTS=OFF -DHARDRT_BUILD_EXAMPLES=OFF -DHARDRT_ENABLE_CPP=ON \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" "$@"
+  cmake --build "$build_dir" --parallel "$JOBS"
+  cmake --install "$build_dir" --prefix "$install_dir"
+}
 
 configure_base_library() {
   if [[ ! -f "$BASE_BUILD/libhardrt.a" ]]; then
@@ -79,6 +91,20 @@ build_app hardrt_h755_ipc_mutex "$ROOT_DIR/examples/hardrt_h755_ipc_validation" 
 build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
+
+# Compile every tick/sleeper workload branch using the normal eight-task
+# configuration, then compile the most demanding simultaneous-expiry workload
+# at the largest benchmarked capacity to catch RAM/link/configuration issues.
+for scenario in none one_sleep all_sleep one_expiry simultaneous staggered; do
+  build_app "hardrt_h755_tick_${scenario}_8" "$ROOT_DIR/examples/hardrt_h755_tick_benchmark" "$BASE_INSTALL" \
+    -DHARDRT_TICK_BENCH_SCENARIO="$scenario" -DHARDRT_TICK_BENCH_TARGET_SAMPLES=8
+done
+
+TICK32_BUILD="$ROOT_DIR/build-cortex_m-tick32-ci"
+TICK32_INSTALL="$ROOT_DIR/install-cortexm-tick32-ci"
+configure_library "$TICK32_BUILD" "$TICK32_INSTALL" -DHARDRT_CFG_MAX_TASKS=32 -DHARDRT_ENABLE_CPP=OFF
+build_app hardrt_h755_tick_simultaneous_32 "$ROOT_DIR/examples/hardrt_h755_tick_benchmark" "$TICK32_INSTALL" \
+  -DHARDRT_TICK_BENCH_SCENARIO=simultaneous -DHARDRT_TICK_BENCH_TARGET_SAMPLES=8
 
 IPC_BUILD="$ROOT_DIR/build-cortex_m-timing-ipc-ci"; IPC_INSTALL="$ROOT_DIR/install-cortexm-timing-ipc-ci"; IPC_HOOK_HEADER="$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_hooks.h"
 configure_timing_library "$IPC_BUILD" "$IPC_INSTALL" "$IPC_HOOK_HEADER"
