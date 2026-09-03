@@ -2,7 +2,7 @@
 
 HardRT is intended to evolve toward documented hard real-time behavior on supported Cortex-M configurations.
 
-This document defines the engineering direction. It is not a claim that every current HardRT configuration is already hard real-time.
+This document defines the engineering direction. It is not a claim that every current HardRT configuration is already hard real time.
 
 ## Qualification boundary
 
@@ -12,7 +12,7 @@ The POSIX port is excluded from hard real-time qualification. It is a functional
 
 ## Required properties
 
-A HardRT configuration may be described as hard real-time only when all relevant kernel operations and interference sources have finite, documented bounds under a stated configuration.
+A HardRT configuration may be described as hard real time only when all relevant kernel operations and interference sources have finite, documented bounds under a stated configuration.
 
 At minimum, qualification requires:
 
@@ -64,6 +64,58 @@ HardRT documentation must distinguish:
 - a hardware/configuration-specific worst-case bound.
 
 A measured maximum is not, by itself, a worst-case execution-time proof.
+
+## Timing decomposition
+
+HardRT timing evidence must measure conventional RTOS timing components separately before presenting composite response times.
+
+The existing STM32H755 timing fixture timestamps inside a timer ISR before a kernel semaphore operation and again after the waiting task resumes. That remains a useful end-to-end workload measurement, but it combines several independent costs and must not be labelled hardware interrupt latency or context-switch latency by itself.
+
+The timing model is split into the following measurements:
+
+1. **Interrupt path**
+   - hardware event to ISR entry, where the hardware fixture permits measurement;
+   - kernel-aware ISR service duration;
+   - task wake to READY transition;
+   - reschedule request;
+   - ISR exit to PendSV entry;
+   - READY task to first resumed task instruction;
+   - complete event-to-task response as a derived/composite metric.
+
+2. **Scheduler and context switch**
+   - scheduler decision time;
+   - ready-queue selection time;
+   - outgoing context-save time;
+   - incoming context-restore time;
+   - complete PendSV/task-switch time;
+   - voluntary and blocking task-to-task handoff latency.
+
+3. **Synchronization**
+   - semaphore, mutex, queue, event, and notification primitive execution cost;
+   - waiter selection and READY latency;
+   - waiter RUNNING latency;
+   - ISR-aware primitive execution separately from task-context execution;
+   - queue copy cost separately from scheduler/handoff cost.
+
+4. **Critical sections and kernel bounded work**
+   - interrupt-masked critical-section duration;
+   - ready-queue operations;
+   - sleeper scan/wake processing;
+   - operation cost as a function of configured task, priority, waiter, and item-size bounds.
+
+5. **Timekeeping and release jitter**
+   - tick processing cost;
+   - sleep-expiry to READY and RUNNING latency;
+   - internal and external tick paths separately;
+   - periodic-task release jitter once an absolute periodic timing primitive is available.
+
+### Instrumentation rule
+
+Dedicated timing/trace hooks are part of the qualification architecture. They must be compile-time disabled by default and produce no runtime code or storage in normal builds. Instrumented builds must quantify probe overhead, and measurement points must be stable enough that benchmark applications do not patch kernel source to collect each metric.
+
+On Cortex-M, DWT `CYCCNT` is the preferred reference cycle counter where supported. Assembly-side PendSV boundaries may require instrumentation directly in the context-switch path so context save and restore can be measured independently.
+
+Timing implementation and benchmark work is tracked by #49 through #54 under the qualification work in #37 and #48.
 
 ## Design rule
 
