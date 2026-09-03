@@ -4,6 +4,7 @@ enable_testing()
 
 if(HARDRT_PORT STREQUAL "posix")
   target_compile_definitions(${LIB_NAME} PRIVATE HARDRT_TEST_HOOKS)
+  find_package(Threads REQUIRED)
 
   add_executable(hardrt_tests
           ${CMAKE_CURRENT_LIST_DIR}/../tests/test_main.c
@@ -33,7 +34,7 @@ if(HARDRT_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_now_ms.c
   )
 
-  target_link_libraries(hardrt_tests PRIVATE ${LIB_NAME})
+  target_link_libraries(hardrt_tests PRIVATE ${LIB_NAME} Threads::Threads)
   target_compile_features(hardrt_tests PRIVATE c_std_11)
   target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
   if(HARDRT_SANITIZE)
