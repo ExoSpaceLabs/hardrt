@@ -1,0 +1,44 @@
+# HardRT STM32H755 IPC validator (OpenOCD)
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break *ipc_validation_emit
+commands
+  silent
+  set $base = (unsigned int)$r0
+  set $case = *(unsigned int*)($base + 0)
+  set $pass = *(unsigned int*)($base + 4)
+  set $error = *(unsigned int*)($base + 8)
+  set $irq_count = *(unsigned int*)($base + 12)
+  set $ns0 = *(int*)($base + 16)
+  set $ns1 = *(int*)($base + 20)
+  set $o0 = *(unsigned int*)($base + 24)
+  set $o1 = *(unsigned int*)($base + 28)
+  set $s0 = *(unsigned int*)($base + 32)
+  set $s1 = *(unsigned int*)($base + 36)
+  set $s2 = *(unsigned int*)($base + 40)
+  set $s3 = *(unsigned int*)($base + 44)
+  set $s4 = *(unsigned int*)($base + 48)
+  set $s5 = *(unsigned int*)($base + 52)
+  set $s6 = *(unsigned int*)($base + 56)
+  set $s7 = *(unsigned int*)($base + 60)
+
+  printf "case=%u pass=%u error=%u\n", $case, $pass, $error
+  printf "irq_count=%u need_switch=[%d,%d]\n", $irq_count, $ns0, $ns1
+  printf "observed=[0x%08x,0x%08x]\n", $o0, $o1
+  printf "sequence slots: [%u,%u,%u,%u,%u,%u,%u,%u]\n", $s0,$s1,$s2,$s3,$s4,$s5,$s6,$s7
+  if $pass == 1 && $error == 0
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", $error
+  end
+  detach
+  quit
+end
+continue
