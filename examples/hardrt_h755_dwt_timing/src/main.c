@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #include "hardrt.h"
@@ -9,15 +10,37 @@
 #define DWT_CTRL   (*(volatile uint32_t *)0xE0001000u)
 #define DWT_CYCCNT (*(volatile uint32_t *)0xE0001004u)
 
+typedef struct {
+    uint32_t case_id;
+    uint32_t event_hz;
+    uint32_t target_samples;
+    uint32_t core_hz;
+    uint32_t tim2_psc;
+    uint32_t tim2_arr;
+    uint32_t min_cycles;
+    uint32_t avg_cycles;
+    uint32_t max_cycles;
+    uint32_t count;
+    uint32_t sum_lo;
+    uint32_t sum_hi;
+    uint32_t error;
+} hrt_timing_result_t;
+
+_Static_assert(offsetof(hrt_timing_result_t, case_id) == 0u, "timing result ABI");
+_Static_assert(offsetof(hrt_timing_result_t, count) == 36u, "timing result ABI");
+_Static_assert(offsetof(hrt_timing_result_t, sum_lo) == 40u, "timing result ABI");
+_Static_assert(offsetof(hrt_timing_result_t, error) == 48u, "timing result ABI");
+_Static_assert(sizeof(hrt_timing_result_t) == 52u, "timing result ABI");
+
 volatile hrt_timing_stats_t g_timing_stats;
 volatile uint32_t g_timing_start_cycles = 0;
-volatile uint32_t g_timing_case_id = HRT_TIMING_CASE_ID;
 volatile uint32_t g_timing_event_hz = HRT_TIMING_EVENT_HZ;
 volatile uint32_t g_timing_target_samples = HRT_TIMING_TARGET_SAMPLES;
 volatile uint32_t g_example_error = 0;
 
-volatile uint32_t tim2_psc_dbg __attribute__((used)) = 0;
-volatile uint32_t tim2_arr_dbg __attribute__((used)) = 0;
+static volatile uint32_t tim2_psc_dbg = 0;
+static volatile uint32_t tim2_arr_dbg = 0;
+static volatile hrt_timing_result_t g_timing_result;
 
 static hrt_sem_t g_event_sem;
 static volatile uint32_t g_event_armed = 0;
@@ -48,9 +71,11 @@ static void stats_init(volatile hrt_timing_stats_t *s) {
 }
 
 __attribute__((noinline, used))
-void timing_target_reached(void) {
-    /* GDB owns the breakpoint at function entry. Keeping the result stop free
-       of a firmware BKPT avoids the trap racing the scripted breakpoint. */
+void timing_target_reached(const volatile hrt_timing_result_t *result) {
+    /* The qualification debugger breaks at function entry and receives the
+       fixed-layout result record in r0. Keep the pointer semantically live so
+       Release optimization cannot discard the call argument. */
+    __asm volatile("" : : "r"(result) : "memory");
     for (;;) __asm volatile("wfi");
 }
 
@@ -59,6 +84,26 @@ static void example_fail(uint32_t code) {
     g_example_error = code;
     __asm volatile("bkpt 0");
     for (;;) __asm volatile("wfi");
+}
+
+static void timing_finish(void) {
+    const uint64_t sum = g_timing_stats.sum;
+
+    g_timing_result.case_id = HRT_TIMING_CASE_ID;
+    g_timing_result.event_hz = g_timing_event_hz;
+    g_timing_result.target_samples = g_timing_target_samples;
+    g_timing_result.core_hz = SystemCoreClock;
+    g_timing_result.tim2_psc = tim2_psc_dbg;
+    g_timing_result.tim2_arr = tim2_arr_dbg;
+    g_timing_result.min_cycles = g_timing_stats.min;
+    g_timing_result.avg_cycles = g_timing_stats.avg;
+    g_timing_result.max_cycles = g_timing_stats.max;
+    g_timing_result.count = g_timing_stats.count;
+    g_timing_result.sum_lo = (uint32_t)sum;
+    g_timing_result.sum_hi = (uint32_t)(sum >> 32u);
+    g_timing_result.error = g_example_error;
+
+    timing_target_reached(&g_timing_result);
 }
 
 static inline void hold_cm4(void) {
@@ -144,7 +189,7 @@ static void latency_task(void *arg) {
 #endif
 
         if (g_timing_stats.count >= g_timing_target_samples) {
-            timing_target_reached();
+            timing_finish();
         }
 
         /* One-shot re-arm leaves a full timer period for this task to block. */
