@@ -31,9 +31,10 @@ Cases:
                      waiter-READY start marker. Measures waiter marked READY ->
                      latency task continuation after the blocked semaphore returns.
 
-  scheduler_decision Diagnostic-only linker wrapper around hrt__schedule().
-                     Measures the complete C scheduler call caused by the TIM2
-                     ISR wake. Production HardRT code is not instrumented.
+  scheduler_decision Diagnostic-only PendSV timing image. Measures the direct
+                     hrt__schedule() call plus outgoing save, incoming restore,
+                     PendSV software span, and PendSV-entry -> task continuation.
+                     Production HardRT kernel/scheduler code is unchanged.
 USAGE
 }
 
