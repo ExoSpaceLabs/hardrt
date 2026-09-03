@@ -1,6 +1,6 @@
 # HardRT Message Queues
 
-HardRT v0.4.0 provides fixed-capacity, copy-based FIFO queues for communication between tasks. Queue storage is supplied by the application; the kernel performs no dynamic allocation.
+HardRT provides fixed-capacity, copy-based FIFO queues for communication between tasks. Queue storage is supplied by the application; the kernel performs no dynamic allocation. This page describes the current `develop` behavior; v0.4.0 used a less selective wake/reschedule rule.
 
 ## Properties
 
@@ -51,7 +51,7 @@ int hrt_queue_recv(hrt_queue_t *queue, void *out);
 - A full sender joins the TX waiter FIFO and becomes `HRT_BLOCKED`.
 - An empty receiver joins the RX waiter FIFO and becomes `HRT_BLOCKED`.
 
-There are no timeout variants in v0.4.0.
+There are currently no timeout variants.
 
 ### Non-blocking
 
@@ -62,9 +62,13 @@ int hrt_queue_try_recv(hrt_queue_t *queue, void *out);
 
 Both functions return `0` on success and `-1` when the operation cannot be completed immediately.
 
-A successful non-blocking task operation wakes one opposite-side waiter when present and then calls `hrt_yield()`, regardless of relative task priority.
+A successful task-context operation wakes at most one opposite-side waiter. The wake then uses the same scheduler-aware rule as semaphores, mutex handoff, and sleep expiry:
 
-The blocking send/receive loops first call those non-blocking functions. If a blocking operation later succeeds through its protected recheck path, it may wake one opposite-side waiter and return without an additional explicit yield.
+- under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a strictly higher-priority waiter preempts the current READY task;
+- an equal- or lower-priority waiter does not force a context switch solely because it woke;
+- if no normal task is running, or the recorded current task is not READY, the wake requests scheduling.
+
+A required task-context preemption is not treated as an explicit yield, so the interrupted task retains its queue precedence and any unused RR quantum.
 
 ## ISR-context operations
 
@@ -82,12 +86,12 @@ int hrt_queue_try_recv_from_isr(
 
 These operations never block.
 
-In v0.4.0:
+`need_switch` has the same scheduler-aware meaning for both ISR operations:
 
-- `*need_switch` is set to `1` whenever the operation wakes any waiter;
-- it is not a comparison between the waiter's priority and the interrupted task's priority;
-- the queue function itself calls `hrt__pend_context_switch()` when a waiter is awakened;
-- the ISR does not call a separate `hrt_port_yield_from_isr()` function, because no such public API exists.
+- `1`: the awakened waiter should run before the interrupted/current task under the active scheduler contract, or no normal task is running;
+- `0`: the wake does not require an immediate scheduler handoff.
+
+When a switch is required, the queue operation requests it internally. Application ISR code does not call a separate `hrt_port_yield_from_isr()` function.
 
 Example:
 
@@ -104,13 +108,14 @@ void MY_IRQ_Handler(void) {
         &message,
         &need_switch);
 
-    /* The queue operation has already requested rescheduling when needed.
-       The flag is available for ISR/application bookkeeping. */
+    /* HardRT has already requested scheduling when need_switch == 1. */
     (void)need_switch;
 }
 ```
 
 The selected port's ISR critical-section rules still apply. On Cortex-M, only interrupts compatible with the configured `BASEPRI` syscall ceiling may call HardRT ISR APIs.
+
+See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition and retained-quantum contract.
 
 ## Wake behavior
 
