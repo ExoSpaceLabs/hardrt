@@ -89,7 +89,7 @@ hrt_port_yield_to_scheduler();
 This contract is meaningful on the POSIX port:
 
 ```text
-hrt__pend_context_switch()   -> record that a reschedule is pending
+hrt__pend_context_switch()    -> record that a reschedule is pending
 hrt_port_yield_to_scheduler() -> perform the host context hop
 ```
 
@@ -109,7 +109,7 @@ perf(hardrt): avoid duplicate Cortex-M PendSV request
 After the fix:
 
 ```text
-hrt__pend_context_switch()   -> requests PendSV
+hrt__pend_context_switch()    -> requests PendSV
 hrt_port_yield_to_scheduler() -> no second hardware request on Cortex-M
 ```
 
@@ -200,6 +200,119 @@ Those operations are semantically required by the current scheduler contract. So
 Likewise, the diagnostic `pendsv_to_task - pendsv_software` remainder is not pure production exception-return cost: the diagnostic handler performs additional DWT/result stores after the `pendsv_software` timestamp. The 251-cycle derived value must therefore not be treated as a 251-cycle production Cortex-M exception-return penalty.
 
 The correct next step for further scheduler optimization is generated-code/disassembly analysis and targeted measurement of scheduler sub-operations. Do not infer that every remaining cycle is waste simply because the earlier architectural bug was waste.
+
+---
+
+# v0.5 development: tick/sleeper scaling baseline
+
+The ready side of the scheduler had already been converted to intrusive per-priority FIFOs plus a non-empty priority bitmap. The remaining scheduler-structure question in #57 was whether the simple full-TCB sleeper scan was acceptable at the task counts HardRT intends to support.
+
+A dedicated hardware matrix was added before changing the implementation so the decision would be based on physical measurements and the same fixture could later provide a direct A/B comparison.
+
+## Pre-delta hardware baseline
+
+Full development run:
+
+```text
+Run ID: 20260903T212538Z_4ab7709a
+HardRT: 4ab7709ab6a3657214a6786ebbd2bc315716907c
+Tracked source: clean
+STM32CubeH7: f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
+Core: STM32H755 CM7 at 64 MHz
+Tick: external TIM2, logical 1 kHz
+Samples: 10000 per benchmark image
+Functional contracts: 9/9 PASS
+Hardware benchmarks: 22/22 PASS
+Evidence archive SHA-256:
+6f32cf6ce1fb9db1955c65670bb759e3ee1cd7a7f5d83bbb383110173c2bd56d
+```
+
+The first four benchmark images also reproduced the post-PendSV-fix latency baseline:
+
+| Metric | Min cycles | Avg cycles | Max cycles |
+|---|---:|---:|---:|
+| `event_to_task` | 1133 | **1183** | 1508 |
+| `sem_isr_ready` | 319 | **334** | 339 |
+| `ready_to_task` | 692 | **780** | 1764 |
+| `scheduler_decision` | 309 | **329** | 349 |
+
+This confirms the recovered context-switch latency was stable while the sleeper investigation was performed.
+
+## Tick/sleeper matrix
+
+The old implementation scanned all configured TCB slots in `hrt__tick_isr()` every tick. The benchmark rebuilt HardRT at application-task capacities 8, 16, and 32 and measured six workload shapes. Each value below is the average DWT cycles for the production `hrt_tick_from_isr()` call.
+
+| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 902 | 1050 | 1124 | 1367 | 2282 | 1700 |
+| 16 | 1389 | 1506 | 1761 | 1808 | 3990 | 2435 |
+| 32 | 1954 | 2597 | 3455 | 2952 | 8676 | 4413 |
+
+At 32 application tasks and 64 MHz:
+
+| Workload | Avg cycles | Avg us | Fraction of a 1 ms tick |
+|---|---:|---:|---:|
+| no sleepers | 1954 | 30.5 | 3.05% |
+| all sleeping, no expiry | 3455 | 54.0 | 5.40% |
+| one expiry | 2952 | 46.1 | 4.61% |
+| staggered | 4413 | 69.0 | 6.90% |
+| 31 simultaneous expiries | 8676 | 135.6 | 13.56% |
+
+The 32-task staggered measured maximum was 7227 cycles, about 112.9 us or 11.29% of the 1 ms period.
+
+## Workload sanity proof
+
+The benchmark uses a one-shot timer handshake so each measured tick starts only after the workers awakened by the previous sample have run and returned to their intended sleep/block state. Worker-completion counters matched the workload definitions exactly:
+
+```text
+one_expiry: 9999 wakes for each capacity
+
+simultaneous:
+7  * 9999 =  69993
+15 * 9999 = 149985
+31 * 9999 = 309969
+
+staggered harmonic totals:
+8-task build:  25923
+16-task build: 33173
+32-task build: 40254
+```
+
+The final sample intentionally stops before the tasks awakened by that final IRQ can complete, hence 9,999 rather than 10,000 repeated wake completions.
+
+These counters make the matrix more than a set of plausible timing values: the intended expiry populations actually occurred.
+
+## Separating scan work from actual wake work
+
+The simultaneous-expiry case includes legitimate work proportional to the number of tasks made READY. Subtracting the same-capacity `all_sleep` case provides a rough estimate of the incremental wake/requeue cost:
+
+```text
+8 tasks:  (2282 - 1124) / 7  ~= 165 cycles per wake
+16 tasks: (3990 - 1761) / 15 ~= 149 cycles per wake
+32 tasks: (8676 - 3455) / 31 ~= 168 cycles per wake
+```
+
+The consistency suggests roughly 150-170 cycles per actual wake is expected work for this configuration.
+
+The stronger reason to replace the scan is therefore the **no-expiry** cost. At 32 application tasks the old implementation spent 1954 cycles with no sleepers and 3455 cycles with 31 sleepers whose deadlines were not due. That work recurred on every tick even though no task needed to wake.
+
+## Selected replacement
+
+The physical measurements justify a static intrusive delta sleeper queue:
+
+```text
+hrt_sleep() insertion: bounded O(N) in task context
+no-expiry tick:        O(1)
+K expiries:            O(K)
+metadata:               O(N), static
+allocation:             none
+```
+
+Equal deadlines are represented by zero-delta followers and preserve insertion/FIFO wake order. Relative deltas avoid ordering sleepers by wrapped absolute tick values.
+
+The implementation is covered by hosted tests for equal deadlines, staggered deadlines, repeated one-tick sleep/wake cycles, and multi-sleeper ordering across 32-bit tick wrap. CI #219 passed 57/57 hosted tests and the STM32H755 cross-build.
+
+**Post-change physical performance remains pending.** The same 8/16/32 by six-workload benchmark matrix must be rerun before claiming an achieved cycle reduction. The expected structural signature is that `none`, `one_sleep`, and `all_sleep` stop scaling materially with configured task capacity, while scenarios with actual expiries retain cost proportional to the number of tasks that genuinely wake.
 
 ---
 
