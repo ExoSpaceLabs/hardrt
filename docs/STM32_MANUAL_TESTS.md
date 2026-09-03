@@ -183,7 +183,7 @@ PASS requires:
 - A resumes before B;
 - observed remaining quantum matches expected remaining quantum within one tick.
 
-**Current known implementation status:** issue #31 identifies that `hrt__schedule()` presently requeues an asynchronously interrupted READY task at the tail. Until #31 is corrected, this case is expected to expose `low-A -> high -> low-B` and stop with error `32`. The validator is intentionally committed before the fix so the defect has hardware-visible acceptance criteria rather than being silently designed away.
+This contract has been physically validated on NUCLEO-H755ZI-Q. Keep this case in every hardware qualification run because scheduler data-structure or PendSV changes can regress queue precedence even when hosted ordering tests remain green.
 
 Preemption validator error codes:
 
@@ -209,7 +209,7 @@ Preemption validator error codes:
 
 ## Isolated DWT timing fixture
 
-The timing firmware runs exactly one measurement case per image. Do not combine cases when collecting reference numbers.
+The timing firmware runs exactly one measurement case per image. Do not combine cases inside one firmware image when collecting reference numbers. The full qualification runner builds and flashes the images sequentially.
 
 ### Composite ISR software point -> task continuation
 
@@ -226,8 +226,8 @@ PASS:
 
 - debugger reaches `timing_target_reached`;
 - `g_example_error == 0`;
-- `g_timing_case_id == 1`;
-- `g_timing_stats.count == g_timing_target_samples`;
+- result `case_id == 1`;
+- result count equals the configured sample target;
 - min/avg/max are finite and ordered (`min <= avg <= max`).
 
 ### Semaphore ISR call -> waiter READY
@@ -245,11 +245,32 @@ PASS:
 
 - debugger reaches `timing_target_reached`;
 - `g_example_error == 0`;
-- `g_timing_case_id == 2`;
-- `g_timing_stats.count == g_timing_target_samples`;
+- result `case_id == 2`;
+- result count equals the configured sample target;
 - min/avg/max are finite and ordered.
 
-For either timing case, start OpenOCD in one terminal and run the repository GDB reader in another:
+### Waiter READY -> resumed task continuation
+
+```bash
+STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
+  ./scripts/build-lib-stm32h7xx-dwt-timing.sh \
+  --case ready_to_task \
+  --samples 10000
+```
+
+This build also uses `HARDRT_TIMING_PROFILE=ipc`, but with a separate hook definition that takes the start timestamp exactly after the semaphore waiter is marked READY. The end timestamp is taken in the latency task immediately after the blocked `hrt_sem_take()` returns.
+
+The interval therefore includes the remainder of the ISR-facing semaphore path, critical-section exit, PendSV/scheduler selection, task context restore, exception return, and blocked API return. It is the hardware dispatch-response metric used to isolate the scheduler/context part of the composite `event_to_task` number. It is **not** a pure context-switch microbenchmark.
+
+PASS:
+
+- debugger reaches `timing_target_reached`;
+- `g_example_error == 0`;
+- result `case_id == 3`;
+- result count equals the configured sample target;
+- min/avg/max are finite and ordered.
+
+For any timing case, start OpenOCD in one terminal and run the repository GDB reader in another:
 
 ```bash
 openocd -s /usr/share/openocd/scripts \
@@ -264,6 +285,18 @@ gdb-multiarch -q \
 ```
 
 Record at minimum the HardRT commit SHA, timing case/profile, `SystemCoreClock`, sample count, timer PSC/ARR, toolchain version, board, date, and reported min/avg/max values.
+
+## Full qualification runner
+
+The preferred hardware workflow runs the complete matrix and writes a timestamped evidence directory:
+
+```bash
+./scripts/stm32_manual_test_full.sh \
+  /path/to/STM32CubeH7 \
+  --clean-builds
+```
+
+The current runner executes nine cases: board probe, C blinky, C++ blinky, scheduler counter demo, the three isolated DWT timing images, fixed-priority hardware preemption, and `PRIORITY_RR` retained-quantum preemption.
 
 ## Manual qualification record
 
@@ -282,5 +315,6 @@ Priority preemption: PASS/FAIL + trace reference
 Priority+RR preemption/retained quantum: PASS/FAIL + trace reference
 DWT event_to_task: PASS/FAIL + result reference
 DWT sem_isr_ready: PASS/FAIL + result reference
+DWT ready_to_task: PASS/FAIL + result reference
 Notes:
 ```
