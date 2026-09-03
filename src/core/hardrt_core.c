@@ -26,6 +26,7 @@ static uint16_t g_default_slice = 5;
 static uint32_t g_core_hz = 0;
 static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
 static uint8_t g_explicit_yield = 0u;
+static uint32_t g_ready_prio_mask = 0u;
 volatile hrt_err g_error = NONE;
 
 #if HARDRT_DEBUG == 1
@@ -75,6 +76,21 @@ static int rq_contains(const uint8_t p, const int id) {
 }
 #endif
 
+static uint8_t rq_first_ready_priority(const uint32_t mask) {
+#if defined(__GNUC__) || defined(__clang__)
+    return (uint8_t)__builtin_ctz(mask);
+#else
+    uint32_t value = mask;
+    uint8_t p = 0u;
+    if ((value & 0x0000FFFFu) == 0u) { value >>= 16u; p = (uint8_t)(p + 16u); }
+    if ((value & 0x000000FFu) == 0u) { value >>= 8u; p = (uint8_t)(p + 8u); }
+    if ((value & 0x0000000Fu) == 0u) { value >>= 4u; p = (uint8_t)(p + 4u); }
+    if ((value & 0x00000003u) == 0u) { value >>= 2u; p = (uint8_t)(p + 2u); }
+    if ((value & 0x00000001u) == 0u) p = (uint8_t)(p + 1u);
+    return p;
+#endif
+}
+
 static int rq_validate_push(const uint8_t p, const int id) {
     if (p >= HARDRT_MAX_PRIO) {
 #if HARDRT_DEBUG == 1
@@ -111,6 +127,7 @@ static void rq_push(const uint8_t p, const int id) {
     q->q[q->tail] = (uint8_t)id;
     q->tail = (uint8_t)((q->tail + 1u) % HARDRT_MAX_TASKS);
     q->count++;
+    g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
@@ -122,6 +139,7 @@ static void rq_push_front(const uint8_t p, const int id) {
     q->head = (uint8_t)((q->head + HARDRT_MAX_TASKS - 1u) % HARDRT_MAX_TASKS);
     q->q[q->head] = (uint8_t)id;
     q->count++;
+    g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
@@ -153,6 +171,7 @@ static int rq_pop(const uint8_t p) {
 #endif
     q->head = (uint8_t)((q->head + 1u) % HARDRT_MAX_TASKS);
     q->count--;
+    if (q->count == 0u) g_ready_prio_mask &= ~(uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
@@ -178,6 +197,7 @@ int hrt_init(const hrt_config_t *cfg) {
     g_tick = 0;
     g_current = -1;
     g_explicit_yield = 0u;
+    g_ready_prio_mask = 0u;
 
     if (cfg) {
         g_tick_hz = cfg->tick_hz ? cfg->tick_hz : 1000;
@@ -448,12 +468,10 @@ int hrt__should_preempt_after_wake(const int woken_id) {
 
 int hrt__pick_next_ready(void) {
     int id = HRT_IDLE_ID;
-    for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
-        const int candidate = rq_pop((uint8_t)p);
-        if (candidate >= 0) {
-            id = candidate;
-            break;
-        }
+    if (g_ready_prio_mask != 0u) {
+        const uint8_t p = rq_first_ready_priority(g_ready_prio_mask);
+        const int candidate = rq_pop(p);
+        if (candidate >= 0) id = candidate;
     }
 #if HARDRT_DEBUG == 1
     dbg_pick = id;
@@ -532,6 +550,8 @@ int hrt__test_ready_occurrences(int id) {
     }
     return count;
 }
+
+uint32_t hrt__test_ready_prio_mask(void) { return g_ready_prio_mask; }
 #endif
 
 uintptr_t hrt__schedule(const uintptr_t old_sp) {
