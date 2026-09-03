@@ -10,6 +10,7 @@ The roadmap and GitHub issues may describe later work. A planned API or behavior
 |---|---|
 | [Main README](../README.md) | Project overview and current behavior |
 | [INTRODUCTION.md](INTRODUCTION.md) | Scope and design goals |
+| [HARD_REAL_TIME.md](HARD_REAL_TIME.md) | Hard real-time qualification direction and evidence requirements |
 | [BUILD.md](BUILD.md) | Current CMake prerequisites, options, build, and install behavior |
 | [API_C.md](API_C.md) | Current C API behavior |
 | [CPP.md](CPP.md) | Existing C++17 wrapper types and methods |
