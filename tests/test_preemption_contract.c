@@ -1,5 +1,7 @@
 #include "test_common.h"
 #include "hardrt_sem.h"
+#include "hardrt_queue.h"
+#include "hardrt_mutex.h"
 
 #ifdef HARDRT_TEST_HOOKS
 uint16_t hrt__test_task_slice_left(int id);
@@ -184,10 +186,120 @@ static void test_equal_priority_isr_wake_waits_for_current(void) {
     T_ASSERT_EQ_INT(1, g_equal_waiter_woke, "equal-priority waiter ran after current task blocked");
 }
 
+/* ---- Queue task-context wake hands off to higher priority waiter ---- */
+static hrt_queue_t g_queue_preempt;
+static int g_queue_storage[1];
+static volatile int g_queue_sender_after;
+static volatile int g_queue_high_before_sender_after;
+
+static void queue_high_receiver(void *arg) {
+    (void)arg;
+    int value = 0;
+    (void)hrt_queue_recv(&g_queue_preempt, &value);
+    g_queue_high_before_sender_after = (g_queue_sender_after == 0);
+    hrt_sleep(1000);
+}
+
+static void queue_low_sender(void *arg) {
+    (void)arg;
+    int value = 42;
+    (void)hrt_queue_try_send(&g_queue_preempt, &value);
+    g_queue_sender_after = 1;
+    hrt__test_stop_scheduler();
+    hrt_yield();
+}
+
+static void test_queue_wake_preempts_lower_sender(void) {
+    hrt__test_reset_scheduler_state();
+    g_queue_sender_after = 0;
+    g_queue_high_before_sender_after = 0;
+    hrt_queue_init(&g_queue_preempt, g_queue_storage, 1, sizeof(g_queue_storage[0]));
+
+    hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = HRT_SCHED_PRIORITY_RR,
+        .default_slice = 10
+    };
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init ok (queue preemption)");
+
+    static uint32_t sh[2048], sl[2048];
+    hrt_task_attr_t high = {.priority = HRT_PRIO0, .timeslice = 0};
+    hrt_task_attr_t low = {.priority = HRT_PRIO1, .timeslice = 10};
+    T_ASSERT_TRUE(hrt_create_task(queue_high_receiver, NULL, sh, 2048, &high) >= 0 &&
+                  hrt_create_task(queue_low_sender, NULL, sl, 2048, &low) >= 0,
+                  "created queue receiver and sender");
+
+    hrt_start();
+
+    T_ASSERT_EQ_INT(1, g_queue_high_before_sender_after,
+                    "higher-priority queue waiter ran before sender continued");
+    T_ASSERT_EQ_INT(1, g_queue_sender_after, "lower-priority queue sender eventually resumed");
+}
+
+/* ---- Mutex unlock hands ownership directly to higher waiter and preempts ---- */
+static hrt_mutex_t g_mutex_preempt;
+static hrt_sem_t g_mutex_start_sem;
+static volatile int g_mutex_owner_after_unlock;
+static volatile int g_mutex_high_before_owner_after;
+
+static void mutex_high_waiter(void *arg) {
+    (void)arg;
+    (void)hrt_sem_take(&g_mutex_start_sem);
+    (void)hrt_mutex_lock(&g_mutex_preempt);
+    g_mutex_high_before_owner_after = (g_mutex_owner_after_unlock == 0);
+    (void)hrt_mutex_unlock(&g_mutex_preempt);
+    hrt_sleep(1000);
+}
+
+static void mutex_low_owner(void *arg) {
+    (void)arg;
+    (void)hrt_mutex_lock(&g_mutex_preempt);
+
+    /* Let the higher task run and block on the mutex while ownership stays here. */
+    (void)hrt_sem_give(&g_mutex_start_sem);
+
+    /* Direct handoff on unlock must run the higher waiter before this call
+       returns to the lower-priority owner. */
+    (void)hrt_mutex_unlock(&g_mutex_preempt);
+    g_mutex_owner_after_unlock = 1;
+    hrt__test_stop_scheduler();
+    hrt_yield();
+}
+
+static void test_mutex_unlock_preempts_lower_owner(void) {
+    hrt__test_reset_scheduler_state();
+    g_mutex_owner_after_unlock = 0;
+    g_mutex_high_before_owner_after = 0;
+    hrt_mutex_init(&g_mutex_preempt);
+    hrt_sem_init(&g_mutex_start_sem, 0);
+
+    hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = HRT_SCHED_PRIORITY_RR,
+        .default_slice = 10
+    };
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init ok (mutex preemption)");
+
+    static uint32_t sh[2048], sl[2048];
+    hrt_task_attr_t high = {.priority = HRT_PRIO0, .timeslice = 0};
+    hrt_task_attr_t low = {.priority = HRT_PRIO1, .timeslice = 10};
+    T_ASSERT_TRUE(hrt_create_task(mutex_high_waiter, NULL, sh, 2048, &high) >= 0 &&
+                  hrt_create_task(mutex_low_owner, NULL, sl, 2048, &low) >= 0,
+                  "created mutex waiter and owner");
+
+    hrt_start();
+
+    T_ASSERT_EQ_INT(1, g_mutex_high_before_owner_after,
+                    "higher-priority mutex waiter ran before owner continued after unlock");
+    T_ASSERT_EQ_INT(1, g_mutex_owner_after_unlock, "lower-priority mutex owner eventually resumed");
+}
+
 static const test_case_t CASES[] = {
     {"PRIORITY_RR preemption retains current task and quantum", test_priority_rr_preemption_retains_current},
     {"Lower-priority ISR wake does not preempt", test_lower_priority_isr_wake_does_not_preempt},
     {"Equal-priority ISR wake waits for current RR task", test_equal_priority_isr_wake_waits_for_current},
+    {"Queue wake preempts lower-priority sender", test_queue_wake_preempts_lower_sender},
+    {"Mutex unlock preempts lower-priority owner", test_mutex_unlock_preempts_lower_owner},
 };
 
 const test_case_t *get_tests_preemption_contract(int *out_count) {
