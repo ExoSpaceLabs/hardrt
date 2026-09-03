@@ -95,8 +95,12 @@ int hrt_mutex_unlock(hrt_mutex_t *m) {
         m->locked = 1u;
         m->owner = waiter;
         hrt__make_ready(waiter);
+        const int should_switch = hrt__should_preempt_after_wake(waiter);
         hrt_port_crit_exit();
-        hrt_yield();
+        if (should_switch) {
+            hrt__pend_context_switch();
+            hrt_port_yield_to_scheduler();
+        }
         return 0;
     }
 

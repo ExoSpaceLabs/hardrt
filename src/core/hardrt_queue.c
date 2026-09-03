@@ -20,6 +20,13 @@ static int _wq_pop(uint8_t *qbuf, uint8_t *head, uint8_t *count) {
     return id;
 }
 
+static void _preempt_task_after_wake(const int waiter) {
+    if (waiter >= 0 && hrt__should_preempt_after_wake(waiter)) {
+        hrt__pend_context_switch();
+        hrt_port_yield_to_scheduler();
+    }
+}
+
 void hrt_queue_init(hrt_queue_t *q, void *storage, uint16_t capacity, size_t item_size) {
     HRT_ASSERT(q);
     HRT_ASSERT(storage);
@@ -56,20 +63,17 @@ int hrt_queue_try_send(hrt_queue_t *q, const void *item) {
     HRT_ASSERT(q);
     HRT_ASSERT(item);
     int ok;
-    int woken = 0;
+    int waiter = -1;
 
     hrt_port_crit_enter();
     ok = _enqueue_cs(q, item);
     if (ok == 0) {
-        const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
-        if (waiter >= 0) {
-            hrt__make_ready(waiter);
-            woken = 1;
-        }
+        waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
+        if (waiter >= 0) hrt__make_ready(waiter);
     }
     hrt_port_crit_exit();
 
-    if (woken) hrt_yield();
+    _preempt_task_after_wake(waiter);
     return ok;
 }
 
@@ -77,21 +81,19 @@ int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_swit
     HRT_ASSERT(q);
     HRT_ASSERT(item);
     int ok;
-    int woken = 0;
+    int waiter = -1;
 
     hrt_port_crit_enter();
     ok = _enqueue_cs(q, item);
     if (ok == 0) {
-        const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
-        if (waiter >= 0) {
-            hrt__make_ready(waiter);
-            woken = 1;
-        }
+        waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
+        if (waiter >= 0) hrt__make_ready(waiter);
     }
     hrt_port_crit_exit();
 
-    if (need_switch) *need_switch = woken;
-    if (woken) hrt__pend_context_switch();
+    const int should_switch = waiter >= 0 && hrt__should_preempt_after_wake(waiter);
+    if (need_switch) *need_switch = should_switch;
+    if (should_switch) hrt__pend_context_switch();
     return ok;
 }
 
@@ -108,6 +110,7 @@ int hrt_queue_send(hrt_queue_t *q, const void *item) {
             const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
             if (waiter >= 0) hrt__make_ready(waiter);
             hrt_port_crit_exit();
+            _preempt_task_after_wake(waiter);
             return ok;
         }
 
@@ -125,20 +128,17 @@ int hrt_queue_try_recv(hrt_queue_t *q, void *out) {
     HRT_ASSERT(q);
     HRT_ASSERT(out);
     int ok;
-    int woken = 0;
+    int waiter = -1;
 
     hrt_port_crit_enter();
     ok = _dequeue_cs(q, out);
     if (ok == 0) {
-        const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
-        if (waiter >= 0) {
-            hrt__make_ready(waiter);
-            woken = 1;
-        }
+        waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
+        if (waiter >= 0) hrt__make_ready(waiter);
     }
     hrt_port_crit_exit();
 
-    if (woken) hrt_yield();
+    _preempt_task_after_wake(waiter);
     return ok;
 }
 
@@ -146,21 +146,19 @@ int hrt_queue_try_recv_from_isr(hrt_queue_t *q, void *out, int *need_switch) {
     HRT_ASSERT(q);
     HRT_ASSERT(out);
     int ok;
-    int woken = 0;
+    int waiter = -1;
 
     hrt_port_crit_enter();
     ok = _dequeue_cs(q, out);
     if (ok == 0) {
-        const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
-        if (waiter >= 0) {
-            hrt__make_ready(waiter);
-            woken = 1;
-        }
+        waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
+        if (waiter >= 0) hrt__make_ready(waiter);
     }
     hrt_port_crit_exit();
 
-    if (need_switch) *need_switch = woken;
-    if (woken) hrt__pend_context_switch();
+    const int should_switch = waiter >= 0 && hrt__should_preempt_after_wake(waiter);
+    if (need_switch) *need_switch = should_switch;
+    if (should_switch) hrt__pend_context_switch();
     return ok;
 }
 
@@ -177,6 +175,7 @@ int hrt_queue_recv(hrt_queue_t *q, void *out) {
             const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
             if (waiter >= 0) hrt__make_ready(waiter);
             hrt_port_crit_exit();
+            _preempt_task_after_wake(waiter);
             return ok;
         }
 

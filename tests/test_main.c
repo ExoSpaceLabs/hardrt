@@ -1,6 +1,8 @@
 /* Test runner: registers all test groups and prints a PASS/FAIL summary. */
 #include "test_common.h"
 
+const test_case_t *get_tests_preemption_contract(int *out_count);
+
 /* Global failure counter used by assertion macros */
 int g_failures = 0;
 
@@ -25,6 +27,8 @@ int main(void) {
     g = get_tests_rr_sleep(&n);
     append_group(g, n, registry, &total);
     g = get_tests_priority(&n);
+    append_group(g, n, registry, &total);
+    g = get_tests_preemption_contract(&n);
     append_group(g, n, registry, &total);
     g = get_tests_coop_vs_rr(&n);
     append_group(g, n, registry, &total);
@@ -59,7 +63,7 @@ int main(void) {
     int tests_passed = 0;
 
     for (int i = 0; i < total; ++i) {
-        int before = g_failures; /* snapshot assertion failures */
+        int before = g_failures;
         printf("\n==== Test %d/%d: %s ====%s\n", i + 1, total, registry[i]->name, "");
         registry[i]->fn();
         int after = g_failures;
@@ -87,8 +91,8 @@ int main(void) {
     if (g_failures == 0) {
         printf("All tests passed.\n");
         return 0;
-    } else {
-        printf("%d assertion failure(s) in %d test(s).\n", g_failures, tests_failed);
-        return 1;
     }
+
+    printf("%d assertion failure(s) in %d test(s).\n", g_failures, tests_failed);
+    return 1;
 }

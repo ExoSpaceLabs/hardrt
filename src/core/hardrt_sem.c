@@ -91,7 +91,7 @@ int hrt_sem_take(hrt_sem_t *s) {
 }
 
 static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
-    int woken = 0;
+    int should_switch = 0;
 
     if (is_isr) HRT_TIMING_ISR_IPC_ENTRY();
     hrt_port_crit_enter();
@@ -103,7 +103,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
 #endif
         hrt__make_ready(waiter);
         if (is_isr) HRT_TIMING_ISR_WAITER_READY(waiter);
-        woken = 1;
+        should_switch = hrt__should_preempt_after_wake(waiter);
 #ifdef HARDRT_TEST_HOOKS
         printf("[sem] give: woke waiter %d\n", waiter);
 #endif
@@ -118,10 +118,13 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
     if (is_isr) HRT_TIMING_ISR_IPC_EXIT();
 
     if (is_isr) {
-        if (need_switch) *need_switch = woken;
-        if (woken) hrt__pend_context_switch();
-    } else if (woken) {
-        hrt_yield();
+        if (need_switch) *need_switch = should_switch;
+        if (should_switch) hrt__pend_context_switch();
+    } else if (should_switch) {
+        /* Priority preemption is not an explicit yield: preserve the outgoing
+           task's queue precedence and remaining RR quantum. */
+        hrt__pend_context_switch();
+        hrt_port_yield_to_scheduler();
     }
     return 0;
 }

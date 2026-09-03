@@ -14,7 +14,7 @@ volatile uint32_t ipsr;
 
 void hrt__tick_isr(void) {
     hrt__inc_tick();
-    uint8_t triggerPendSV = 0;
+    uint8_t trigger_pendsv = 0u;
 
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
         _hrt_tcb_t *t = hrt__tcb(i);
@@ -22,7 +22,7 @@ void hrt__tick_isr(void) {
         if (t->state == HRT_SLEEP &&
             (int32_t)(t->wake_tick - hrt_tick_now()) <= 0) {
             hrt__make_ready(i);
-            triggerPendSV = 1;
+            if (hrt__should_preempt_after_wake(i)) trigger_pendsv = 1u;
         }
     }
 
@@ -35,14 +35,14 @@ void hrt__tick_isr(void) {
         if (ct && ct->state == HRT_READY) {
             const hrt_policy_t pol = hrt__policy();
             if ((pol == HRT_SCHED_RR || pol == HRT_SCHED_PRIORITY_RR) &&
-                ct->timeslice_cfg > 0 && ct->slice_left > 0) {
+                ct->timeslice_cfg > 0u && ct->slice_left > 0u) {
                 ct->slice_left--;
-                if (ct->slice_left == 0) triggerPendSV = 1;
+                if (ct->slice_left == 0u) trigger_pendsv = 1u;
             }
         }
     }
 
-    if (triggerPendSV != 0) {
+    if (trigger_pendsv != 0u) {
 #if HARDRT_DEBUG == 1
         dbg_pend_from_tick++;
 #endif

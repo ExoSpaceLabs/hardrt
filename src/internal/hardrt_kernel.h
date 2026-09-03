@@ -46,6 +46,9 @@ int hrt__get_current(void);
 void hrt__set_current(int id);
 void hrt__make_ready(int id);
 void hrt__requeue_noreset(int id);
+void hrt__requeue_front_noreset(int id);
+void hrt__prepare_current_for_reschedule(void);
+int hrt__should_preempt_after_wake(int woken_id);
 int hrt__pick_next_ready(void);
 void hrt__on_scheduler_entry(void);
 
@@ -63,6 +66,8 @@ uintptr_t hrt__schedule(uintptr_t old_sp);
 #ifdef HARDRT_TEST_HOOKS
 void hrt__test_set_tick(uint32_t v);
 uint32_t hrt__test_get_tick(void);
+uint16_t hrt__test_task_slice_left(int id);
+int hrt__test_ready_occurrences(int id);
 #endif
 
 #ifdef __cplusplus
