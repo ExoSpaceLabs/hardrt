@@ -34,6 +34,7 @@ _Static_assert(sizeof(hrt_timing_result_t) == 52u, "timing result ABI");
 
 volatile hrt_timing_stats_t g_timing_stats;
 volatile uint32_t g_timing_start_cycles = 0;
+volatile uint32_t g_timing_case_id = HRT_TIMING_CASE_ID;
 volatile uint32_t g_timing_event_hz = HRT_TIMING_EVENT_HZ;
 volatile uint32_t g_timing_target_samples = HRT_TIMING_TARGET_SAMPLES;
 volatile uint32_t g_example_error = 0;
@@ -184,6 +185,11 @@ static void latency_task(void *arg) {
         if (g_event_armed != 0u) {
             const uint32_t end = cycles_now();
             g_event_armed = 0u;
+            hrt_timing_stats_record(&g_timing_stats, end - g_timing_start_cycles);
+        }
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_READY_TO_TASK
+        {
+            const uint32_t end = cycles_now();
             hrt_timing_stats_record(&g_timing_stats, end - g_timing_start_cycles);
         }
 #endif
