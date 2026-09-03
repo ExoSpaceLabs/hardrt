@@ -1,0 +1,56 @@
+# HardRT STM32H755 global round-robin validator (OpenOCD)
+# Firmware passes a fixed-layout result record in r0.
+
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break *global_rr_validation_emit
+commands
+  silent
+  printf "\n--- HardRT global RR validation stopped ---\n"
+
+  # hrt_global_rr_result_t fixed ABI:
+  #  +0  passed
+  #  +4  error
+  #  +8  irq_count
+  # +12  need_switch (i32)
+  # +16  task_a_runs
+  # +20  task_b_runs
+  # +24  high_runs
+  # +28..+44 sequence[0..4]
+  set $base = (unsigned int)$r0
+  set $pass = *(unsigned int*)($base + 0)
+  set $error = *(unsigned int*)($base + 4)
+  set $irq_count = *(unsigned int*)($base + 8)
+  set $need_switch = *(int*)($base + 12)
+  set $a_runs = *(unsigned int*)($base + 16)
+  set $b_runs = *(unsigned int*)($base + 20)
+  set $high_runs = *(unsigned int*)($base + 24)
+  set $s0 = *(unsigned int*)($base + 28)
+  set $s1 = *(unsigned int*)($base + 32)
+  set $s2 = *(unsigned int*)($base + 36)
+  set $s3 = *(unsigned int*)($base + 40)
+  set $s4 = *(unsigned int*)($base + 44)
+
+  printf "pass=%u error=%u\n", $pass, $error
+  printf "irq_count=%u need_switch=%d\n", $irq_count, $need_switch
+  printf "runs: A=%u B=%u high=%u\n", $a_runs, $b_runs, $high_runs
+  printf "sequence slots: [%u, %u, %u, %u, %u]\n", $s0, $s1, $s2, $s3, $s4
+
+  if $pass == 1 && $error == 0 && $irq_count == 1 && $need_switch == 0 && $a_runs == 1 && $b_runs == 1 && $high_runs == 1 && $s0 == 1 && $s1 == 2 && $s2 == 3 && $s3 == 4 && $s4 == 5
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", $error
+  end
+
+  detach
+  quit
+end
+
+continue
