@@ -20,6 +20,24 @@ HardRT separates the portable scheduler and synchronization code from architectu
 - Blocking APIs transfer control back to the scheduler from task context.
 - Kernel runtime storage is static.
 
+## Scheduler ownership and READY transitions
+
+The core owns the outgoing READY-task transition exactly once before a successor is selected. A port must not separately enqueue, rotate, or refresh a task merely because it is performing the architecture-specific context switch.
+
+Current `develop` semantics are:
+
+- blocked, sleeping, deleted, or returned tasks are not requeued;
+- explicit `hrt_yield()` rotates the current READY task to the tail once and refreshes its quantum;
+- RR quantum expiry rotates the task to the tail once and refreshes the next quantum;
+- higher-priority asynchronous preemption preserves the interrupted task's queue precedence and remaining quantum;
+- ISR/tick code requests a switch but never directly enters application task context.
+
+Wake paths use one scheduler-aware decision. Under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a newly READY task requests immediate scheduling only when it has strictly higher priority than the current READY task, or when no normal READY task is running. Equal- and lower-priority wakes do not force a context switch solely because they became READY.
+
+This rule is also the meaning of public ISR `need_switch` outputs. The ISR API itself requests the switch when required; applications do not call a second ISR-yield hook.
+
+See [SCHEDULING.md](SCHEDULING.md) for the complete contract and the retained-quantum validation trace.
+
 ## Hooks implemented by a port
 
 ### `hrt_port_start_systick(uint32_t tick_hz)`
@@ -34,7 +52,7 @@ Caller: `hrt_start()` after an initial reschedule request. Cortex-M enables inte
 
 ### `hrt_port_yield_to_scheduler()`
 
-Caller: task-context sleep, yield, delete, and blocking synchronization paths. Task-context-only. It may transfer control immediately or pend an architecture-specific switch, but it is never the ISR reschedule API.
+Caller: task-context sleep, yield, delete, and blocking synchronization paths. Task-context-only. It may transfer control immediately or pend an architecture-specific switch, but it is never the ISR reschedule API. The port must not add an additional ready-queue transition; the core scheduler owns that decision.
 
 ### `hrt__pend_context_switch()`
 
@@ -107,6 +125,8 @@ With `HRT_TICK_EXTERNAL`, the application timer ISR calls public `hrt_tick_from_
 
 The reference Cortex-M port uses PSP task stacks, PendSV, hardware exception frames, software save/restore of `r4-r11`, and 8-byte stack alignment. PendSV is lower priority than SysTick. Floating-point context preservation is not currently part of the documented task-switch contract.
 
+The physically qualified PRIORITY_RR ordering is `low-A -> ISR/wake -> high -> low-A -> low-B`, with the interrupted low-A retaining its unused quantum across the higher-priority dispatch.
+
 ### POSIX
 
 The POSIX port uses `ucontext` and `SIGALRM`. The signal handler performs tick accounting and requests scheduling but never calls `swapcontext()`. A task returns to the hosted scheduler only at a HardRT scheduling point, so this port is functional/cooperative rather than a timing-accurate Cortex-M model.
@@ -118,13 +138,14 @@ Before adding a port, verify at least:
 - [ ] the port compiles using only `hardrt_port_contract.h` plus platform headers;
 - [ ] internal and external tick modes advance time exactly once per tick;
 - [ ] no task context switch occurs directly in a hardware tick handler;
-- [ ] task-context yield reaches the scheduler safely;
+- [ ] task-context yield reaches the scheduler safely and rotates exactly once;
+- [ ] higher-priority preemption does not rotate the interrupted task behind equal-priority peers;
 - [ ] nested critical sections preserve prior protection state;
 - [ ] ISR-facing APIs are called only from supported interrupt priorities;
 - [ ] initial stacks satisfy the target ABI and alignment requirements;
 - [ ] task return reaches `hrt_task_delete()`;
 - [ ] idle does not enter an application ready queue;
-- [ ] repeated wake, yield, block, and delete operations preserve scheduler state.
+- [ ] repeated wake, yield, block, and delete operations preserve unique READY membership.
 
 ## Reference ports
 
