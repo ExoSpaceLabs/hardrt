@@ -15,6 +15,9 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
+FUNCTIONAL_TOTAL=9
+BENCHMARK_TOTAL=4
+
 NAMES=()
 STATUSES=()
 CRITERIA=()
@@ -28,10 +31,11 @@ Usage:
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
 Modes:
-  no --only            Run the complete 13-case functional matrix AND all
-                       scheduler/PendSV timing diagnostics.
-  --only functional    Run only the 13-case functional matrix.
-  --only scheduler     Run only the board probe and scheduler/PendSV diagnostics.
+  no --only            Run functional hardware validation AND every hardware benchmark.
+  --only functional    Run only functional hardware validation.
+  --only benchmark     Run only every hardware benchmark, one image at a time.
+
+The board probe is a prerequisite and is always run.
 
 Development evidence is written under validation/stm32/.
 Timestamped development runs are gitignored; release evidence remains trackable under:
@@ -40,13 +44,13 @@ Timestamped development runs are gitignored; release evidence remains trackable 
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
   --output-dir DIR        Evidence root (default: validation/stm32).
-  --timing-samples N      Samples per DWT case (default: 10000).
+  --timing-samples N      Samples per benchmark image (default: 10000).
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
   --openocd-scripts DIR   OpenOCD scripts directory.
   --clean-builds          Remove known generated build/install directories before qualification.
   --no-clean-builds       Never offer pre-run generated-build cleanup.
-  --only MODE             MODE is functional or scheduler. Omit to run both.
+  --only MODE             MODE is functional or benchmark. Omit to run both.
   -h, --help              Show help.
 USAGE
 }
@@ -71,8 +75,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -n "$ONLY_MODE" && "$ONLY_MODE" != "functional" && "$ONLY_MODE" != "scheduler" ]]; then
-  echo "Unsupported --only mode: $ONLY_MODE (expected functional or scheduler)" >&2
+if [[ -n "$ONLY_MODE" && "$ONLY_MODE" != "functional" && "$ONLY_MODE" != "benchmark" ]]; then
+  echo "Unsupported --only mode: $ONLY_MODE (expected functional or benchmark)" >&2
   exit 2
 fi
 
@@ -227,11 +231,16 @@ cat > "$REPORT" <<EOF
 - OpenOCD: \`$(first_line openocd --version)\`
 - CMake: \`$(first_line cmake --version)\`
 - Host: \`$(uname -a)\`
-- Timing samples per case: \`$TIMING_SAMPLES\`
+- Timing samples per benchmark image: \`$TIMING_SAMPLES\`
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
-- Functional matrix size: **13 cases**
-- Scheduler diagnostics: **PendSV/scheduler switch breakdown**
-- Selected mode: **${ONLY_MODE:-functional + scheduler}**
+- Functional contracts: **$FUNCTIONAL_TOTAL**
+- Hardware benchmarks: **$BENCHMARK_TOTAL**
+- Selected mode: **${ONLY_MODE:-functional + benchmark}**
+
+The board probe is reported separately from functional and benchmark counts.
+Each benchmark is rebuilt and flashed as a separate image. The build script enables
+only the timing profile/hooks required by that benchmark; ordinary HardRT builds
+remain uninstrumented.
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
 
@@ -465,9 +474,6 @@ run_functional_matrix() {
   visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 should be visibly about 2x faster than LD2/PE1 (250 ms vs 500 ms configured)." c_blinky
   visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 should be clearly faster than LD2/PE1 (100 ms vs 250 ms configured)." cpp_blinky
   counter_demo
-  timing_case event_to_task "DWT event_to_task timing"
-  timing_case sem_isr_ready "DWT sem_isr_ready timing"
-  timing_case ready_to_task "DWT ready_to_task timing"
   preemption_case priority "Fixed-priority hardware preemption"
   preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
   ipc_case semaphore "Semaphore hardware contract"
@@ -476,7 +482,12 @@ run_functional_matrix() {
   external_tick_case
 }
 
-run_scheduler_diagnostics() {
+run_benchmarks() {
+  # Every benchmark gets its own build and flash. build-lib-stm32h7xx-dwt-timing.sh
+  # selects HARDRT_TIMING_PROFILE/hooks per case so normal builds stay clean.
+  timing_case event_to_task "DWT event_to_task timing"
+  timing_case sem_isr_ready "DWT sem_isr_ready timing"
+  timing_case ready_to_task "DWT ready_to_task timing"
   timing_case scheduler_decision "DWT scheduler_decision timing"
 }
 
@@ -488,37 +499,48 @@ else
   record "Board probe" PASS "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" ""
   case "$ONLY_MODE" in
     functional) run_functional_matrix ;;
-    scheduler) run_scheduler_diagnostics ;;
+    benchmark) run_benchmarks ;;
     "")
       run_functional_matrix
-      run_scheduler_diagnostics
+      run_benchmarks
       ;;
   esac
 fi
 
+PROBE_PASS=0
+PROBE_FAIL=0
 FUNCTIONAL_PASS=0
 FUNCTIONAL_FAIL=0
-DIAG_PASS=0
-DIAG_FAIL=0
-SELECTED_PASS=0
-SELECTED_FAIL=0
+BENCHMARK_PASS=0
+BENCHMARK_FAIL=0
 
-if [[ "$ONLY_MODE" == "scheduler" ]]; then
-  for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((SELECTED_PASS+=1)) || ((SELECTED_FAIL+=1)); done
-  SELECTED_TOTAL=${#STATUSES[@]}
-  FUNCTIONAL_NOT_RUN=13
-  RUN_FAIL=$SELECTED_FAIL
+for i in "${!STATUSES[@]}"; do
+  name="${NAMES[$i]}"
+  status="${STATUSES[$i]}"
+  if [[ "$name" == "Board probe" ]]; then
+    [[ "$status" == PASS ]] && ((PROBE_PASS+=1)) || ((PROBE_FAIL+=1))
+  elif [[ "$name" == "DWT "*" timing" ]]; then
+    [[ "$status" == PASS ]] && ((BENCHMARK_PASS+=1)) || ((BENCHMARK_FAIL+=1))
+  else
+    [[ "$status" == PASS ]] && ((FUNCTIONAL_PASS+=1)) || ((FUNCTIONAL_FAIL+=1))
+  fi
+done
+
+if [[ "$ONLY_MODE" == "benchmark" ]]; then
+  FUNCTIONAL_NOT_RUN=$FUNCTIONAL_TOTAL
 else
-  for i in "${!STATUSES[@]}"; do
-    if [[ "${NAMES[$i]}" == "DWT scheduler_decision timing" ]]; then
-      [[ "${STATUSES[$i]}" == PASS ]] && ((DIAG_PASS+=1)) || ((DIAG_FAIL+=1))
-    else
-      [[ "${STATUSES[$i]}" == PASS ]] && ((FUNCTIONAL_PASS+=1)) || ((FUNCTIONAL_FAIL+=1))
-    fi
-  done
-  FUNCTIONAL_NOT_RUN=$((13 - FUNCTIONAL_PASS - FUNCTIONAL_FAIL)); (( FUNCTIONAL_NOT_RUN < 0 )) && FUNCTIONAL_NOT_RUN=0
-  RUN_FAIL=$((FUNCTIONAL_FAIL + DIAG_FAIL))
+  FUNCTIONAL_NOT_RUN=$((FUNCTIONAL_TOTAL - FUNCTIONAL_PASS - FUNCTIONAL_FAIL))
+  (( FUNCTIONAL_NOT_RUN < 0 )) && FUNCTIONAL_NOT_RUN=0
 fi
+
+if [[ "$ONLY_MODE" == "functional" ]]; then
+  BENCHMARK_NOT_RUN=$BENCHMARK_TOTAL
+else
+  BENCHMARK_NOT_RUN=$((BENCHMARK_TOTAL - BENCHMARK_PASS - BENCHMARK_FAIL))
+  (( BENCHMARK_NOT_RUN < 0 )) && BENCHMARK_NOT_RUN=0
+fi
+
+RUN_FAIL=$((PROBE_FAIL + FUNCTIONAL_FAIL + BENCHMARK_FAIL))
 
 {
   echo "## Test results"; echo
@@ -534,30 +556,28 @@ append_switch_breakdown_report
 
 {
   echo; echo "## Qualification verdict"; echo
+  echo "- Board probe: **$([[ $PROBE_FAIL -eq 0 && $PROBE_PASS -eq 1 ]] && echo PASS || echo FAIL)**"
+  echo "- Functional contracts passed: **$FUNCTIONAL_PASS / $FUNCTIONAL_TOTAL**"
+  echo "- Functional contracts failed: **$FUNCTIONAL_FAIL**"
+  echo "- Functional contracts not run: **$FUNCTIONAL_NOT_RUN**"
+  echo "- Benchmarks passed: **$BENCHMARK_PASS / $BENCHMARK_TOTAL**"
+  echo "- Benchmarks failed: **$BENCHMARK_FAIL**"
+  echo "- Benchmarks not run: **$BENCHMARK_NOT_RUN**"
+
   case "$ONLY_MODE" in
-    scheduler)
-      echo "- Scheduler checks passed: **$SELECTED_PASS / $SELECTED_TOTAL**"
-      echo "- Scheduler checks failed: **$SELECTED_FAIL**"
-      ;;
     functional)
-      echo "- Functional matrix passed: **$FUNCTIONAL_PASS / 13**"
-      echo "- Functional matrix failed: **$FUNCTIONAL_FAIL**"
-      echo "- Functional matrix not run: **$FUNCTIONAL_NOT_RUN**"
-      echo "- Scheduler diagnostics: **NOT RUN**"
+      if (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 )); then echo "- Overall: **PASS**"
+      else echo "- Overall: **FAIL**"; fi
+      ;;
+    benchmark)
+      if (( RUN_FAIL == 0 && BENCHMARK_NOT_RUN == 0 )); then echo "- Overall: **PASS**"
+      else echo "- Overall: **FAIL**"; fi
       ;;
     "")
-      echo "- Functional matrix passed: **$FUNCTIONAL_PASS / 13**"
-      echo "- Functional matrix failed: **$FUNCTIONAL_FAIL**"
-      echo "- Functional matrix not run: **$FUNCTIONAL_NOT_RUN**"
-      echo "- Scheduler diagnostics passed: **$DIAG_PASS / 1**"
-      echo "- Scheduler diagnostics failed: **$DIAG_FAIL**"
+      if (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 && BENCHMARK_NOT_RUN == 0 )); then echo "- Overall: **PASS**"
+      else echo "- Overall: **FAIL**"; fi
       ;;
   esac
-  if [[ "$ONLY_MODE" == "scheduler" ]]; then
-    (( RUN_FAIL == 0 )) && echo "- Overall: **PASS**" || echo "- Overall: **FAIL**"
-  elif (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 )); then echo "- Overall: **PASS**"
-  elif (( RUN_FAIL > 0 )); then echo "- Overall: **FAIL**"
-  else echo "- Overall: **PARTIAL**"; fi
   echo; echo "## Tester notes"; echo
 } >> "$REPORT"
 
@@ -572,19 +592,9 @@ echo "HardRT STM32 hardware qualification summary"
 echo "============================================================"
 echo "HardRT SHA : $SHA"
 echo "Cube SHA   : $CUBE_SHA ($CUBE_STATE)"
-case "$ONLY_MODE" in
-  scheduler)
-    printf 'Scheduler  : %d/%d PASS, %d FAIL\n' "$SELECTED_PASS" "$SELECTED_TOTAL" "$SELECTED_FAIL"
-    ;;
-  functional)
-    printf 'Functional : %d/13 PASS, %d FAIL, %d NOT RUN\n' "$FUNCTIONAL_PASS" "$FUNCTIONAL_FAIL" "$FUNCTIONAL_NOT_RUN"
-    echo "Scheduler  : NOT RUN"
-    ;;
-  "")
-    printf 'Functional : %d/13 PASS, %d FAIL, %d NOT RUN\n' "$FUNCTIONAL_PASS" "$FUNCTIONAL_FAIL" "$FUNCTIONAL_NOT_RUN"
-    printf 'Scheduler  : %d/1 PASS, %d FAIL\n' "$DIAG_PASS" "$DIAG_FAIL"
-    ;;
-esac
+printf 'Probe      : %s\n' "$([[ $PROBE_FAIL -eq 0 && $PROBE_PASS -eq 1 ]] && echo PASS || echo FAIL)"
+printf 'Functional : %d/%d PASS, %d FAIL, %d NOT RUN\n' "$FUNCTIONAL_PASS" "$FUNCTIONAL_TOTAL" "$FUNCTIONAL_FAIL" "$FUNCTIONAL_NOT_RUN"
+printf 'Benchmark  : %d/%d PASS, %d FAIL, %d NOT RUN\n' "$BENCHMARK_PASS" "$BENCHMARK_TOTAL" "$BENCHMARK_FAIL" "$BENCHMARK_NOT_RUN"
 
 echo
 printf '%-44s %s\n' "CASE" "RESULT"
@@ -592,7 +602,7 @@ printf '%-44s %s\n' "--------------------------------------------" "------"
 for i in "${!NAMES[@]}"; do printf '%-44s %s\n' "${NAMES[$i]}" "${STATUSES[$i]}"; done
 
 echo
-echo "Timing (cycles, min / avg / max):"
+echo "Benchmark timing (cycles, min / avg / max):"
 for i in "${!NAMES[@]}"; do
   case "${NAMES[$i]}" in
     "DWT "*" timing")
@@ -617,12 +627,19 @@ for i in "${!NAMES[@]}"; do
   fi
 done
 
-if [[ "$ONLY_MODE" == "scheduler" ]]; then
-  (( RUN_FAIL == 0 )) && echo "Overall    : PASS" || echo "Overall    : FAIL"
-elif (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 )); then echo "Overall    : PASS"
-elif (( RUN_FAIL > 0 )); then echo "Overall    : FAIL"
-else echo "Overall    : PARTIAL"; fi
+case "$ONLY_MODE" in
+  functional)
+    (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 )) && OVERALL=PASS || OVERALL=FAIL
+    ;;
+  benchmark)
+    (( RUN_FAIL == 0 && BENCHMARK_NOT_RUN == 0 )) && OVERALL=PASS || OVERALL=FAIL
+    ;;
+  "")
+    (( RUN_FAIL == 0 && FUNCTIONAL_NOT_RUN == 0 && BENCHMARK_NOT_RUN == 0 )) && OVERALL=PASS || OVERALL=FAIL
+    ;;
+esac
 
+echo "Overall    : $OVERALL"
 echo "Report     : $REPORT"
 echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_MODE" ]]; then
