@@ -10,7 +10,8 @@ extern "C" {
 
 /**
  * @brief Binary semaphore type (count is 0 or 1).
- * @details Waiters are queued FIFO; per-priority round-robin is handled by the core scheduler.
+ * @details Waiters are queued FIFO; scheduler policy decides whether a wake
+ * preempts the currently running task.
  */
 typedef struct {
     volatile uint8_t count;      /**< Current token count (0..max_count). */
@@ -53,7 +54,10 @@ int hrt_sem_take(hrt_sem_t *s);
 int hrt_sem_try_take(hrt_sem_t *s);
 
 /**
- * @brief Give (release) the semaphore from the task context.
+ * @brief Give (release) the semaphore from task context.
+ * @details If a waiter becomes READY, HardRT requests task-context preemption
+ * only when the active scheduler says that waiter must run before the current
+ * task. This is not treated as an explicit yield.
  * @param s Semaphore to release.
  * @return 0.
  */
@@ -62,7 +66,9 @@ int hrt_sem_give(hrt_sem_t *s);
 /**
  * @brief Give (release) the semaphore from ISR/tick context.
  * @param s Semaphore to release.
- * @param need_switch Set to 1 if a higher-priority waiter was woken and a switch is needed.
+ * @param need_switch Optional out: set to 1 when the awakened waiter should run
+ * before the interrupted/current task under the active scheduler contract, or
+ * when no normal task is running. HardRT requests the switch internally.
  * @return 0.
  */
 int hrt_sem_give_from_isr(hrt_sem_t *s, int *need_switch);
