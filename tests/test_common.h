@@ -131,6 +131,10 @@ const test_case_t *get_tests_rr_sleep(int *out_count);
 
 const test_case_t *get_tests_priority(int *out_count);
 
+const test_case_t *get_tests_preemption_contract(int *out_count);
+
+const test_case_t *get_tests_ready_bitmap(int *out_count);
+
 const test_case_t *get_tests_coop_vs_rr(int *out_count);
 
 const test_case_t *get_tests_tick_rate(int *out_count);
