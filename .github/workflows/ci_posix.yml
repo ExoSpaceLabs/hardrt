@@ -107,6 +107,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi
 
+      - name: Prepare STM32CubeH7 headers (22.04 only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          set -euxo pipefail
+          cube="$RUNNER_TEMP/STM32CubeH7"
+          rm -rf "$cube"
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/STMicroelectronics/STM32CubeH7.git "$cube"
+          git -C "$cube" sparse-checkout set \
+            Drivers/CMSIS/Core/Include \
+            Drivers/CMSIS/Device/ST/STM32H7xx \
+            Drivers/STM32H7xx_HAL_Driver
+          git -C "$cube" submodule update --init --depth 1 \
+            Drivers/CMSIS/Device/ST/STM32H7xx \
+            Drivers/STM32H7xx_HAL_Driver
+
+          test -f "$cube/Drivers/CMSIS/Core/Include/core_cm7.h"
+          test -f "$cube/Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h755xx.h"
+          test -f "$cube/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"
+          echo "STM32CUBE_H7_ROOT=$cube" >> "$GITHUB_ENV"
+
       - name: Configure & build (Cortex-M library, 22.04 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -118,6 +139,11 @@ jobs:
             -DHARDRT_ENABLE_CPP=ON \
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
           cmake --build build-cortex_m --parallel
+
+      - name: Cross-build STM32H755 examples (22.04 only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          BUILD_TYPE=${{ matrix.build_type }} ./scripts/build-stm32-examples-ci.sh
 
       - name: Install (POSIX + Cortex-M) and create tarballs (tag builds, 22.04 only)
         if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
