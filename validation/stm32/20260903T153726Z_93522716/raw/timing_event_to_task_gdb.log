@@ -1,0 +1,28 @@
+0x080006cc in Reset_Handler ()
+semihosting is disabled
+
+target halted due to debug-request, current mode: Thread 
+xPSR: 0x01000000 pc: 0x080006cc msp: 0x20020000
+Breakpoint 1 at 0x8000cd2
+Note: automatically using hardware breakpoints for read-only addresses.
+Breakpoint 2 at 0x80009a0
+Breakpoint 3 at 0x80008b4
+
+--- Timing target reached ---
+SystemCoreClock=64000000 Hz
+event_hz=1000 target_samples=10000
+case=event_to_task
+metric=TIM2 ISR software timestamp -> latency task continuation
+NOTE: this is a composite software ISR-to-task response measurement; it is NOT hardware event-to-ISR latency.
+HardRT timing profile=none (no kernel timing hooks in this image)
+
+[RESULT]
+count=10000
+min=1692 cycles, avg=1757 cycles (sum/count=1757), max=2673 cycles
+min=26437 ns, avg=27453 ns, max=41765 ns
+error=0
+
+[TIMER CFG]
+TIM2: PSC=31 ARR=999
+RESULT: PASS
+[Inferior 1 (Remote target) detached]
