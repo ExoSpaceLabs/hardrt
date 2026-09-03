@@ -60,6 +60,18 @@ typedef struct {
 static prio_q_t g_rq[HARDRT_MAX_PRIO];
 static uint8_t g_rq_next[HARDRT_MAX_TASKS];
 
+/*
+ * Sleeping tasks use one global intrusive delta queue. g_sleep_delta[id] is
+ * relative to the preceding node, so the tick path only touches the head when
+ * nothing expires. Equal deadlines are represented by zero-delta followers.
+ * Insertion is bounded O(N) in task context; tick work is O(1) without expiry
+ * and O(K) when K tasks actually wake.
+ */
+#define HRT_SLEEP_NONE UINT8_MAX
+static uint8_t g_sleep_head = HRT_SLEEP_NONE;
+static uint8_t g_sleep_next[HARDRT_MAX_TASKS];
+static uint32_t g_sleep_delta[HARDRT_MAX_TASKS];
+
 _hrt_tcb_t *hrt__tcb(const int id) {
 #if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) return NULL;
@@ -204,6 +216,39 @@ static int rq_pop(const uint8_t p) {
     return (int)task_id;
 }
 
+static void sleepq_insert(const int id, const uint32_t ticks) {
+    const uint8_t task_id = (uint8_t)id;
+    uint8_t prev = HRT_SLEEP_NONE;
+    uint8_t current = g_sleep_head;
+    uint32_t remaining = ticks;
+
+    /* Advance while the new deadline is at or after the current node. For an
+     * equal deadline, walk past any zero-delta followers so equal-time wakes
+     * retain insertion order. */
+    while (current != HRT_SLEEP_NONE && remaining >= g_sleep_delta[current]) {
+        remaining -= g_sleep_delta[current];
+        prev = current;
+        current = g_sleep_next[current];
+        if (remaining == 0u) {
+            while (current != HRT_SLEEP_NONE && g_sleep_delta[current] == 0u) {
+                prev = current;
+                current = g_sleep_next[current];
+            }
+            break;
+        }
+    }
+
+    g_sleep_delta[task_id] = remaining;
+    g_sleep_next[task_id] = current;
+    if (current != HRT_SLEEP_NONE) g_sleep_delta[current] -= remaining;
+
+    if (prev == HRT_SLEEP_NONE) {
+        g_sleep_head = task_id;
+    } else {
+        g_sleep_next[prev] = task_id;
+    }
+}
+
 /* Helper to fetch/store SP for a given task id. */
 uint32_t *_get_sp(const int id) {
     return hrt__tcb(id)->sp;
@@ -219,6 +264,8 @@ int hrt_init(const hrt_config_t *cfg) {
     memset(g_tcbs, 0, sizeof(g_tcbs));
     memset(g_rq, 0, sizeof(g_rq));
     memset(g_rq_next, HRT_RQ_NONE, sizeof(g_rq_next));
+    memset(g_sleep_next, HRT_SLEEP_NONE, sizeof(g_sleep_next));
+    memset(g_sleep_delta, 0, sizeof(g_sleep_delta));
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
     for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
         g_rq[p].head = HRT_RQ_NONE;
@@ -229,6 +276,7 @@ int hrt_init(const hrt_config_t *cfg) {
     g_current = -1;
     g_explicit_yield = 0u;
     g_ready_prio_mask = 0u;
+    g_sleep_head = HRT_SLEEP_NONE;
 
     if (cfg) {
         g_tick_hz = cfg->tick_hz ? cfg->tick_hz : 1000;
@@ -327,12 +375,19 @@ void hrt_sleep(const uint32_t ms) {
 #endif
 
     const uint32_t ticks = hrt__ms_to_ticks(ms, g_tick_hz);
+
+    /* Publish SLEEP state, delta-queue membership, and the reschedule request
+     * atomically with respect to the tick source. This prevents a one-tick
+     * sleeper from being woken/requeued while it is still the running task. */
+    hrt_port_crit_enter();
     t->wake_tick = g_tick + ticks;
     t->state = HRT_SLEEP;
+    sleepq_insert(g_current, ticks);
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
     hrt__pend_context_switch();
+    hrt_port_crit_exit();
     hrt_port_yield_to_scheduler();
 }
 
@@ -495,6 +550,41 @@ int hrt__should_preempt_after_wake(const int woken_id) {
        scheduling opportunity for HRT_SCHED_RR until that policy is rebuilt. */
     if (g_policy == HRT_SCHED_RR) return 1;
     return 0;
+}
+
+int hrt__sleep_tick(void) {
+    uint8_t trigger_pendsv = 0u;
+
+    if (g_sleep_head == HRT_SLEEP_NONE) return 0;
+
+    if (g_sleep_delta[g_sleep_head] > 0u) g_sleep_delta[g_sleep_head]--;
+
+    while (g_sleep_head != HRT_SLEEP_NONE && g_sleep_delta[g_sleep_head] == 0u) {
+        const int id = (int)g_sleep_head;
+        _hrt_tcb_t *t = hrt__tcb(id);
+        g_sleep_head = g_sleep_next[id];
+        g_sleep_next[id] = HRT_SLEEP_NONE;
+        g_sleep_delta[id] = 0u;
+
+#if HARDRT_DEBUG == 1
+        if (t == NULL) {
+            hrt_error(ERR_TCB_NULL);
+            continue;
+        }
+        if (t->state != HRT_SLEEP) {
+            hrt_error(ERR_INVALID_TASK);
+            continue;
+        }
+#endif
+
+        /* Decide before changing the task state. This matters when the sleeper
+         * is still recorded as current while the scheduler is idle. */
+        const int should_switch = hrt__should_preempt_after_wake(id);
+        hrt__make_ready(id);
+        if (should_switch) trigger_pendsv = 1u;
+    }
+
+    return (int)trigger_pendsv;
 }
 
 int hrt__pick_next_ready(void) {
