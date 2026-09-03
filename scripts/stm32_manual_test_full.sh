@@ -405,7 +405,8 @@ preemption_case() {
 }
 
 ipc_case() {
-  local case="$1" title="$2" prefix="ipc_$case" status=PASS notes=""
+  local case="$1" title="$2" status=PASS notes=""
+  local prefix="ipc_$case"
   local elf="$ROOT_DIR/examples/hardrt_h755_ipc_validation/build-cortex_m/hardrt_h755_ipc_validation.elf"
   local glog="$RAW/${prefix}_gdb.log" criterion
   case "$case" in
