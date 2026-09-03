@@ -10,7 +10,7 @@ target extended-remote :3333
 monitor arm semihosting disable
 monitor reset halt
 
-break preemption_validation_emit
+break *preemption_validation_emit
 commands
   silent
   printf "\n--- HardRT preemption validation stopped ---\n"
