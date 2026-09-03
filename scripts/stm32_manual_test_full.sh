@@ -27,7 +27,10 @@ Usage:
   scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 [options]
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
-Runs the complete 13-case NUCLEO-H755ZI-Q hardware qualification matrix.
+Runs the complete 13-case NUCLEO-H755ZI-Q hardware qualification matrix plus
+all currently defined hardware timing diagnostics, including the scheduler /
+PendSV switch breakdown.
+
 Development evidence is written under validation/stm32/.
 Timestamped development runs are gitignored; release evidence remains trackable under:
   validation/stm32/releases/vX.Y.Z/
@@ -42,8 +45,8 @@ Options:
   --clean-builds          Remove known generated build/install directories before qualification.
   --no-clean-builds       Never offer pre-run generated-build cleanup.
   --only scheduler_decision
-                          Run only board probe + scheduler-decision timing diagnostic.
-                          This is for targeted performance investigation, not release qualification.
+                          Filter the full runner to board probe + scheduler timing diagnostic.
+                          The same diagnostic is always included by the default full run.
   -h, --help              Show help.
 USAGE
 }
@@ -227,7 +230,8 @@ cat > "$REPORT" <<EOF
 - Timing samples per case: \`$TIMING_SAMPLES\`
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
 - Functional matrix size: **13 cases**
-- Selected mode: **${ONLY_CASE:-full matrix}**
+- Default diagnostics: **scheduler/PendSV switch breakdown**
+- Selected mode: **${ONLY_CASE:-full matrix + diagnostics}**
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
 
@@ -436,6 +440,27 @@ external_tick_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+append_switch_breakdown_report() {
+  local glog="$RAW/timing_scheduler_decision_gdb.log"
+  [[ -f "$glog" ]] || return 0
+  {
+    echo
+    echo "## Scheduler / PendSV switch breakdown"
+    echo
+    echo '```text'
+    sed -n '/^\[SWITCH BREAKDOWN\]/,/^NOTE: derived values/p' "$glog"
+    echo '```'
+  } >> "$REPORT"
+}
+
+print_switch_breakdown() {
+  local glog="$RAW/timing_scheduler_decision_gdb.log"
+  [[ -f "$glog" ]] || return 0
+  echo
+  echo "Scheduler / PendSV switch breakdown:"
+  sed -n '/^\[SWITCH BREAKDOWN\]/,/^NOTE: derived values/p' "$glog" | sed '/^\[SWITCH BREAKDOWN\]$/d'
+}
+
 PROBE="$RAW/00_probe.log"
 echo; echo "Checking ST-Link/OpenOCD target connection..."
 if ! run_logged "$PROBE" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; targets; shutdown"; then
@@ -451,6 +476,7 @@ else
     timing_case event_to_task "DWT event_to_task timing"
     timing_case sem_isr_ready "DWT sem_isr_ready timing"
     timing_case ready_to_task "DWT ready_to_task timing"
+    timing_case scheduler_decision "DWT scheduler_decision timing"
     preemption_case priority "Fixed-priority hardware preemption"
     preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
     ipc_case semaphore "Semaphore hardware contract"
@@ -460,15 +486,26 @@ else
   fi
 fi
 
-PASS=0; FAIL=0
-for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
+PASS=0
+FAIL=0
+DIAG_PASS=0
+DIAG_FAIL=0
 if [[ "$ONLY_CASE" == "scheduler_decision" ]]; then
+  for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
   TOTAL_CASES=${#STATUSES[@]}
   NOT_RUN=0
 else
+  for i in "${!STATUSES[@]}"; do
+    if [[ "${NAMES[$i]}" == "DWT scheduler_decision timing" ]]; then
+      [[ "${STATUSES[$i]}" == PASS ]] && ((DIAG_PASS+=1)) || ((DIAG_FAIL+=1))
+    else
+      [[ "${STATUSES[$i]}" == PASS ]] && ((PASS+=1)) || ((FAIL+=1))
+    fi
+  done
   TOTAL_CASES=13
   NOT_RUN=$((TOTAL_CASES - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
 fi
+RUN_FAIL=$((FAIL + DIAG_FAIL))
 
 {
   echo "## Test results"; echo
@@ -478,10 +515,24 @@ fi
     n="${NAMES[$i]//|/\\|}"; c="${CRITERIA[$i]//|/\\|}"; e="${EVIDENCE[$i]//|/\\|}"; note="${NOTES[$i]//|/\\|}"
     printf '| %s | **%s** | %s | `%s` | %s |\n' "$n" "${STATUSES[$i]}" "$c" "$e" "${note:- }"
   done
+} >> "$REPORT"
+
+append_switch_breakdown_report
+
+{
   echo; echo "## Qualification verdict"; echo
-  echo "- Passed: **$PASS / $TOTAL_CASES**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
-  if (( FAIL == 0 && NOT_RUN == 0 )); then echo "- Overall: **PASS**"
-  elif (( FAIL > 0 )); then echo "- Overall: **FAIL**"
+  if [[ "$ONLY_CASE" == "scheduler_decision" ]]; then
+    echo "- Selected checks passed: **$PASS / $TOTAL_CASES**"
+    echo "- Selected checks failed: **$FAIL**"
+  else
+    echo "- Functional matrix passed: **$PASS / $TOTAL_CASES**"
+    echo "- Functional matrix failed: **$FAIL**"
+    echo "- Functional matrix not run: **$NOT_RUN**"
+    echo "- Diagnostics passed: **$DIAG_PASS / 1**"
+    echo "- Diagnostics failed: **$DIAG_FAIL**"
+  fi
+  if (( RUN_FAIL == 0 && NOT_RUN == 0 )); then echo "- Overall: **PASS**"
+  elif (( RUN_FAIL > 0 )); then echo "- Overall: **FAIL**"
   else echo "- Overall: **PARTIAL**"; fi
   echo; echo "## Tester notes"; echo
 } >> "$REPORT"
@@ -497,7 +548,12 @@ echo "HardRT STM32 hardware qualification summary"
 echo "============================================================"
 echo "HardRT SHA : $SHA"
 echo "Cube SHA   : $CUBE_SHA ($CUBE_STATE)"
-printf 'Cases      : %d/%d PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$TOTAL_CASES" "$FAIL" "$NOT_RUN"
+if [[ "$ONLY_CASE" == "scheduler_decision" ]]; then
+  printf 'Selected   : %d/%d PASS, %d FAIL\n' "$PASS" "$TOTAL_CASES" "$FAIL"
+else
+  printf 'Functional : %d/%d PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$TOTAL_CASES" "$FAIL" "$NOT_RUN"
+  printf 'Diagnostic : %d/1 PASS, %d FAIL\n' "$DIAG_PASS" "$DIAG_FAIL"
+fi
 echo
 printf '%-44s %s\n' "CASE" "RESULT"
 printf '%-44s %s\n' "--------------------------------------------" "------"
@@ -518,6 +574,8 @@ for i in "${!NAMES[@]}"; do
   esac
 done
 
+print_switch_breakdown
+
 echo
 for i in "${!NAMES[@]}"; do
   if [[ "${NAMES[$i]}" == "PRIORITY_RR retained-quantum preemption" ]]; then
@@ -528,8 +586,8 @@ for i in "${!NAMES[@]}"; do
   fi
 done
 
-if (( FAIL == 0 && NOT_RUN == 0 )); then echo "Overall    : PASS"
-elif (( FAIL > 0 )); then echo "Overall    : FAIL"
+if (( RUN_FAIL == 0 && NOT_RUN == 0 )); then echo "Overall    : PASS"
+elif (( RUN_FAIL > 0 )); then echo "Overall    : FAIL"
 else echo "Overall    : PARTIAL"; fi
 
 echo "Report     : $REPORT"
@@ -537,8 +595,8 @@ echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_CASE" ]]; then
   echo "Release evidence: manually copy/move this run to validation/stm32/releases/vX.Y.Z/."
 else
-  echo "Diagnostic-only run: do not use as release qualification evidence."
+  echo "Filtered diagnostic run: not complete release qualification evidence."
 fi
 echo "============================================================"
 
-(( FAIL == 0 ))
+(( RUN_FAIL == 0 ))
