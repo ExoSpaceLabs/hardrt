@@ -82,7 +82,14 @@ commands
         printf "NOTE: includes ISR tail, PendSV/scheduler selection, context restore, exception return, and blocked semaphore return; it is not a pure context-switch microbenchmark.\n"
         printf "HardRT timing profile=ipc (waiter-READY start marker only)\n"
       else
-        printf "case=UNKNOWN (%u)\n", $case
+        if $case == 4
+          printf "case=scheduler_decision\n"
+          printf "metric=entry to hrt__schedule -> return from hrt__schedule for TIM2 ISR wake\n"
+          printf "NOTE: diagnostic image uses GNU ld --wrap around hrt__schedule; production HardRT kernel code is unchanged.\n"
+          printf "HardRT timing profile=none\n"
+        else
+          printf "case=UNKNOWN (%u)\n", $case
+        end
       end
     end
   end
