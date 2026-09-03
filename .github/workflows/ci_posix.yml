@@ -115,7 +115,7 @@ jobs:
           rm -rf "$cube"
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/STMicroelectronics/STM32CubeH7.git "$cube"
-          git -C "$cube" sparse-checkout set \
+          git -C "$cube" sparse-checkout set --skip-checks \
             Drivers/CMSIS/Core/Include \
             Drivers/CMSIS/Device/ST/STM32H7xx \
             Drivers/STM32H7xx_HAL_Driver
