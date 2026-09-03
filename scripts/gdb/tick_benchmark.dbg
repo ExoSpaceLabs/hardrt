@@ -1,0 +1,116 @@
+# HardRT STM32H755 tick/sleeper scaling benchmark reader.
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break hrt_error
+commands
+  silent
+  printf "\n*** hrt_error hit ***\n"
+  bt
+  detach
+  quit
+end
+
+break *example_fail
+commands
+  silent
+  printf "\n*** tick benchmark failure ***\n"
+  printf "g_example_error = %u\n", (unsigned)$r0
+  bt
+  detach
+  quit
+end
+
+break *tick_benchmark_target_reached
+commands
+  silent
+  set $base = (unsigned int)$r0
+  set $scenario = *(unsigned int*)($base + 0)
+  set $capacity = *(unsigned int*)($base + 4)
+  set $workers = *(unsigned int*)($base + 8)
+  set $event_hz = *(unsigned int*)($base + 12)
+  set $target = *(unsigned int*)($base + 16)
+  set $core_hz = *(unsigned int*)($base + 20)
+  set $psc = *(unsigned int*)($base + 24)
+  set $arr = *(unsigned int*)($base + 28)
+  set $min = *(unsigned int*)($base + 32)
+  set $avg = *(unsigned int*)($base + 36)
+  set $max = *(unsigned int*)($base + 40)
+  set $count = *(unsigned int*)($base + 44)
+  set $sum = ((unsigned long long)*(unsigned int*)($base + 48)) | (((unsigned long long)*(unsigned int*)($base + 52)) << 32)
+  set $wakes = *(unsigned int*)($base + 56)
+  set $final_tick = *(unsigned int*)($base + 60)
+  set $error = *(unsigned int*)($base + 64)
+
+  printf "\n--- Tick benchmark target reached ---\n"
+  if $scenario == 1
+    printf "scenario=none\n"
+  else
+    if $scenario == 2
+      printf "scenario=one_sleep\n"
+    else
+      if $scenario == 3
+        printf "scenario=all_sleep\n"
+      else
+        if $scenario == 4
+          printf "scenario=one_expiry\n"
+        else
+          if $scenario == 5
+            printf "scenario=simultaneous\n"
+          else
+            if $scenario == 6
+              printf "scenario=staggered\n"
+            else
+              printf "scenario=UNKNOWN(%u)\n", $scenario
+            end
+          end
+        end
+      end
+    end
+  end
+
+  printf "configured_app_tasks=%u worker_tasks=%u\n", $capacity, $workers
+  printf "event_hz=%u target_samples=%u final_tick=%u\n", $event_hz, $target, $final_tick
+  printf "SystemCoreClock=%u Hz\n", $core_hz
+  printf "metric=entry to hrt_tick_from_isr -> return from hrt_tick_from_isr\n"
+  printf "HardRT timing profile=none; measurement is application-side DWT around the production external-tick API.\n"
+
+  printf "\n[RESULT]\n"
+  printf "count=%u\n", $count
+  printf "min=%u cycles, avg=%u cycles (sum/count=%u), max=%u cycles\n", \
+         $min, $avg, (unsigned int)($sum / ($count ? $count : 1)), $max
+  printf "min=%u ns, avg=%u ns, max=%u ns\n", \
+         (unsigned int)(($min * 1000000000ull) / ($core_hz ? $core_hz : 1)), \
+         (unsigned int)(($avg * 1000000000ull) / ($core_hz ? $core_hz : 1)), \
+         (unsigned int)(($max * 1000000000ull) / ($core_hz ? $core_hz : 1))
+  printf "worker_wakes=%u error=%u\n", $wakes, $error
+  printf "TIM2: PSC=%u ARR=%u\n", $psc, $arr
+
+  set $ok = ($error == 0 && $count == $target && $min <= $avg && $avg <= $max && $capacity >= 1 && $workers + 1 == $capacity)
+  if $scenario <= 3
+    if $wakes != 0
+      set $ok = 0
+    end
+  else
+    if $wakes == 0
+      set $ok = 0
+    end
+  end
+
+  if $ok
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL\n"
+  end
+
+  detach
+  quit
+end
+
+continue
