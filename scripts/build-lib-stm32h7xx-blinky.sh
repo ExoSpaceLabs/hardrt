@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# build HardRT and hardrt_h755_blinky application
-$(pwd)/scripts/build-lib-stm32h7xx.sh --app $(pwd)/examples/hardrt_h755_blinky --build-type Release
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_DIR="$ROOT_DIR/examples/hardrt_h755_blinky"
 
-# flash stm32h755
-openocd -s /usr/share/openocd/scripts   -f scripts/openocd_h755_clean.cfg   -c "init; reset halt; \
-      stm32h7x mass_erase 0; \
-      stm32h7x mass_erase 1; \
-      program examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf verify; \
-      reset halt; shutdown"
+"$ROOT_DIR/scripts/build-lib-stm32h7xx.sh" --hardrt "$ROOT_DIR" --app "$APP_DIR" --build-type Release
 
-# set up connection for dgb
-# openocd -s /usr/share/openocd/scripts -f  scripts/openocd_h755.cfg -c "init; reset halt"
+ELF="$APP_DIR/build-cortex_m/hardrt_h755_blinky.elf"
+[[ -s "$ELF" ]] || { echo "[FAIL] blinky ELF not found: $ELF" >&2; exit 1; }
 
-# Terminal 2 start timing statistics dbg script.
-# gdb-multiarch -q examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf -batch -x scripts/gdb/timing.dbg
+openocd -s /usr/share/openocd/scripts \
+  -f "$ROOT_DIR/scripts/openocd_h755_clean.cfg" \
+  -c "init; reset halt; stm32h7x mass_erase 0; stm32h7x mass_erase 1; program $ELF verify; reset halt; shutdown"
 
-echo "Press reset button on STM32, this shall initiate HardRT Blinky application"
+echo "Image programmed and verified; target is halted for debugger/reset-controlled validation."

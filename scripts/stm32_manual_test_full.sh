@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STM32CUBE_H7_ROOT=""
+OUTPUT_BASE="$ROOT_DIR/validation/stm32"
+TIMING_SAMPLES=10000
+OBSERVE_SECONDS=10
+DEBUG_TIMEOUT=90
+OPENOCD_SCRIPTS="/usr/share/openocd/scripts"
+GDB_BIN=""
+OPENOCD_PID=""
+FINALIZED=0
+
+NAMES=()
+STATUSES=()
+CRITERIA=()
+EVIDENCE=()
+NOTES=()
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 [options]
+  scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
+
+Options:
+  --stm32h7-root DIR      STM32CubeH7 checkout root.
+  --output-dir DIR        Evidence root (default: validation/stm32).
+  --timing-samples N      Samples per DWT case (default: 10000).
+  --observe-seconds N     LED observation duration (default: 10).
+  --debug-timeout N       GDB timeout per automated case (default: 90).
+  --openocd-scripts DIR   OpenOCD scripts directory.
+  -h, --help              Show help.
+
+The runner delegates build/flash work to the existing STM32 scripts, manages OpenOCD/GDB
+sessions itself, asks only for observations that require a human, and creates commit-ready
+qualification evidence under validation/stm32/.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --stm32h7-root) STM32CUBE_H7_ROOT="$2"; shift 2 ;;
+    --output-dir) OUTPUT_BASE="$2"; shift 2 ;;
+    --timing-samples) TIMING_SAMPLES="$2"; shift 2 ;;
+    --observe-seconds) OBSERVE_SECONDS="$2"; shift 2 ;;
+    --debug-timeout) DEBUG_TIMEOUT="$2"; shift 2 ;;
+    --openocd-scripts) OPENOCD_SCRIPTS="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *)
+      [[ -z "$STM32CUBE_H7_ROOT" ]] || { echo "Unexpected argument: $1" >&2; exit 2; }
+      STM32CUBE_H7_ROOT="$1"; shift
+      ;;
+  esac
+done
+
+[[ -n "$STM32CUBE_H7_ROOT" ]] || { usage >&2; exit 2; }
+STM32CUBE_H7_ROOT="$(cd "$STM32CUBE_H7_ROOT" 2>/dev/null && pwd)" || {
+  echo "Invalid STM32CubeH7 root" >&2; exit 2;
+}
+
+for n in "$TIMING_SAMPLES" "$OBSERVE_SECONDS" "$DEBUG_TIMEOUT"; do
+  [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) || { echo "Numeric options must be > 0" >&2; exit 2; }
+done
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing command: $1" >&2; exit 2; }; }
+for c in git cmake make openocd arm-none-eabi-gcc timeout tee grep sed awk; do need "$c"; done
+if command -v gdb-multiarch >/dev/null 2>&1; then GDB_BIN=gdb-multiarch
+elif command -v arm-none-eabi-gdb >/dev/null 2>&1; then GDB_BIN=arm-none-eabi-gdb
+else echo "Install gdb-multiarch or arm-none-eabi-gdb" >&2; exit 2
+fi
+
+for f in \
+  "$STM32CUBE_H7_ROOT/Drivers/CMSIS/Core/Include/core_cm7.h" \
+  "$STM32CUBE_H7_ROOT/Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h755xx.h" \
+  "$STM32CUBE_H7_ROOT/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"; do
+  [[ -f "$f" ]] || { echo "Incomplete STM32CubeH7 checkout: missing $f" >&2; exit 2; }
+done
+
+cd "$ROOT_DIR"
+SHA="$(git rev-parse HEAD)"
+SHORT_SHA="$(git rev-parse --short=8 HEAD)"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+PRE_STATUS="$(git status --porcelain --untracked-files=normal)"
+WORKTREE=clean; [[ -n "$PRE_STATUS" ]] && WORKTREE=DIRTY
+STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
+RUN_DIR="$OUTPUT_BASE/${STAMP}_${SHORT_SHA}"
+RAW="$RUN_DIR/raw"
+REPORT="$RUN_DIR/qualification.md"
+mkdir -p "$RAW"
+
+cleanup_openocd() {
+  if [[ -n "${OPENOCD_PID:-}" ]] && kill -0 "$OPENOCD_PID" >/dev/null 2>&1; then
+    kill "$OPENOCD_PID" >/dev/null 2>&1 || true
+    wait "$OPENOCD_PID" >/dev/null 2>&1 || true
+  fi
+  OPENOCD_PID=""
+}
+
+on_exit() {
+  local rc=$?
+  cleanup_openocd
+  if (( FINALIZED == 0 )) && [[ -f "$REPORT" ]]; then
+    printf '\n## Run status\n\n**ABORTED** with runner exit code %d.\n' "$rc" >> "$REPORT"
+  fi
+}
+trap on_exit EXIT INT TERM
+
+ask_default() { local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
+ask_optional() { local v; read -r -p "$1: " v; printf '%s' "$v"; }
+yes_no() {
+  local a
+  while true; do
+    read -r -p "$1 [y/n]: " a
+    case "${a,,}" in y|yes) return 0;; n|no) return 1;; *) echo "Please answer y or n.";; esac
+  done
+}
+
+TESTER="$(ask_default "Tester" "${USER:-unknown}")"
+BOARD="$(ask_default "Board" "NUCLEO-H755ZI-Q")"
+REVISION="$(ask_optional "MCU/board revision (optional)")"
+if [[ "$WORKTREE" == DIRTY ]]; then
+  echo "WARNING: worktree was dirty before qualification:"; printf '%s\n' "$PRE_STATUS"
+  yes_no "Continue and record a DIRTY qualification" || exit 1
+fi
+
+first_line() { "$@" 2>&1 | head -n1 || true; }
+CUBE_SHA=unknown; CUBE_STATE=not-a-git-checkout
+if git -C "$STM32CUBE_H7_ROOT" rev-parse HEAD >/dev/null 2>&1; then
+  CUBE_SHA="$(git -C "$STM32CUBE_H7_ROOT" rev-parse HEAD)"
+  CUBE_STATE=clean
+  [[ -n "$(git -C "$STM32CUBE_H7_ROOT" status --porcelain --untracked-files=no 2>/dev/null || true)" ]] && CUBE_STATE=DIRTY
+fi
+
+cat > "$REPORT" <<EOF
+# HardRT STM32H755 Qualification Report
+
+- Run ID: \`${STAMP}_${SHORT_SHA}\`
+- UTC start: \`$(date -u --iso-8601=seconds)\`
+- Local start: \`$(date --iso-8601=seconds)\`
+- Tester: \`$TESTER\`
+- Board: \`$BOARD\`
+- MCU/board revision: \`${REVISION:-not recorded}\`
+- Core under test: \`CM7\`
+- HardRT branch: \`$BRANCH\`
+- HardRT SHA: \`$SHA\`
+- HardRT pre-run worktree: **$WORKTREE**
+- STM32CubeH7 root: \`$STM32CUBE_H7_ROOT\`
+- STM32CubeH7 SHA/state: \`$CUBE_SHA\` / \`$CUBE_STATE\`
+- ARM GCC: \`$(first_line arm-none-eabi-gcc --version)\`
+- GDB: \`$(first_line "$GDB_BIN" --version)\`
+- OpenOCD: \`$(first_line openocd --version)\`
+- CMake: \`$(first_line cmake --version)\`
+- Host: \`$(uname -a)\`
+- Timing samples per case: \`$TIMING_SAMPLES\`
+- LED observation duration: \`${OBSERVE_SECONDS}s\`
+
+OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
+
+EOF
+
+if [[ -n "$PRE_STATUS" ]]; then
+  printf '## Pre-run worktree changes\n\n```text\n%s\n```\n\n' "$PRE_STATUS" >> "$REPORT"
+fi
+
+record() { NAMES+=("$1"); STATUSES+=("$2"); CRITERIA+=("$3"); EVIDENCE+=("$4"); NOTES+=("$5"); }
+
+run_logged() {
+  local log="$1"; shift
+  { printf '$'; printf ' %q' "$@"; printf '\n'; } | tee -a "$log"
+  local rc
+  set +e; "$@" 2>&1 | tee -a "$log"; rc=${PIPESTATUS[0]}; set -e
+  return "$rc"
+}
+
+start_openocd() {
+  local log="$1"; cleanup_openocd
+  openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; reset halt" >"$log" 2>&1 &
+  OPENOCD_PID=$!
+  for ((i=0; i<100; ++i)); do
+    grep -q "Listening on port 3333 for gdb connections" "$log" 2>/dev/null && return 0
+    kill -0 "$OPENOCD_PID" >/dev/null 2>&1 || { cat "$log" >&2; OPENOCD_PID=""; return 1; }
+    sleep 0.1
+  done
+  echo "OpenOCD GDB server timeout" >&2; cleanup_openocd; return 1
+}
+
+run_gdb() {
+  local elf="$1" script="$2" prefix="$3"
+  local olog="$RAW/${prefix}_openocd.log" glog="$RAW/${prefix}_gdb.log"
+  [[ -s "$elf" ]] || return 1
+  start_openocd "$olog" || return 1
+  local rc
+  set +e; timeout "${DEBUG_TIMEOUT}s" "$GDB_BIN" -q "$elf" -batch -x "$script" 2>&1 | tee "$glog"; rc=${PIPESTATUS[0]}; set -e
+  cleanup_openocd
+  return "$rc"
+}
+
+reset_run() {
+  run_logged "$1" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; reset run; shutdown"
+}
+
+progress_probe() {
+  local elf="$1" prefix="$2" exits="$3"
+  local cmd="$RAW/${prefix}_progress.gdb" olog="$RAW/${prefix}_openocd.log" glog="$RAW/${prefix}_gdb.log"
+  cat > "$cmd" <<'GDB'
+set confirm off
+set pagination off
+set mem inaccessible-by-default off
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset run
+shell sleep 2
+monitor halt
+set $a1=(unsigned)dbg_counterA
+set $b1=(unsigned)dbg_counterB
+set $e1=(unsigned)g_example_error
+GDB
+  if [[ "$exits" == yes ]]; then cat >> "$cmd" <<'GDB'
+set $xa1=(unsigned)dbg_exit_counterA
+set $xb1=(unsigned)dbg_exit_counterB
+GDB
+  fi
+  cat >> "$cmd" <<'GDB'
+monitor resume
+shell sleep 3
+monitor halt
+set $a2=(unsigned)dbg_counterA
+set $b2=(unsigned)dbg_counterB
+set $e2=(unsigned)g_example_error
+printf "counterA: %u -> %u\n",$a1,$a2
+printf "counterB: %u -> %u\n",$b1,$b2
+printf "g_example_error: %u -> %u\n",$e1,$e2
+GDB
+  if [[ "$exits" == yes ]]; then cat >> "$cmd" <<'GDB'
+set $xa2=(unsigned)dbg_exit_counterA
+set $xb2=(unsigned)dbg_exit_counterB
+printf "exit_counterA: %u -> %u\n",$xa1,$xa2
+printf "exit_counterB: %u -> %u\n",$xb1,$xb2
+if $e2==0 && $a2>$a1 && $b2>$b1 && $xa2>$xa1 && $xb2>$xb1
+  printf "RESULT: PASS\n"
+else
+  printf "RESULT: FAIL\n"
+end
+GDB
+  else cat >> "$cmd" <<'GDB'
+if $e2==0 && $a2>$a1 && $b2>$b1
+  printf "RESULT: PASS\n"
+else
+  printf "RESULT: FAIL\n"
+end
+GDB
+  fi
+  cat >> "$cmd" <<'GDB'
+monitor resume
+detach
+quit
+GDB
+  [[ -s "$elf" ]] || return 1
+  start_openocd "$olog" || return 1
+  local rc
+  set +e; timeout "${DEBUG_TIMEOUT}s" "$GDB_BIN" -q "$elf" -batch -x "$cmd" 2>&1 | tee "$glog"; rc=${PIPESTATUS[0]}; set -e
+  cleanup_openocd
+  (( rc == 0 )) && grep -q '^RESULT: PASS$' "$glog"
+}
+
+visual_blinky() {
+  local title="$1" script="$2" elf="$3" expected="$4" prefix="$5"
+  local status=PASS notes="" blog="$RAW/${prefix}_build_flash.log"
+  local criterion="Build/flash succeeds; g_example_error stays 0; both task counters increase; $expected is visibly observed for at least ${OBSERVE_SECONDS}s."
+  echo; echo "========== $title =========="
+  if ! run_logged "$blog" "$script"; then status=FAIL; notes="Build/flash failed."
+  elif ! progress_probe "$elf" "$prefix" no; then status=FAIL; notes="Automated counter/error probe failed."
+  elif ! reset_run "$RAW/${prefix}_reset_run.log"; then status=FAIL; notes="Could not run target for visual observation."
+  else
+    echo "$expected"; echo "Observe for ${OBSERVE_SECONDS}s..."; sleep "$OBSERVE_SECONDS"
+    if ! yes_no "Did the LEDs match the expected rates"; then
+      status=FAIL; notes="User rejected visual criterion. $(ask_optional "Optional observation note")"
+    fi
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+counter_demo() {
+  local prefix=counter_demo status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf"
+  local criterion="Build/flash succeeds; g_example_error stays 0; dbg_counterA/B and dbg_exit_counterA/B all increase."
+  echo; echo "========== Scheduler counter demo =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-demo.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! progress_probe "$elf" "$prefix" yes; then status=FAIL; notes="Automated four-counter probe failed."
+  fi
+  record "Scheduler counter demo" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+timing_case() {
+  local case="$1" title="$2" prefix="timing_$1" status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Build/flash succeeds; timing_target_reached is observed; no kernel/example error; count equals $TIMING_SAMPLES; min <= avg <= max; SystemCoreClock and TIM2 PSC/ARR are recorded."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" --case "$case" --samples "$TIMING_SAMPLES"; then
+    status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/timing.dbg" "$prefix"; then
+    status=FAIL; notes="Timing GDB run failed or timed out."
+  else
+    local count target min avg max
+    count="$(sed -n 's/^count=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    target="$(sed -n 's/^event_hz=[0-9][0-9]* target_samples=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    read -r min avg max < <(sed -n 's/^min=\([0-9][0-9]*\) cycles, avg=\([0-9][0-9]*\) cycles (sum\/count=[0-9][0-9]*), max=\([0-9][0-9]*\) cycles$/\1 \2 \3/p' "$glog" | tail -n1) || true
+    if grep -qE 'hrt_error hit|timing example failure' "$glog" || [[ -z "$count" || -z "$target" || -z "${min:-}" || -z "${avg:-}" || -z "${max:-}" ]] || (( count != TIMING_SAMPLES || target != TIMING_SAMPLES || min > avg || avg > max )); then
+      status=FAIL; notes="Automated timing acceptance failed."
+    else
+      notes="count=$count, min=$min cycles, avg=$avg cycles, max=$max cycles."
+    fi
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+preemption_case() {
+  local case="$1" title="$2" prefix="preemption_$1" status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
+  local glog="$RAW/${prefix}_gdb.log" criterion
+  if [[ "$case" == priority ]]; then
+    criterion="ISR wake dispatches the higher-priority task before interrupted low-priority Thread mode continues; validator reports RESULT: PASS."
+  else
+    criterion="Trace is low-A -> high -> low-A -> low-B and low-A retains unused RR quantum; validator reports RESULT: PASS."
+  fi
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/preemption.dbg" "$prefix"; then status=FAIL; notes="Preemption GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(case=|irq_count=|ticks:|RR remaining:|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+PROBE="$RAW/00_probe.log"
+echo; echo "Checking ST-Link/OpenOCD target connection..."
+if ! run_logged "$PROBE" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; targets; shutdown"; then
+  record "Board probe" FAIL "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" "Probe failed; remaining tests skipped."
+else
+  record "Board probe" PASS "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" ""
+  export STM32CUBE_H7_ROOT
+  visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 toggles every 250 ms and LD2/PE1 every 500 ms" c_blinky
+  visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 toggles every 100 ms and LD2/PE1 every 250 ms" cpp_blinky
+  counter_demo
+  timing_case event_to_task "DWT event_to_task timing"
+  timing_case sem_isr_ready "DWT sem_isr_ready timing"
+  preemption_case priority "Fixed-priority hardware preemption"
+  preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
+fi
+
+PASS=0; FAIL=0
+for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
+{
+  echo "## Test results"; echo
+  echo "| Test | Result | PASS criterion | Evidence | Notes |"
+  echo "|---|:---:|---|---|---|"
+  for i in "${!NAMES[@]}"; do
+    n="${NAMES[$i]//|/\\|}"; c="${CRITERIA[$i]//|/\\|}"; e="${EVIDENCE[$i]//|/\\|}"; note="${NOTES[$i]//|/\\|}"
+    printf '| %s | **%s** | %s | `%s` | %s |\n' "$n" "${STATUSES[$i]}" "$c" "$e" "${note:- }"
+  done
+  echo; echo "## Qualification verdict"; echo
+  echo "- Passed: **$PASS**"; echo "- Failed: **$FAIL**"
+  (( FAIL == 0 )) && echo "- Overall: **PASS**" || echo "- Overall: **FAIL**"
+  echo; echo "## Tester notes"; echo
+} >> "$REPORT"
+
+FINAL_NOTES="$(ask_optional "Final qualification notes (optional)")"
+[[ -n "$FINAL_NOTES" ]] && printf '%s\n' "$FINAL_NOTES" >> "$REPORT" || echo "None." >> "$REPORT"
+printf '\n## Completion\n\n- UTC end: `%s`\n- Local end: `%s`\n- Runner: `scripts/stm32_manual_test_full.sh`\n' "$(date -u --iso-8601=seconds)" "$(date --iso-8601=seconds)" >> "$REPORT"
+FINALIZED=1
+
+echo; echo "=============================================="
+(( FAIL == 0 )) && echo "STM32 qualification result: PASS" || echo "STM32 qualification result: FAIL ($FAIL failed case(s))"
+echo "Report: $REPORT"
+echo "Raw evidence: $RAW"
+echo "Commit the whole run directory when using it as release qualification evidence."
+echo "=============================================="
+
+(( FAIL == 0 ))
