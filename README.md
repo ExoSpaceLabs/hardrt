@@ -1,4 +1,11 @@
-# 🫀 HardRT [[ExoSpaceLabs](https://github.com/ExoSpaceLabs)]
+<p align="center">
+  <img src="docs/images/HardRT_logo2.png" alt="HardRT logo" width="600">
+</p>
+
+<p align="center">
+  <strong>Minimal Real-Time Operating System</strong><br>
+  <a href="https://github.com/ExoSpaceLabs">ExoSpaceLabs</a>
+</p>
 
 **HardRT** is a small, portable real-time operating-system kernel written in C.
 The core uses static allocation and has no HAL dependency.
