@@ -1,13 +1,12 @@
 #include "hardrtpp.hpp"
 
-#include <cstdio>
 #include <cstdint>
-
-/* POSIX port demo (C++): producer -> queue -> consumer */
+#include <cstdio>
 
 static hardrt::StaticQueue<uint32_t, 32> q;
 
-static void producer(void*) {
+static void producer(void *arg) {
+    (void)arg;
     uint32_t v = 0;
     for (;;) {
         q.send(v);
@@ -18,7 +17,8 @@ static void producer(void*) {
     }
 }
 
-static void consumer(void*) {
+static void consumer(void *arg) {
+    (void)arg;
     uint32_t v = 0;
     for (;;) {
         q.recv(v);
@@ -33,7 +33,7 @@ int main() {
                 hardrt::System::version_string(), hardrt::System::version_u32(),
                 hardrt::System::port_name(), hardrt::System::port_id());
 
-    hrt_config_t cfg = {
+    const hrt_config_t cfg = {
         1000,
         HRT_SCHED_PRIORITY_RR,
         5,
@@ -46,9 +46,14 @@ int main() {
         return 1;
     }
 
-    /* Task stacks are static (template) in Task::create. */
-    (void)hardrt::Task::create<2048, 0>(producer, nullptr, HRT_PRIO0, 0);
-    (void)hardrt::Task::create<2048, 1>(consumer, nullptr, HRT_PRIO1, 5);
+    if (hardrt::Task::create<2048, 0>(producer, nullptr, HRT_PRIO0, 0) < 0) {
+        std::puts("create producer failed");
+        return 1;
+    }
+    if (hardrt::Task::create<2048, 1>(consumer, nullptr, HRT_PRIO1, 5) < 0) {
+        std::puts("create consumer failed");
+        return 1;
+    }
 
     hardrt::System::start();
     return 0;

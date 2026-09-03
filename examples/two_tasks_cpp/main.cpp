@@ -1,35 +1,34 @@
 #include "hardrtpp.hpp"
 #include <cstdio>
 
-// Using namespaced C++ wrapper
 using namespace hardrt;
 
-static void taskA(void* arg) {
+static void taskA(void *arg) {
     (void)arg;
     uint32_t counter = 0;
     for (;;) {
-        printf("[A] tick count [%u]\n", counter);
-        fflush(stdout);
+        std::printf("[A] tick count [%u]\n", (unsigned)counter);
+        std::fflush(stdout);
         Task::sleep(500);
         counter++;
     }
 }
 
-static void taskB(void* arg) {
+static void taskB(void *arg) {
     (void)arg;
     for (;;) {
-        puts("[B] tock -----");
-        fflush(stdout);
+        std::puts("[B] tock -----");
+        std::fflush(stdout);
         Task::sleep(1000);
     }
 }
 
 int main() {
-    printf("HardRT version: %s (0x%06X), port: %s (id=%d)\n",
-           System::version_string(), System::version_u32(),
-           System::port_name(), System::port_id());
+    std::printf("HardRT version: %s (0x%06X), port: %s (id=%d)\n",
+                System::version_string(), System::version_u32(),
+                System::port_name(), System::port_id());
 
-    hrt_config_t cfg = {
+    const hrt_config_t cfg = {
         1000,
         HRT_SCHED_PRIORITY_RR,
         5,
@@ -38,18 +37,19 @@ int main() {
     };
 
     if (System::init(cfg) != 0) {
-        puts("HardRT init failed");
+        std::puts("HardRT init failed");
         return 1;
     }
 
-    if (Task::create<1024, 0>(taskA, nullptr, HRT_PRIO0, 0) < 0)
-        puts("create taskA failed");
+    if (Task::create<1024, 0>(taskA, nullptr, HRT_PRIO0, 0) < 0) {
+        std::puts("create taskA failed");
+        return 1;
+    }
+    if (Task::create<2048, 1>(taskB, nullptr, HRT_PRIO1, 5) < 0) {
+        std::puts("create taskB failed");
+        return 1;
+    }
 
-    if (Task::create<2048, 1>(taskB, nullptr, HRT_PRIO1, 5) < 0)
-        puts("create taskB failed");
-
-    /* Run the scheduler. */
     System::start();
-
     return 0;
 }

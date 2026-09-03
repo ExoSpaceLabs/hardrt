@@ -3,12 +3,12 @@
 
 using namespace hardrt;
 
-/* Counting semaphore: 0 initial tokens, saturate at 5. */
 static Semaphore sem(0, 5);
 
-static void producer(void*) {
+static void producer(void *arg) {
+    (void)arg;
     for (;;) {
-        puts("[P] burst give x3");
+        std::puts("[P] burst give x3");
         sem.give();
         sem.give();
         sem.give();
@@ -16,22 +16,30 @@ static void producer(void*) {
     }
 }
 
-static void consumer(void*) {
+static void consumer(void *arg) {
+    (void)arg;
     for (;;) {
         sem.take();
-        puts("[C] took token");
+        std::puts("[C] took token");
         Task::sleep(200);
     }
 }
 
 int main() {
-    hrt_config_t cfg = { 1000, HRT_SCHED_PRIORITY_RR, 5, 0, HRT_TICK_SYSTICK };
-    System::init(cfg);
+    const hrt_config_t cfg = { 1000, HRT_SCHED_PRIORITY_RR, 5, 0, HRT_TICK_SYSTICK };
+    if (System::init(cfg) != 0) {
+        std::puts("HardRT init failed");
+        return 1;
+    }
 
-    if (Task::create<2048, 0>(producer, nullptr, HRT_PRIO0, 0) < 0)
-        puts("create producer failed");
-    if (Task::create<2048, 1>(consumer, nullptr, HRT_PRIO1, 0) < 0)
-        puts("create consumer failed");
+    if (Task::create<2048, 0>(producer, nullptr, HRT_PRIO0, 0) < 0) {
+        std::puts("create producer failed");
+        return 1;
+    }
+    if (Task::create<2048, 1>(consumer, nullptr, HRT_PRIO1, 0) < 0) {
+        std::puts("create consumer failed");
+        return 1;
+    }
 
     System::start();
     return 0;
