@@ -1,6 +1,6 @@
 # C API Overview
 
-This page summarizes the public C surface available in HardRT v0.4.0. It describes the current implementation on `develop`; roadmap items and proposed v0.5.0 behavior are not presented as available APIs.
+This page summarizes the public C surface used by HardRT. Versioned notes identify behavior shipped in v0.4.0; scheduler and wake semantics described as current `develop` behavior are the implemented v0.5-line contract.
 
 ## Core types
 
@@ -105,18 +105,16 @@ The function requests initial scheduling and enters the selected port scheduler.
 - POSIX returns only through test hooks in the test build.
 - The null port returns without running tasks.
 
-## Scheduling policies in v0.4.0
+## Scheduling policies
 
-Ready tasks are stored in one FIFO queue per priority. The scheduler always scans priorities from highest to lowest and selects from the first non-empty queue.
+Ready tasks are currently stored in one FIFO queue per priority. Priority-based policies always select from the highest non-empty priority class.
 
-- `HRT_SCHED_PRIORITY` does not perform tick-driven slice accounting.
-- `HRT_SCHED_RR` performs slice accounting, but selection still respects priority queues.
-- `HRT_SCHED_PRIORITY_RR` also performs slice accounting and rotates tasks within their priority class.
+- `HRT_SCHED_PRIORITY` uses strict fixed-priority selection without tick-driven slice accounting. A strictly higher-priority wake requests preemption; equal- and lower-priority wakes do not force a switch merely because they became READY.
+- `HRT_SCHED_PRIORITY_RR` uses the same priority dominance and rotates tasks only within the selected priority class. Higher-priority preemption preserves the interrupted task's queue precedence and unused quantum; explicit yield or quantum expiry rotates it to the tail exactly once and refreshes the next quantum.
+- `HRT_SCHED_RR` still uses the transitional per-priority representation on `develop`; the final global priority-independent RR contract is tracked by #28.
 - `timeslice == 0` disables tick-driven rotation for that task.
 
-Therefore, the current `HRT_SCHED_RR` implementation is not a single global priority-independent round-robin queue.
-
-A slice is measured in ticks. A task whose slice expires is requeued when execution returns to the scheduler through a safe scheduling path.
+A timeslice is measured in ticks. See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition, scheduler-entry, and `need_switch` contract.
 
 ## Task control and time
 
@@ -136,11 +134,11 @@ Milliseconds are converted with ceiling division:
 ceil(ms * tick_hz / 1000)
 ```
 
-Positive durations shorter than one tick sleep for one tick. In v0.4.0, `hrt_sleep(0)` also sleeps for one tick rather than behaving like `hrt_yield()`.
+Positive durations shorter than one tick sleep for one tick. In v0.4.0 and the current implementation, `hrt_sleep(0)` also sleeps for one tick rather than behaving like `hrt_yield()`.
 
 ### `hrt_yield`
 
-The current task is moved to the tail of its priority queue, its configured slice is refreshed, rescheduling is requested, and task context is transferred to the port scheduler.
+The current READY task is rotated to the tail of its priority queue exactly once, its configured slice is refreshed, rescheduling is requested, and task context is transferred to the port scheduler.
 
 ### `hrt_task_delete`
 
@@ -167,7 +165,7 @@ void hrt_set_default_timeslice(uint16_t ticks);
 void hrt_tick_from_isr(void);
 ```
 
-This public function is only for `HRT_TICK_EXTERNAL`. It advances time through the core tick handler and internally requests rescheduling when a sleeper wakes or a slice expires.
+This public function is only for `HRT_TICK_EXTERNAL`. It advances time through the core tick handler and internally requests rescheduling when a sleeper wake or slice expiry requires it.
 
 When the selected source is `HRT_TICK_SYSTICK`, the current implementation ignores calls to `hrt_tick_from_isr()`. Port-owned tick handlers call the private `hrt__tick_isr()` path instead.
 
@@ -184,17 +182,18 @@ int  hrt_sem_give(hrt_sem_t *sem);
 int  hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 ```
 
-Current behavior:
+Current `develop` behavior:
 
 - binary semaphores saturate at `1`;
 - counting semaphores saturate at `max_count`;
 - `max_count == 0` is changed to `1`;
 - waiters are stored FIFO;
 - a give with a waiter performs direct handoff and wakes exactly one task;
-- task-context give yields when it wakes a waiter;
-- ISR give sets `need_switch` to `1` whenever any waiter was awakened and pends rescheduling.
+- task-context give requests preemption only when the awakened waiter should run before the current task under the active scheduler contract;
+- that preemption is not treated as explicit yield, so an interrupted PRIORITY_RR task retains precedence and unused quantum;
+- ISR give sets `need_switch` to the same scheduler-aware decision and requests the switch internally when required.
 
-In v0.4.0, `need_switch` does not indicate that the awakened task was specifically higher priority.
+For priority-based policies, `need_switch == 1` means the awakened waiter has strictly higher priority than the current READY task, or there is no normal READY current task. It does not merely mean that some waiter was awakened.
 
 See [SEMAPHORES.md](SEMAPHORES.md).
 
@@ -207,7 +206,7 @@ int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
 int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
 
-Mutexes are owner-tracked, non-recursive, task-context-only, and use FIFO waiters with direct handoff. There is no timed lock, recursive mode, ISR API, or priority inheritance in v0.4.0.
+Mutexes are owner-tracked, non-recursive, task-context-only, and use FIFO waiters with direct handoff. Unlock uses the same scheduler-aware wake/preemption rule as other IPC paths. There is no timed lock, recursive mode, ISR API, or priority inheritance.
 
 See [MUTEXES.md](MUTEXES.md).
 
@@ -231,7 +230,7 @@ int      hrt_queue_try_recv_from_isr(hrt_queue_t *queue,
 uint16_t hrt_queue_count(const hrt_queue_t *queue);
 ```
 
-Items are copied with `memcpy` while the port critical section is held. Blocking operations wait indefinitely. ISR variants are non-blocking, set `need_switch` whenever they wake any waiter, and pend rescheduling internally.
+Items are copied with `memcpy` while the port critical section is held. Blocking operations wait indefinitely. Task and ISR wake paths use the common scheduler-aware preemption rule. ISR variants are non-blocking, expose that decision through `need_switch`, and request rescheduling internally when required.
 
 See [QUEUES.md](QUEUES.md).
 
