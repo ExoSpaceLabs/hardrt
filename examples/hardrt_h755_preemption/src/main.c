@@ -16,6 +16,7 @@
 
 #define STACK_WORDS 512u
 #define RR_SLICE_TICKS 20u
+#define RR_ARM_AFTER_TICKS 2u
 #define PREEMPT_DELAY_US 3000u
 
 typedef struct {
@@ -196,10 +197,27 @@ static void low_a_task(void *arg)
     (void)arg;
     g_a_start_tick = hrt_tick_now();
     g_sequence[0] = 1u;
+
+#if HRT_PREEMPT_CASE_ID == 1
     tim2_start_one_shot_us(PREEMPT_DELAY_US);
+#else
+    uint32_t timer_armed = 0u;
+#endif
 
     for (;;) {
         g_low_a_counter++;
+
+#if HRT_PREEMPT_CASE_ID == 2
+        /* Do not let the TIM2 event race the very first SysTick. The retained-
+           quantum case needs a strictly positive consumed quantum to measure.
+           Arm only after A has demonstrably consumed a few ticks, while still
+           leaving ample margin before the 20-tick RR quantum can expire. */
+        if (timer_armed == 0u &&
+            (uint32_t)(hrt_tick_now() - g_a_start_tick) >= RR_ARM_AFTER_TICKS) {
+            timer_armed = 1u;
+            tim2_start_one_shot_us(PREEMPT_DELAY_US);
+        }
+#endif
 
         /* If Thread mode executes here after the ISR but before high_task, the
            ISR wake did not preempt at the earliest safe exception-return point. */
@@ -246,8 +264,7 @@ static void low_b_task(void *arg)
             g_b_first_tick = hrt_tick_now();
             g_sequence[4] = 5u;
 
-            /* This catches the current tail-requeue defect directly: A must
-               resume before its equal-priority peer B after high blocks. */
+            /* A must resume before its equal-priority peer B after high blocks. */
             if (g_a_resumed_after_high == 0u) validation_fail(32u);
 
             g_observed_remaining_ticks = g_b_first_tick - g_a_resume_tick;
