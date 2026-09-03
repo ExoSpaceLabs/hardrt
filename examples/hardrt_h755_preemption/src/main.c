@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #include "hardrt.h"
@@ -17,6 +18,31 @@
 #define RR_SLICE_TICKS 20u
 #define PREEMPT_DELAY_US 3000u
 
+typedef struct {
+    uint32_t case_id;
+    uint32_t passed;
+    uint32_t error;
+    uint32_t irq_count;
+    int32_t need_switch;
+    uint32_t high_runs;
+    uint32_t low_a_counter;
+    uint32_t low_b_counter;
+    uint32_t a_start_tick;
+    uint32_t irq_tick;
+    uint32_t high_tick;
+    uint32_t a_resume_tick;
+    uint32_t b_first_tick;
+    uint32_t expected_remaining_ticks;
+    uint32_t observed_remaining_ticks;
+    uint32_t sequence[5];
+} hrt_preemption_result_t;
+
+_Static_assert(offsetof(hrt_preemption_result_t, case_id) == 0u, "preemption result ABI");
+_Static_assert(offsetof(hrt_preemption_result_t, need_switch) == 16u, "preemption result ABI");
+_Static_assert(offsetof(hrt_preemption_result_t, a_start_tick) == 32u, "preemption result ABI");
+_Static_assert(offsetof(hrt_preemption_result_t, sequence) == 60u, "preemption result ABI");
+_Static_assert(sizeof(hrt_preemption_result_t) == 80u, "preemption result ABI");
+
 static uint32_t stack_high[STACK_WORDS] __attribute__((aligned(8)));
 static uint32_t stack_low_a[STACK_WORDS] __attribute__((aligned(8)));
 #if HRT_PREEMPT_CASE_ID == 2
@@ -24,10 +50,9 @@ static uint32_t stack_low_b[STACK_WORDS] __attribute__((aligned(8)));
 #endif
 
 static hrt_sem_t g_high_sem;
+static volatile hrt_preemption_result_t g_validation_result;
 
 volatile uint32_t g_example_error = 0u;
-volatile uint32_t g_validation_pass = 0u;
-volatile uint32_t g_validation_case = HRT_PREEMPT_CASE_ID;
 volatile uint32_t g_irq_count = 0u;
 volatile int32_t g_need_switch = -1;
 volatile uint32_t g_high_runs = 0u;
@@ -49,13 +74,41 @@ extern void SystemInit(void);
 extern uint32_t SystemCoreClock;
 
 __attribute__((noinline, used))
-void preemption_validation_stop(uint32_t error, uint32_t passed)
+void preemption_validation_emit(const volatile hrt_preemption_result_t *result)
 {
-    /* Keep all debugger-visible result state live in the linked image. */
-    g_validation_case = HRT_PREEMPT_CASE_ID;
-    g_example_error = error;
-    g_validation_pass = passed;
+    /* GDB owns the breakpoint at function entry and reads the fixed-layout
+       result record through r0. */
+    __asm volatile("" : : "r"(result) : "memory");
     for (;;) __asm volatile("wfi");
+}
+
+__attribute__((noinline))
+static void preemption_validation_stop(uint32_t error, uint32_t passed)
+{
+    g_example_error = error;
+
+    g_validation_result.case_id = HRT_PREEMPT_CASE_ID;
+    g_validation_result.passed = passed;
+    g_validation_result.error = error;
+    g_validation_result.irq_count = g_irq_count;
+    g_validation_result.need_switch = g_need_switch;
+    g_validation_result.high_runs = g_high_runs;
+    g_validation_result.low_a_counter = g_low_a_counter;
+    g_validation_result.low_b_counter = g_low_b_counter;
+    g_validation_result.a_start_tick = g_a_start_tick;
+    g_validation_result.irq_tick = g_irq_tick;
+    g_validation_result.high_tick = g_high_tick;
+    g_validation_result.a_resume_tick = g_a_resume_tick;
+    g_validation_result.b_first_tick = g_b_first_tick;
+    g_validation_result.expected_remaining_ticks = g_expected_remaining_ticks;
+    g_validation_result.observed_remaining_ticks = g_observed_remaining_ticks;
+    g_validation_result.sequence[0] = g_sequence[0];
+    g_validation_result.sequence[1] = g_sequence[1];
+    g_validation_result.sequence[2] = g_sequence[2];
+    g_validation_result.sequence[3] = g_sequence[3];
+    g_validation_result.sequence[4] = g_sequence[4];
+
+    preemption_validation_emit(&g_validation_result);
 }
 
 static void validation_fail(uint32_t error)
