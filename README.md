@@ -1,4 +1,11 @@
-# 🫀 HardRT [[ExoSpaceLabs](https://github.com/ExoSpaceLabs)]
+<p align="center">
+  <img src="docs/images/HardRT_logo2.png" alt="HardRT logo" width="600">
+</p>
+
+<p align="center">
+  <strong>Minimal Real-Time Operating System</strong><br>
+  <a href="https://github.com/ExoSpaceLabs">ExoSpaceLabs</a>
+</p>
 
 **HardRT** is the heartbeat of small embedded systems.  
 A tiny, portable, modular real-time operating system written in C.  
