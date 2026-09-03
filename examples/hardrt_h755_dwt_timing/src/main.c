@@ -45,6 +45,7 @@ static volatile hrt_timing_result_t g_timing_result;
 
 static hrt_sem_t g_event_sem;
 static volatile uint32_t g_event_armed = 0;
+static volatile uint32_t g_scheduler_measure_armed = 0;
 
 #define STACK_WORDS 1024
 static uint32_t g_latency_stack[STACK_WORDS] __attribute__((aligned(8)));
@@ -56,6 +57,31 @@ extern uint32_t SystemCoreClock;
 static inline uint32_t cycles_now(void) {
     return DWT_CYCCNT;
 }
+
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+/*
+ * Diagnostic-only GNU ld wrapper enabled by CMake for this timing case.
+ * PendSV's reference to hrt__schedule is redirected here, while
+ * __real_hrt__schedule resolves to the unmodified HardRT implementation.
+ * The TIM2 ISR arms exactly the next scheduler call caused by its semaphore
+ * wake, so task-block and startup scheduling calls are not sampled.
+ */
+extern uintptr_t __real_hrt__schedule(uintptr_t old_sp);
+
+uintptr_t __wrap_hrt__schedule(uintptr_t old_sp) {
+    if (g_scheduler_measure_armed == 0u) {
+        return __real_hrt__schedule(old_sp);
+    }
+
+    const uint32_t start = cycles_now();
+    const uintptr_t next_sp = __real_hrt__schedule(old_sp);
+    const uint32_t end = cycles_now();
+
+    g_scheduler_measure_armed = 0u;
+    hrt_timing_stats_record(&g_timing_stats, end - start);
+    return next_sp;
+}
+#endif
 
 static void dwt_init(void) {
     DEMCR |= (1u << 24);
@@ -168,6 +194,8 @@ void TIM2_IRQHandler(void) {
 #if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_TO_TASK
     g_timing_start_cycles = cycles_now();
     g_event_armed = 1u;
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+    g_scheduler_measure_armed = 1u;
 #endif
 
     int should_switch = 0;
