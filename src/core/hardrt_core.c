@@ -43,13 +43,22 @@ volatile uint32_t dbg_make_ready_state;
 volatile uint32_t dbg_pend_from_core;
 #endif
 
-/* Ready queues per priority (store task indices). */
+/*
+ * Ready queues are intrusive task-ID FIFOs. Each task contributes one next-ID
+ * byte, while each priority owns only head/tail/count state. This keeps ready
+ * storage O(HARDRT_MAX_TASKS + HARDRT_MAX_PRIO) and removes ring-buffer modulo
+ * arithmetic from the scheduler hot path.
+ */
+#define HRT_RQ_NONE UINT8_MAX
+
 typedef struct {
-    uint8_t q[HARDRT_MAX_TASKS];
-    uint8_t head, tail, count;
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
 } prio_q_t;
 
 static prio_q_t g_rq[HARDRT_MAX_PRIO];
+static uint8_t g_rq_next[HARDRT_MAX_TASKS];
 
 _hrt_tcb_t *hrt__tcb(const int id) {
 #if HARDRT_DEBUG == 1
@@ -67,10 +76,11 @@ void hrt_port_yield_to_scheduler(void);
 static int rq_contains(const uint8_t p, const int id) {
     if (p >= HARDRT_MAX_PRIO) return 0;
     const prio_q_t *q = &g_rq[p];
-    uint8_t idx = q->head;
+    uint8_t current = q->head;
     for (uint8_t n = 0u; n < q->count; ++n) {
-        if ((int)q->q[idx] == id) return 1;
-        idx = (uint8_t)((idx + 1u) % HARDRT_MAX_TASKS);
+        if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) return 0;
+        if ((int)current == id) return 1;
+        current = g_rq_next[current];
     }
     return 0;
 }
@@ -124,8 +134,15 @@ static int rq_validate_push(const uint8_t p, const int id) {
 static void rq_push(const uint8_t p, const int id) {
     if (!rq_validate_push(p, id)) return;
     prio_q_t *q = &g_rq[p];
-    q->q[q->tail] = (uint8_t)id;
-    q->tail = (uint8_t)((q->tail + 1u) % HARDRT_MAX_TASKS);
+    const uint8_t task_id = (uint8_t)id;
+
+    g_rq_next[task_id] = HRT_RQ_NONE;
+    if (q->count == 0u) {
+        q->head = task_id;
+    } else {
+        g_rq_next[q->tail] = task_id;
+    }
+    q->tail = task_id;
     q->count++;
     g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
@@ -136,8 +153,11 @@ static void rq_push(const uint8_t p, const int id) {
 static void rq_push_front(const uint8_t p, const int id) {
     if (!rq_validate_push(p, id)) return;
     prio_q_t *q = &g_rq[p];
-    q->head = (uint8_t)((q->head + HARDRT_MAX_TASKS - 1u) % HARDRT_MAX_TASKS);
-    q->q[q->head] = (uint8_t)id;
+    const uint8_t task_id = (uint8_t)id;
+
+    g_rq_next[task_id] = q->head;
+    q->head = task_id;
+    if (q->count == 0u) q->tail = task_id;
     q->count++;
     g_ready_prio_mask |= (uint32_t)(1u << p);
 #if HARDRT_DEBUG == 1
@@ -161,21 +181,27 @@ static int rq_pop(const uint8_t p) {
         return -1;
     }
 
-    const int id = q->q[q->head];
+    const uint8_t task_id = q->head;
 #if HARDRT_DEBUG == 1
-    if (id < 0 || id >= HARDRT_MAX_TASKS) {
+    if (task_id == HRT_RQ_NONE || task_id >= HARDRT_MAX_TASKS) {
         dbg_tsk_q = (uint32_t)-2000;
         hrt_error(ERR_INVALID_ID_FROM_RQ);
         return -1;
     }
 #endif
-    q->head = (uint8_t)((q->head + 1u) % HARDRT_MAX_TASKS);
+
+    q->head = g_rq_next[task_id];
+    g_rq_next[task_id] = HRT_RQ_NONE;
     q->count--;
-    if (q->count == 0u) g_ready_prio_mask &= ~(uint32_t)(1u << p);
+    if (q->count == 0u) {
+        q->head = HRT_RQ_NONE;
+        q->tail = HRT_RQ_NONE;
+        g_ready_prio_mask &= ~(uint32_t)(1u << p);
+    }
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
-    return id;
+    return (int)task_id;
 }
 
 /* Helper to fetch/store SP for a given task id. */
@@ -192,7 +218,12 @@ void _set_sp(const int id, uint32_t *sp) {
 int hrt_init(const hrt_config_t *cfg) {
     memset(g_tcbs, 0, sizeof(g_tcbs));
     memset(g_rq, 0, sizeof(g_rq));
+    memset(g_rq_next, HRT_RQ_NONE, sizeof(g_rq_next));
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
+    for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
+        g_rq[p].head = HRT_RQ_NONE;
+        g_rq[p].tail = HRT_RQ_NONE;
+    }
 
     g_tick = 0;
     g_current = -1;
@@ -542,10 +573,11 @@ int hrt__test_ready_occurrences(int id) {
     int count = 0;
     for (int p = 0; p < HARDRT_MAX_PRIO; ++p) {
         const prio_q_t *q = &g_rq[p];
-        uint8_t idx = q->head;
+        uint8_t current = q->head;
         for (uint8_t n = 0u; n < q->count; ++n) {
-            if ((int)q->q[idx] == id) count++;
-            idx = (uint8_t)((idx + 1u) % HARDRT_MAX_TASKS);
+            if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) break;
+            if ((int)current == id) count++;
+            current = g_rq_next[current];
         }
     }
     return count;
