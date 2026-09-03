@@ -1,4 +1,6 @@
-# HardRT STM32H755 fixed-priority preemption validator (OpenOCD)
+# HardRT STM32H755 preemption validator (OpenOCD)
+# Firmware passes a fixed-layout qualification record in r0.
+
 set confirm off
 set pagination off
 set print pretty on
@@ -8,26 +10,62 @@ target extended-remote :3333
 monitor arm semihosting disable
 monitor reset halt
 
-break preemption_validation_stop
+break preemption_validation_emit
 commands
   silent
   printf "\n--- HardRT preemption validation stopped ---\n"
-  printf "case=%u pass=%u error=%u\n", (unsigned)g_validation_case, (unsigned)g_validation_pass, (unsigned)g_example_error
-  printf "irq_count=%u need_switch=%d high_runs=%u\n", (unsigned)g_irq_count, (int)g_need_switch, (unsigned)g_high_runs
-  printf "low_a_counter=%u low_b_counter=%u\n", (unsigned)g_low_a_counter, (unsigned)g_low_b_counter
-  printf "ticks: A-start=%u IRQ=%u high=%u A-resume=%u B-first=%u\n", \
-         (unsigned)g_a_start_tick, (unsigned)g_irq_tick, (unsigned)g_high_tick, \
-         (unsigned)g_a_resume_tick, (unsigned)g_b_first_tick
-  printf "RR remaining: expected=%u observed=%u\n", \
-         (unsigned)g_expected_remaining_ticks, (unsigned)g_observed_remaining_ticks
-  printf "sequence slots: [%u, %u, %u, %u, %u]\n", \
-         (unsigned)g_sequence[0], (unsigned)g_sequence[1], (unsigned)g_sequence[2], \
-         (unsigned)g_sequence[3], (unsigned)g_sequence[4]
 
-  if g_validation_pass == 1
+  # hrt_preemption_result_t is an explicit 20 x 32-bit word ABI:
+  #  +0  case_id
+  #  +4  passed
+  #  +8  error
+  # +12  irq_count
+  # +16  need_switch (i32)
+  # +20  high_runs
+  # +24  low_a_counter
+  # +28  low_b_counter
+  # +32  a_start_tick
+  # +36  irq_tick
+  # +40  high_tick
+  # +44  a_resume_tick
+  # +48  b_first_tick
+  # +52  expected_remaining_ticks
+  # +56  observed_remaining_ticks
+  # +60..+76 sequence[0..4]
+  set $base = (unsigned int)$r0
+  set $case = *(unsigned int*)($base + 0)
+  set $pass = *(unsigned int*)($base + 4)
+  set $error = *(unsigned int*)($base + 8)
+  set $irq_count = *(unsigned int*)($base + 12)
+  set $need_switch = *(int*)($base + 16)
+  set $high_runs = *(unsigned int*)($base + 20)
+  set $low_a = *(unsigned int*)($base + 24)
+  set $low_b = *(unsigned int*)($base + 28)
+  set $a_start = *(unsigned int*)($base + 32)
+  set $irq_tick = *(unsigned int*)($base + 36)
+  set $high_tick = *(unsigned int*)($base + 40)
+  set $a_resume = *(unsigned int*)($base + 44)
+  set $b_first = *(unsigned int*)($base + 48)
+  set $expected = *(unsigned int*)($base + 52)
+  set $observed = *(unsigned int*)($base + 56)
+  set $s0 = *(unsigned int*)($base + 60)
+  set $s1 = *(unsigned int*)($base + 64)
+  set $s2 = *(unsigned int*)($base + 68)
+  set $s3 = *(unsigned int*)($base + 72)
+  set $s4 = *(unsigned int*)($base + 76)
+
+  printf "case=%u pass=%u error=%u\n", $case, $pass, $error
+  printf "irq_count=%u need_switch=%d high_runs=%u\n", $irq_count, $need_switch, $high_runs
+  printf "low_a_counter=%u low_b_counter=%u\n", $low_a, $low_b
+  printf "ticks: A-start=%u IRQ=%u high=%u A-resume=%u B-first=%u\n", \
+         $a_start, $irq_tick, $high_tick, $a_resume, $b_first
+  printf "RR remaining: expected=%u observed=%u\n", $expected, $observed
+  printf "sequence slots: [%u, %u, %u, %u, %u]\n", $s0, $s1, $s2, $s3, $s4
+
+  if $pass == 1 && $error == 0
     printf "RESULT: PASS\n"
   else
-    printf "RESULT: FAIL (error=%u)\n", (unsigned)g_example_error
+    printf "RESULT: FAIL (error=%u)\n", $error
   end
 
   detach
