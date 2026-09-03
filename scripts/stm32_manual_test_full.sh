@@ -11,6 +11,8 @@ OPENOCD_SCRIPTS="/usr/share/openocd/scripts"
 GDB_BIN=""
 OPENOCD_PID=""
 FINALIZED=0
+CLEAN_BUILDS_MODE="ask"
+CLEANED_BUILD_DIRS=()
 
 NAMES=()
 STATUSES=()
@@ -31,11 +33,13 @@ Options:
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
   --openocd-scripts DIR   OpenOCD scripts directory.
+  --clean-builds          Remove known generated build/install directories before qualification.
+  --no-clean-builds       Never offer pre-run generated-build cleanup.
   -h, --help              Show help.
 
-The runner delegates build/flash work to the existing STM32 scripts, manages OpenOCD/GDB
-sessions itself, asks only for observations that require a human, and creates commit-ready
-qualification evidence under validation/stm32/.
+By default, when generated build/install directories are present in a non-clean workspace,
+the runner asks whether to remove those known generated directories before qualification.
+It never runs a broad `git clean` and never deletes arbitrary untracked files.
 USAGE
 }
 
@@ -47,6 +51,8 @@ while [[ $# -gt 0 ]]; do
     --observe-seconds) OBSERVE_SECONDS="$2"; shift 2 ;;
     --debug-timeout) DEBUG_TIMEOUT="$2"; shift 2 ;;
     --openocd-scripts) OPENOCD_SCRIPTS="$2"; shift 2 ;;
+    --clean-builds) CLEAN_BUILDS_MODE="yes"; shift ;;
+    --no-clean-builds) CLEAN_BUILDS_MODE="no"; shift ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
     *)
@@ -80,11 +86,73 @@ for f in \
 done
 
 cd "$ROOT_DIR"
+
+ask_default() { local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
+ask_optional() { local v; read -r -p "$1: " v; printf '%s' "$v"; }
+yes_no() {
+  local a
+  while true; do
+    read -r -p "$1 [y/n]: " a
+    case "${a,,}" in y|yes) return 0;; n|no) return 1;; *) echo "Please answer y or n.";; esac
+  done
+}
+
+collect_generated_dirs() {
+  local p
+  local -a found=()
+  shopt -s nullglob
+  for p in \
+    "$ROOT_DIR/build" \
+    "$ROOT_DIR"/build-* \
+    "$ROOT_DIR/install" \
+    "$ROOT_DIR"/install-* \
+    "$ROOT_DIR"/cmake-build-* \
+    "$ROOT_DIR/examples"/hardrt_h755_*/build-cortex_m \
+    "$ROOT_DIR/examples"/hardrt_h755_*/cmake-build-*; do
+    [[ -d "$p" ]] && found+=("$p")
+  done
+  shopt -u nullglob
+  printf '%s\n' "${found[@]}"
+}
+
+clean_generated_dirs() {
+  local p
+  local -a dirs=()
+  mapfile -t dirs < <(collect_generated_dirs)
+  ((${#dirs[@]})) || return 0
+  for p in "${dirs[@]}"; do
+    echo "[CLEAN] ${p#$ROOT_DIR/}"
+    rm -rf -- "$p"
+    CLEANED_BUILD_DIRS+=("${p#$ROOT_DIR/}")
+  done
+}
+
+INITIAL_STATUS="$(git status --porcelain --untracked-files=normal)"
+mapfile -t GENERATED_DIRS < <(collect_generated_dirs)
+if ((${#GENERATED_DIRS[@]})); then
+  do_clean=0
+  case "$CLEAN_BUILDS_MODE" in
+    yes) do_clean=1 ;;
+    no) do_clean=0 ;;
+    ask)
+      if [[ -n "$INITIAL_STATUS" ]]; then
+        echo "Generated build/install directories are present:"
+        printf '  %s\n' "${GENERATED_DIRS[@]#$ROOT_DIR/}"
+        yes_no "Remove these generated directories before qualification" && do_clean=1
+      fi
+      ;;
+  esac
+  (( do_clean == 0 )) || clean_generated_dirs
+fi
+
 SHA="$(git rev-parse HEAD)"
 SHORT_SHA="$(git rev-parse --short=8 HEAD)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-PRE_STATUS="$(git status --porcelain --untracked-files=normal)"
-WORKTREE=clean; [[ -n "$PRE_STATUS" ]] && WORKTREE=DIRTY
+TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
+UNTRACKED_STATUS="$(git ls-files --others --exclude-standard)"
+SOURCE_WORKTREE=clean; [[ -n "$TRACKED_STATUS" ]] && SOURCE_WORKTREE=DIRTY
+UNTRACKED_STATE=none; [[ -n "$UNTRACKED_STATUS" ]] && UNTRACKED_STATE=present
+
 STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
 RUN_DIR="$OUTPUT_BASE/${STAMP}_${SHORT_SHA}"
 RAW="$RUN_DIR/raw"
@@ -108,22 +176,15 @@ on_exit() {
 }
 trap on_exit EXIT INT TERM
 
-ask_default() { local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
-ask_optional() { local v; read -r -p "$1: " v; printf '%s' "$v"; }
-yes_no() {
-  local a
-  while true; do
-    read -r -p "$1 [y/n]: " a
-    case "${a,,}" in y|yes) return 0;; n|no) return 1;; *) echo "Please answer y or n.";; esac
-  done
-}
-
 TESTER="$(ask_default "Tester" "${USER:-unknown}")"
 BOARD="$(ask_default "Board" "NUCLEO-H755ZI-Q")"
 REVISION="$(ask_optional "MCU/board revision (optional)")"
-if [[ "$WORKTREE" == DIRTY ]]; then
-  echo "WARNING: worktree was dirty before qualification:"; printf '%s\n' "$PRE_STATUS"
-  yes_no "Continue and record a DIRTY qualification" || exit 1
+if [[ "$SOURCE_WORKTREE" == DIRTY ]]; then
+  echo "WARNING: tracked source files differ from HEAD:"; printf '%s\n' "$TRACKED_STATUS"
+  yes_no "Continue and record a tracked-source DIRTY qualification" || exit 1
+fi
+if [[ "$UNTRACKED_STATE" == present ]]; then
+  echo "Note: untracked workspace files remain and will be recorded, but they are not classified as tracked source modifications."
 fi
 
 first_line() { "$@" 2>&1 | head -n1 || true; }
@@ -146,7 +207,8 @@ cat > "$REPORT" <<EOF
 - Core under test: \`CM7\`
 - HardRT branch: \`$BRANCH\`
 - HardRT SHA: \`$SHA\`
-- HardRT pre-run worktree: **$WORKTREE**
+- HardRT tracked source state: **$SOURCE_WORKTREE**
+- HardRT untracked workspace files: **$UNTRACKED_STATE**
 - STM32CubeH7 root: \`$STM32CUBE_H7_ROOT\`
 - STM32CubeH7 SHA/state: \`$CUBE_SHA\` / \`$CUBE_STATE\`
 - ARM GCC: \`$(first_line arm-none-eabi-gcc --version)\`
@@ -161,8 +223,20 @@ OpenOCD/GDB sessions are managed by this runner; no additional terminal windows 
 
 EOF
 
-if [[ -n "$PRE_STATUS" ]]; then
-  printf '## Pre-run worktree changes\n\n```text\n%s\n```\n\n' "$PRE_STATUS" >> "$REPORT"
+if ((${#CLEANED_BUILD_DIRS[@]})); then
+  {
+    echo "## Pre-run generated build cleanup"; echo
+    echo 'The runner removed these known generated directories before qualification:'; echo
+    printf -- '- `%s`\n' "${CLEANED_BUILD_DIRS[@]}"
+    echo
+  } >> "$REPORT"
+fi
+
+if [[ -n "$TRACKED_STATUS" ]]; then
+  printf '## Tracked source changes\n\n```text\n%s\n```\n\n' "$TRACKED_STATUS" >> "$REPORT"
+fi
+if [[ -n "$UNTRACKED_STATUS" ]]; then
+  printf '## Untracked workspace files\n\n```text\n%s\n```\n\n' "$UNTRACKED_STATUS" >> "$REPORT"
 fi
 
 record() { NAMES+=("$1"); STATUSES+=("$2"); CRITERIA+=("$3"); EVIDENCE+=("$4"); NOTES+=("$5"); }
