@@ -11,9 +11,9 @@ Run these tests from the repository root on a NUCLEO-H755ZI-Q. The examples hold
 - A local STM32CubeH7 checkout. Set `STM32CUBE_H7_ROOT` when the default path is not valid.
 - A clean working tree built from the exact HardRT commit being qualified.
 
-All STM32 examples expose `g_example_error` for debugger inspection. A successful running example keeps it at `0`.
+Normal STM32 examples expose `g_example_error` for debugger inspection. A successful running example keeps it at `0`.
 
-Failure codes used by the examples:
+Common failure codes used by the normal examples:
 
 | Code | Meaning |
 |---:|---|
@@ -24,6 +24,8 @@ Failure codes used by the examples:
 | 4 | `hrt_start()` unexpectedly returned |
 
 A failure path executes `BKPT` and then remains in `WFI`, making the failure deterministic under a debugger.
+
+Hosted CI cross-builds every firmware listed here. Hardware PASS/FAIL remains a manual release-qualification step.
 
 ## C blinky
 
@@ -92,6 +94,119 @@ Use OpenOCD + GDB to inspect:
 
 PASS: all four counters increase at coherent relative rates for at least 10 seconds and no example error is reported.
 
+## Fixed-priority hardware preemption
+
+`examples/hardrt_h755_preemption` is a validation fixture, not a demonstration application. A TIM2 hardware interrupt wakes a blocked highest-priority task while a lower-priority task is executing a busy loop with no HardRT scheduling calls. This is the Cortex-M evidence that POSIX cannot provide.
+
+The firmware exports:
+
+- `g_validation_pass`, `g_example_error`, `g_validation_case`;
+- `g_irq_count`, `g_need_switch`, `g_high_runs`;
+- `g_low_a_counter`, `g_low_b_counter`;
+- `g_a_start_tick`, `g_irq_tick`, `g_high_tick`, `g_a_resume_tick`, `g_b_first_tick`;
+- `g_expected_remaining_ticks`, `g_observed_remaining_ticks`;
+- `g_sequence[5]`.
+
+Build and flash one case at a time.
+
+### Strict `HRT_SCHED_PRIORITY`
+
+```bash
+STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
+  ./scripts/build-lib-stm32h7xx-preemption.sh --case priority
+```
+
+Then:
+
+```bash
+openocd -s /usr/share/openocd/scripts \
+  -f scripts/openocd_h755.cfg \
+  -c "init; reset halt"
+```
+
+```bash
+gdb-multiarch -q \
+  examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf \
+  -batch -x scripts/gdb/preemption.dbg
+```
+
+Required behavior:
+
+1. high-priority task starts first and blocks on a semaphore;
+2. low-A starts and remains CPU-bound;
+3. TIM2 ISR wakes high and `need_switch` is asserted;
+4. PendSV runs high before Thread mode resumes low-A;
+5. high blocks again;
+6. the interrupted low-A resumes from its saved execution context.
+
+PASS requires:
+
+- `g_validation_pass == 1`;
+- `g_example_error == 0`;
+- `g_irq_count == 1`;
+- `g_need_switch == 1`;
+- `g_high_runs == 1`;
+- sequence slots begin `[1, 2, 3, 4]` = low-A, IRQ, high, resumed low-A.
+
+Error `20` specifically means low-A executed after the IRQ but before high ran, so fixed-priority preemption was not immediate at the earliest safe exception-return point.
+
+### `HRT_SCHED_PRIORITY_RR` retained quantum
+
+```bash
+STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
+  ./scripts/build-lib-stm32h7xx-preemption.sh --case priority_rr
+```
+
+Run the same OpenOCD/GDB procedure above.
+
+This case adds low-B at the same priority as low-A with a 20-tick RR quantum. TIM2 fires a few ticks into A's first quantum. Required sequence:
+
+```text
+low-A -> IRQ -> high -> low-A -> low-B
+```
+
+The high-priority interruption must not itself rotate A behind B. After high blocks, A must resume with its unused quantum. B may run only when A's retained quantum expires or A explicitly yields.
+
+The firmware derives the remaining quantum from the actual observed tick at which the IRQ arrived:
+
+```text
+expected_remaining = 20 - (irq_tick - a_start_tick)
+observed_remaining = b_first_tick - a_resume_tick
+```
+
+One tick of boundary tolerance is allowed.
+
+PASS requires:
+
+- `g_validation_pass == 1` and `g_example_error == 0`;
+- sequence `[1, 2, 3, 4, 5]`;
+- A resumes before B;
+- observed remaining quantum matches expected remaining quantum within one tick.
+
+**Current known implementation status:** issue #31 identifies that `hrt__schedule()` presently requeues an asynchronously interrupted READY task at the tail. Until #31 is corrected, this case is expected to expose `low-A -> high -> low-B` and stop with error `32`. The validator is intentionally committed before the fix so the defect has hardware-visible acceptance criteria rather than being silently designed away.
+
+Preemption validator error codes:
+
+| Code | Meaning |
+|---:|---|
+| 0 | validation passed / no error |
+| 1 | `hrt_init()` failed |
+| 2 | high task creation failed |
+| 3 | low-A creation failed |
+| 4 | low-B creation failed |
+| 5 | `hrt_start()` unexpectedly returned |
+| 10 | high semaphore take failed |
+| 11 | high task unexpectedly resumed after its long sleep |
+| 20 | low-A ran after IRQ before high task ran |
+| 21 | unexpected IRQ count |
+| 22 | ISR wake did not report `need_switch == 1` |
+| 23 | unexpected high-task run count |
+| 24 | IRQ occurred outside A's first RR quantum; fixture timing invalid |
+| 30 | low-B ran before the preemption IRQ; fixture timing invalid |
+| 31 | low-B ran after IRQ but before high task |
+| 32 | low-B ran before interrupted low-A resumed; priority-preemption queue-order failure |
+| 33 | low-A resumed, but its observed remaining quantum did not match the retained quantum |
+
 ## Isolated DWT timing fixture
 
 The timing firmware runs exactly one measurement case per image. Do not combine cases when collecting reference numbers.
@@ -150,19 +265,6 @@ gdb-multiarch -q \
 
 Record at minimum the HardRT commit SHA, timing case/profile, `SystemCoreClock`, sample count, timer PSC/ARR, toolchain version, board, date, and reported min/avg/max values.
 
-## Fixed-priority hardware preemption
-
-A dedicated Cortex-M preemption validation is required by issues #31 and #56 before v0.5.0 qualification. The test must show:
-
-1. a lower-priority task already running;
-2. an ISR making a higher-priority task READY;
-3. PendSV dispatching the higher-priority task at the earliest safe exception-return point, without waiting for another kernel tick;
-4. the higher-priority task blocking/completing;
-5. the interrupted lower-priority task resuming from its saved execution point;
-6. under `HRT_SCHED_PRIORITY_RR`, the lower-priority task retaining its unused quantum across that priority preemption.
-
-This case is not considered manually qualified until the dedicated firmware/trace is added and executed. POSIX can test ordering rules but cannot substitute for this Cortex-M interrupt-preemption evidence.
-
 ## Manual qualification record
 
 For a release candidate, record:
@@ -176,8 +278,9 @@ Tester:
 C blinky: PASS/FAIL
 C++ blinky: PASS/FAIL
 Counter demo: PASS/FAIL
+Priority preemption: PASS/FAIL + trace reference
+Priority+RR preemption/retained quantum: PASS/FAIL + trace reference
 DWT event_to_task: PASS/FAIL + result reference
 DWT sem_isr_ready: PASS/FAIL + result reference
-Priority preemption: PASS/FAIL + trace reference
 Notes:
 ```

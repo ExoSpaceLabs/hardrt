@@ -76,6 +76,12 @@ build_app hardrt_h755_blinky_cpp \
   "$ROOT_DIR/examples/hardrt_h755_blinky_cpp" "$BASE_INSTALL"
 build_app hardrt_h755_demo \
   "$ROOT_DIR/examples/hardrt_h755_demo" "$BASE_INSTALL"
+build_app hardrt_h755_preemption_priority \
+  "$ROOT_DIR/examples/hardrt_h755_preemption" "$BASE_INSTALL" \
+  -DHARDRT_PREEMPT_CASE=priority
+build_app hardrt_h755_preemption_priority_rr \
+  "$ROOT_DIR/examples/hardrt_h755_preemption" "$BASE_INSTALL" \
+  -DHARDRT_PREEMPT_CASE=priority_rr
 build_app hardrt_h755_dwt_event_to_task \
   "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" \
   -DHARDRT_TIMING_CASE=event_to_task \

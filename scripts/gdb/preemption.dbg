@@ -1,0 +1,37 @@
+# HardRT STM32H755 fixed-priority preemption validator (OpenOCD)
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break preemption_validation_stop
+commands
+  silent
+  printf "\n--- HardRT preemption validation stopped ---\n"
+  printf "case=%u pass=%u error=%u\n", (unsigned)g_validation_case, (unsigned)g_validation_pass, (unsigned)g_example_error
+  printf "irq_count=%u need_switch=%d high_runs=%u\n", (unsigned)g_irq_count, (int)g_need_switch, (unsigned)g_high_runs
+  printf "low_a_counter=%u low_b_counter=%u\n", (unsigned)g_low_a_counter, (unsigned)g_low_b_counter
+  printf "ticks: A-start=%u IRQ=%u high=%u A-resume=%u B-first=%u\n", \
+         (unsigned)g_a_start_tick, (unsigned)g_irq_tick, (unsigned)g_high_tick, \
+         (unsigned)g_a_resume_tick, (unsigned)g_b_first_tick
+  printf "RR remaining: expected=%u observed=%u\n", \
+         (unsigned)g_expected_remaining_ticks, (unsigned)g_observed_remaining_ticks
+  printf "sequence slots: [%u, %u, %u, %u, %u]\n", \
+         (unsigned)g_sequence[0], (unsigned)g_sequence[1], (unsigned)g_sequence[2], \
+         (unsigned)g_sequence[3], (unsigned)g_sequence[4]
+
+  if g_validation_pass == 1
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", (unsigned)g_example_error
+  end
+
+  detach
+  quit
+end
+
+continue
