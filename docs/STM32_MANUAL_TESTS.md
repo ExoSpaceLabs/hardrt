@@ -134,9 +134,11 @@ The board probe is a prerequisite, not a functional feature. After it passes, fu
 
 Timing measurements are deliberately not counted as functional contracts. Adding a new benchmark must not make the kernel appear to have acquired another functional feature.
 
-## Hardware benchmark suite
+## Hardware benchmark suite: 22 images
 
-Benchmark mode currently runs four DWT cases, one firmware image at a time:
+Benchmark mode currently runs 22 independent hardware images: four latency/switch benchmarks and an 18-point tick/sleeper scaling matrix.
+
+### Latency and switch benchmarks
 
 1. **`event_to_task`**
    - composite software ISR point to awakened task continuation;
@@ -158,9 +160,54 @@ Benchmark mode currently runs four DWT cases, one firmware image at a time:
    - uses the unmodified production `hrt__schedule()`;
    - substitutes a measurement-only PendSV handler in that benchmark image.
 
-The runner calls `scripts/build-lib-stm32h7xx-dwt-timing.sh` separately for each benchmark. That build helper selects the instrumentation required by the selected case. Instrumentation is therefore a property of the benchmark image, not of normal HardRT builds.
+The runner calls `scripts/build-lib-stm32h7xx-dwt-timing.sh` separately for each of these four images. Instrumentation is therefore a property of the benchmark image, not of normal HardRT builds.
 
-Future timing work, such as tick/sleeper scaling, belongs in this benchmark suite and should be added to `--only benchmark`, not to the functional count.
+### Tick/sleeper scaling matrix
+
+The current `hrt__tick_isr()` scans the configured TCB table every tick. To measure that cost instead of arguing about asymptotic notation in the abstract, benchmark mode rebuilds HardRT at application-task capacities:
+
+```text
+8, 16, 32
+```
+
+For each capacity it runs six workloads:
+
+| Scenario | Worker state / expiry pattern |
+|---|---|
+| `none` | all worker slots occupied by semaphore-blocked tasks; no sleepers |
+| `one_sleep` | one worker sleeps beyond the 10k-sample window; remaining workers block |
+| `all_sleep` | all workers sleep beyond the sample window |
+| `one_expiry` | one worker expires every tick and sleeps again for one tick |
+| `simultaneous` | every worker expires on the same tick and sleeps again for one tick |
+| `staggered` | worker `i` sleeps for `i+1` ticks, distributing expiries |
+
+This produces **18 separate measurements**. Each image reports min/avg/max for:
+
+```c
+hrt_tick_from_isr();
+```
+
+The measurement points are application-side DWT reads immediately before and after that production API call. These images use:
+
+```text
+HARDRT_TIMING_PROFILE=none
+```
+
+so the tick scaling result contains no kernel timing hooks and no replacement tick implementation.
+
+The task capacity is also a real HardRT build configuration, not merely a runtime worker count. `HARDRT_CFG_MAX_TASKS=8`, `16`, or `32` is passed when the library is built, then the benchmark fills all application slots with one setup task and the remaining worker tasks. The result therefore measures the actual configured O(`HARDRT_MAX_TASKS`) bound.
+
+`worker_wakes` is included in the debugger result as a workload sanity check: non-expiry scenarios must report zero wake completions during the sample window, while expiry scenarios must report non-zero wake activity.
+
+The matrix is deliberately broad enough to distinguish:
+
+- pure scan scaling with no sleepers;
+- extra branch/state cost from sleeping TCBs;
+- cost of one wake;
+- cost of many simultaneous wakes;
+- more representative staggered expiry behavior.
+
+The measurements decide whether the simple TCB scan remains acceptable for the qualified task bound or whether #57 needs a sorted wake list/delta queue or another static sleeper structure.
 
 ### Scheduler/PendSV benchmark output
 
@@ -284,9 +331,10 @@ The runner prints and writes:
 - STM32CubeH7 SHA/state;
 - board probe result;
 - functional `N/9 PASS`, failure and not-run counts;
-- benchmark `N/M PASS`, failure and not-run counts;
+- benchmark `N/22 PASS`, failure and not-run counts;
 - benchmark timing min/avg/max;
 - scheduler/PendSV breakdown;
+- tick/sleeper matrix scenario/capacity/wake metadata;
 - PRIORITY_RR trace/quantum evidence;
 - raw build/OpenOCD/GDB log locations.
 
