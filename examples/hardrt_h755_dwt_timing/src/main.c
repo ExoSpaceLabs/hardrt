@@ -49,7 +49,8 @@ static void stats_init(volatile hrt_timing_stats_t *s) {
 
 __attribute__((noinline, used))
 void timing_target_reached(void) {
-    __asm volatile("bkpt 0");
+    /* GDB owns the breakpoint at function entry. Keeping the result stop free
+       of a firmware BKPT avoids the trap racing the scripted breakpoint. */
     for (;;) __asm volatile("wfi");
 }
 
