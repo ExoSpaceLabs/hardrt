@@ -1,8 +1,8 @@
 # Documentation Summary
 
-This documentation set describes the HardRT v0.4.0 implementation currently present on the `develop` branch.
+This documentation set covers the released v0.4.0 surface and the implementation currently present on `develop` for the v0.5 line. Pages that describe behavior changed on `develop` state that explicitly rather than presenting development semantics as if they shipped in v0.4.0.
 
-The roadmap and GitHub issues may describe later work. A planned API or behavior is not part of the current public contract until its implementation and tests are merged and the corresponding user documentation is updated.
+The roadmap and GitHub issues may describe later work. A planned API or behavior is not part of the current development contract until its implementation and tests are merged and the corresponding user documentation is updated.
 
 ## Main documents
 
@@ -13,6 +13,7 @@ The roadmap and GitHub issues may describe later work. A planned API or behavior
 | [HARD_REAL_TIME.md](HARD_REAL_TIME.md) | Hard real-time qualification direction and evidence requirements |
 | [BUILD.md](BUILD.md) | Current CMake prerequisites, options, build, and install behavior |
 | [API_C.md](API_C.md) | Current C API behavior |
+| [SCHEDULING.md](SCHEDULING.md) | Current `develop` scheduler, preemption, RR-retention, and `need_switch` contract |
 | [CPP.md](CPP.md) | Existing C++17 wrapper types and methods |
 | [PORTING.md](PORTING.md) | Hooks and execution model used by the current ports |
 | [TICK_SOURCE.md](TICK_SOURCE.md) | Internal versus external tick ownership |
@@ -33,6 +34,8 @@ The roadmap and GitHub issues may describe later work. A planned API or behavior
 - fixed-size copy-based message queues.
 
 The current release does not expose event flags, task notifications, IPC timeouts, or mutex priority inheritance.
+
+On `develop`, semaphore, queue, mutex, sleep-expiry, and ISR wake paths use the same scheduler-aware READY transition rule. See [SCHEDULING.md](SCHEDULING.md) for the exact contract.
 
 ## Accuracy rule
 
