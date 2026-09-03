@@ -2,6 +2,9 @@
 #include "test_common.h"
 #include "hardrt_time.h"
 
+#include <pthread.h>
+#include <sched.h>
+
 #ifdef HARDRT_TEST_HOOKS
 void hrt__test_block_sigalrm(void);
 void hrt__test_unblock_sigalrm(void);
@@ -88,6 +91,57 @@ static void test_external_tick_wakes_sleepers_on_manual_ticks(void) {
     T_ASSERT_EQ_INT(1, g_sleeper_woke, "sleeper woke after manual ticks");
 }
 
+/* Regression for a subtle idle wake path: when the only task sleeps, POSIX
+ * keeps its id as the recorded current task while the scheduler idles. The
+ * external tick must request scheduling before changing that sleeping task to
+ * READY; otherwise the task is compared with itself as an equal-priority READY
+ * task and no scheduling opportunity is generated. */
+static volatile int g_selfwake_woke = 0;
+
+static void selfwake_sleeper_task(void *arg) {
+    (void)arg;
+    hrt_sleep(5);
+    g_selfwake_woke = 1;
+    hrt__test_stop_scheduler();
+    hrt_yield();
+}
+
+static void *selfwake_tick_thread(void *arg) {
+    (void)arg;
+    while (hrt__test_idle_counter_value() == 0u) sched_yield();
+    for (int i = 0; i < 5; ++i) hrt_tick_from_isr();
+    return NULL;
+}
+
+static void test_external_tick_wakes_recorded_sleeping_current(void) {
+    hrt__test_reset_scheduler_state();
+    hrt__test_idle_counter_reset();
+    g_selfwake_woke = 0;
+
+    hrt_config_t cfg = {0};
+    cfg.tick_hz = 1000;
+    cfg.policy = HRT_SCHED_PRIORITY_RR;
+    cfg.default_slice = 5;
+    cfg.tick_src = HRT_TICK_EXTERNAL;
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init external tick for sleeping-current wake");
+
+    static uint32_t stack[1024];
+    hrt_task_attr_t attr = { .priority = HRT_PRIO0, .timeslice = 0 };
+    T_ASSERT_TRUE(hrt_create_task(selfwake_sleeper_task, NULL, stack,
+                                  sizeof(stack) / sizeof(stack[0]), &attr) >= 0,
+                  "created sole external-tick sleeper");
+
+    pthread_t tick_thread;
+    T_ASSERT_EQ_INT(0, pthread_create(&tick_thread, NULL, selfwake_tick_thread, NULL),
+                    "created external tick thread");
+
+    hrt_start();
+    (void)pthread_join(tick_thread, NULL);
+
+    T_ASSERT_EQ_INT(1, g_selfwake_woke,
+                    "recorded sleeping current is scheduled when external tick wakes it");
+}
+
 static void test_systick_mode_ignores_manual_tick_from_isr(void) {
     /* In SYSTICK mode, POSIX port runs SIGALRM; to assert manual calls are ignored,
        block SIGALRM around the calls and check the tick doesn't advance from manual calls. */
@@ -117,6 +171,7 @@ static const test_case_t CASES[] = {
     {"tick_from_isr before init is safe no-op", test_tick_from_isr_before_init_safe_noop},
     {"External tick: no auto-tick; manual calls advance", test_external_tick_advances_only_on_manual_calls},
     {"External tick: sleepers wake after manual ticks", test_external_tick_wakes_sleepers_on_manual_ticks},
+    {"External tick: recorded sleeping current wakes from idle", test_external_tick_wakes_recorded_sleeping_current},
     {"SYSTICK mode: manual tick_from_isr has no effect", test_systick_mode_ignores_manual_tick_from_isr},
 };
 
