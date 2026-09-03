@@ -167,6 +167,10 @@ void hrt_port_crit_enter(void) {
 }
 
 void hrt_port_crit_exit(void) {
+    if (g_crit_depth <= 0) {
+        g_crit_depth = 0;
+        return;
+    }
     if (--g_crit_depth == 0) sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);
 }
 
