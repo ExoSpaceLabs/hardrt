@@ -1,4 +1,5 @@
 #include <hardrt.h>
+#include <hardrt_port.h>
 
 #include <stdint.h>
 
@@ -26,6 +27,8 @@ int main(void) {
 
     (void)cfg;
     (void)attr;
+    (void)HARDRT_PORT_ID;
+    (void)HARDRT_PORT_STRING;
     (void)hrt_version_string();
     (void)hrt_version_u32();
     (void)hrt_port_name();
