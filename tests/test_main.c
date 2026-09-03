@@ -26,6 +26,8 @@ int main(void) {
     append_group(g, n, registry, &total);
     g = get_tests_rr_sleep(&n);
     append_group(g, n, registry, &total);
+    g = get_tests_sleep_queue(&n);
+    append_group(g, n, registry, &total);
     g = get_tests_priority(&n);
     append_group(g, n, registry, &total);
     g = get_tests_preemption_contract(&n);
