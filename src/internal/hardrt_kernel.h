@@ -49,6 +49,7 @@ void hrt__requeue_noreset(int id);
 void hrt__requeue_front_noreset(int id);
 void hrt__prepare_current_for_reschedule(void);
 int hrt__should_preempt_after_wake(int woken_id);
+int hrt__sleep_tick(void);
 int hrt__pick_next_ready(void);
 void hrt__on_scheduler_entry(void);
 
