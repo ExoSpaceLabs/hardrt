@@ -1,62 +1,41 @@
-# STM32H755 Qualification Evidence
+# STM32H755 hardware qualification evidence
 
-Physical-board qualification has two evidence classes:
-
-1. **Development runs** are generated under `.qualification/stm32/` and are gitignored. They may contain any number of local experiments, regressions, and performance checkpoints.
-2. **Release evidence** is stored under `validation/stm32/releases/vX.Y.Z/`. The repository keeps exactly one promoted qualification package per release.
-
-Do not commit timestamped development runs.
-
-## Development run
-
-Use the complete wrapper rather than the legacy base runner directly:
+Use one manual entry point for physical-board validation:
 
 ```bash
-./scripts/stm32_qualification.sh \
-  /path/to/STM32CubeH7 \
-  --clean-builds
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The wrapper writes a timestamped local directory under `.qualification/stm32/`, runs the base matrix plus the extended Cortex-M cases, and appends `Full matrix overall: PASS/FAIL` to the report.
+The script runs the complete 13-case NUCLEO-H755ZI-Q matrix, prints a case-by-case summary plus DWT timing statistics, and writes development evidence under the gitignored local directory:
 
-For LED validation the human criterion is deliberately qualitative: both LEDs must visibly toggle and the configured relative rate must be obvious, for example one is roughly twice as fast. The tester is **not** expected to distinguish exact millisecond periods by eye. Automated counters and DWT measurements provide the quantitative evidence.
-
-## Release promotion
-
-Once the exact release-candidate SHA has a complete PASS run:
-
-```bash
-./scripts/promote_stm32_qualification.sh \
-  .qualification/stm32/<run-id> \
-  v0.5.0
+```text
+.qualification/stm32/<UTC>_<short-sha>/
 ```
 
-Promotion refuses:
+Development runs are not committed.
 
-- an incomplete or failing full hardware matrix;
-- tracked source modifications;
-- a dirty or unrecorded STM32CubeH7 checkout;
-- a run whose recorded HardRT SHA differs from current HEAD;
-- a second package for the same release unless `--replace` is explicitly supplied.
+For a release candidate, run the same script from the exact release SHA with a clean HardRT source tree and clean/pinned STM32CubeH7 checkout. After reviewing a full `13/13 PASS`, manually copy or move that single selected run into:
 
-The destination is exactly `validation/stm32/releases/vX.Y.Z/`, preventing accumulation of timestamped development reports in the repository.
+```text
+validation/stm32/releases/vX.Y.Z/
+```
 
-## Current hardware matrix
+Keep exactly one committed hardware qualification package per release. No separate promotion script is required.
 
-The full wrapper currently executes **13 cases**:
+## Hardware matrix
 
-1. board/OpenOCD connectivity;
-2. C task/blinky integration;
-3. C++ task/blinky integration;
-4. scheduler counter/task-lifecycle demo;
-5. DWT `event_to_task` timing;
-6. DWT `sem_isr_ready` timing;
-7. DWT `ready_to_task` timing;
-8. fixed-priority ISR preemption;
-9. `PRIORITY_RR` queue precedence and retained quantum;
-10. semaphore counting/saturation plus real-ISR wake/preemption;
-11. queue FIFO/full/empty behavior, ISR send -> blocked receiver, and ISR receive -> blocked sender with payload checks;
-12. mutex ownership, blocking, direct handoff, and priority-preempting unlock;
-13. external tick integration using periodic TIM2 interrupts to drive `hrt_tick_from_isr()`, wake sleeping work, and preempt a lower-priority task while SysTick remains disabled.
+1. board/OpenOCD probe
+2. C blinky/task integration
+3. C++ blinky/task integration
+4. scheduler counter demo
+5. DWT `event_to_task`
+6. DWT `sem_isr_ready`
+7. DWT `ready_to_task`
+8. fixed-priority ISR preemption
+9. `PRIORITY_RR` retained-quantum/queue-precedence validation
+10. semaphore hardware contract
+11. queue hardware contract
+12. mutex hardware contract
+13. external TIM2-driven tick contract
 
-Hardware coverage should grow when a feature has Cortex-M-specific timing, interrupt, critical-section, or context-switch behavior. Pure data/argument edge cases stay primarily in the broader hosted suite unless the port can materially change their behavior.
+LED observations are qualitative. The tester confirms both LEDs toggle and the configured relative rate difference is clearly visible; exact millisecond timing is verified through automated counters/timing fixtures rather than eyesight.

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STM32CUBE_H7_ROOT=""
-OUTPUT_BASE="$ROOT_DIR/validation/stm32"
+OUTPUT_BASE="$ROOT_DIR/.qualification/stm32"
 TIMING_SAMPLES=10000
 OBSERVE_SECONDS=10
 DEBUG_TIMEOUT=90
@@ -26,9 +26,14 @@ Usage:
   scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 [options]
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
+Runs the complete 13-case NUCLEO-H755ZI-Q hardware qualification matrix.
+Development evidence is written under gitignored .qualification/stm32/.
+For a release, manually copy/move the selected final passing run to:
+  validation/stm32/releases/vX.Y.Z/
+
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
-  --output-dir DIR        Evidence root (default: validation/stm32).
+  --output-dir DIR        Evidence root (default: .qualification/stm32).
   --timing-samples N      Samples per DWT case (default: 10000).
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
@@ -36,10 +41,6 @@ Options:
   --clean-builds          Remove known generated build/install directories before qualification.
   --no-clean-builds       Never offer pre-run generated-build cleanup.
   -h, --help              Show help.
-
-By default, when generated build/install directories are present in a non-clean workspace,
-the runner asks whether to remove those known generated directories before qualification.
-It never runs a broad `git clean` and never deletes arbitrary untracked files.
 USAGE
 }
 
@@ -63,9 +64,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$STM32CUBE_H7_ROOT" ]] || { usage >&2; exit 2; }
-STM32CUBE_H7_ROOT="$(cd "$STM32CUBE_H7_ROOT" 2>/dev/null && pwd)" || {
-  echo "Invalid STM32CubeH7 root" >&2; exit 2;
-}
+STM32CUBE_H7_ROOT="$(cd "$STM32CUBE_H7_ROOT" 2>/dev/null && pwd)" || { echo "Invalid STM32CubeH7 root" >&2; exit 2; }
+export STM32CUBE_H7_ROOT
 
 for n in "$TIMING_SAMPLES" "$OBSERVE_SECONDS" "$DEBUG_TIMEOUT"; do
   [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) || { echo "Numeric options must be > 0" >&2; exit 2; }
@@ -102,10 +102,8 @@ collect_generated_dirs() {
   local -a found=()
   shopt -s nullglob
   for p in \
-    "$ROOT_DIR/build" \
-    "$ROOT_DIR"/build-* \
-    "$ROOT_DIR/install" \
-    "$ROOT_DIR"/install-* \
+    "$ROOT_DIR/build" "$ROOT_DIR"/build-* \
+    "$ROOT_DIR/install" "$ROOT_DIR"/install-* \
     "$ROOT_DIR"/cmake-build-* \
     "$ROOT_DIR/examples"/hardrt_h755_*/build-cortex_m \
     "$ROOT_DIR/examples"/hardrt_h755_*/cmake-build-*; do
@@ -148,11 +146,9 @@ fi
 SHA="$(git rev-parse HEAD)"
 SHORT_SHA="$(git rev-parse --short=8 HEAD)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-TRACKED_STATUS="$(git status --porcelain --untracked-files=no -- . ':(exclude,glob)validation/stm32/*/**')"
-VALIDATION_STATUS="$(git status --porcelain --untracked-files=no -- ':(glob)validation/stm32/*/**')"
+TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
 UNTRACKED_STATUS="$(git ls-files --others --exclude-standard)"
 SOURCE_WORKTREE=clean; [[ -n "$TRACKED_STATUS" ]] && SOURCE_WORKTREE=DIRTY
-VALIDATION_WORKTREE=clean; [[ -n "$VALIDATION_STATUS" ]] && VALIDATION_WORKTREE=DIRTY
 UNTRACKED_STATE=none; [[ -n "$UNTRACKED_STATUS" ]] && UNTRACKED_STATE=present
 
 STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
@@ -185,11 +181,8 @@ if [[ "$SOURCE_WORKTREE" == DIRTY ]]; then
   echo "WARNING: tracked source files differ from HEAD:"; printf '%s\n' "$TRACKED_STATUS"
   yes_no "Continue and record a tracked-source DIRTY qualification" || exit 1
 fi
-if [[ "$VALIDATION_WORKTREE" == DIRTY ]]; then
-  echo "Note: tracked qualification evidence differs from HEAD; this is recorded separately and does not mark the HardRT source state dirty."
-fi
 if [[ "$UNTRACKED_STATE" == present ]]; then
-  echo "Note: untracked workspace files remain and will be recorded, but they are not classified as tracked source modifications."
+  echo "Note: untracked workspace files are recorded but do not mark tracked source dirty."
 fi
 
 first_line() { "$@" 2>&1 | head -n1 || true; }
@@ -201,7 +194,7 @@ if git -C "$STM32CUBE_H7_ROOT" rev-parse HEAD >/dev/null 2>&1; then
 fi
 
 cat > "$REPORT" <<EOF
-# HardRT STM32H755 Qualification Report
+# HardRT STM32H755 Hardware Qualification Report
 
 - Run ID: \`${STAMP}_${SHORT_SHA}\`
 - UTC start: \`$(date -u --iso-8601=seconds)\`
@@ -213,7 +206,6 @@ cat > "$REPORT" <<EOF
 - HardRT branch: \`$BRANCH\`
 - HardRT SHA: \`$SHA\`
 - HardRT tracked source state: **$SOURCE_WORKTREE**
-- Tracked qualification evidence state: **$VALIDATION_WORKTREE**
 - HardRT untracked workspace files: **$UNTRACKED_STATE**
 - STM32CubeH7 root: \`$STM32CUBE_H7_ROOT\`
 - STM32CubeH7 SHA/state: \`$CUBE_SHA\` / \`$CUBE_STATE\`
@@ -224,6 +216,7 @@ cat > "$REPORT" <<EOF
 - Host: \`$(uname -a)\`
 - Timing samples per case: \`$TIMING_SAMPLES\`
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
+- Matrix size: **13 cases**
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
 
@@ -232,21 +225,12 @@ EOF
 if ((${#CLEANED_BUILD_DIRS[@]})); then
   {
     echo "## Pre-run generated build cleanup"; echo
-    echo 'The runner removed these known generated directories before qualification:'; echo
     printf -- '- `%s`\n' "${CLEANED_BUILD_DIRS[@]}"
     echo
   } >> "$REPORT"
 fi
-
-if [[ -n "$TRACKED_STATUS" ]]; then
-  printf '## Tracked source changes\n\n```text\n%s\n```\n\n' "$TRACKED_STATUS" >> "$REPORT"
-fi
-if [[ -n "$VALIDATION_STATUS" ]]; then
-  printf '## Tracked qualification evidence changes\n\n```text\n%s\n```\n\n' "$VALIDATION_STATUS" >> "$REPORT"
-fi
-if [[ -n "$UNTRACKED_STATUS" ]]; then
-  printf '## Untracked workspace files\n\n```text\n%s\n```\n\n' "$UNTRACKED_STATUS" >> "$REPORT"
-fi
+if [[ -n "$TRACKED_STATUS" ]]; then printf '## Tracked source changes\n\n```text\n%s\n```\n\n' "$TRACKED_STATUS" >> "$REPORT"; fi
+if [[ -n "$UNTRACKED_STATUS" ]]; then printf '## Untracked workspace files\n\n```text\n%s\n```\n\n' "$UNTRACKED_STATUS" >> "$REPORT"; fi
 
 record() { NAMES+=("$1"); STATUSES+=("$2"); CRITERIA+=("$3"); EVIDENCE+=("$4"); NOTES+=("$5"); }
 
@@ -281,9 +265,7 @@ run_gdb() {
   return "$rc"
 }
 
-reset_run() {
-  run_logged "$1" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; reset run; shutdown"
-}
+reset_run() { run_logged "$1" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; reset run; shutdown"; }
 
 progress_probe() {
   local elf="$1" prefix="$2" exits="$3"
@@ -352,14 +334,16 @@ GDB
 visual_blinky() {
   local title="$1" script="$2" elf="$3" expected="$4" prefix="$5"
   local status=PASS notes="" blog="$RAW/${prefix}_build_flash.log"
-  local criterion="Build/flash succeeds; g_example_error stays 0; both task counters increase; $expected is visibly observed for at least ${OBSERVE_SECONDS}s."
+  local criterion="Build/flash succeeds; g_example_error stays 0; both task counters increase; both LEDs visibly toggle and the configured relative rate difference is clearly observable for at least ${OBSERVE_SECONDS}s."
   echo; echo "========== $title =========="
   if ! run_logged "$blog" "$script"; then status=FAIL; notes="Build/flash failed."
   elif ! progress_probe "$elf" "$prefix" no; then status=FAIL; notes="Automated counter/error probe failed."
   elif ! reset_run "$RAW/${prefix}_reset_run.log"; then status=FAIL; notes="Could not run target for visual observation."
   else
-    echo "$expected"; echo "Observe for ${OBSERVE_SECONDS}s..."; sleep "$OBSERVE_SECONDS"
-    if ! yes_no "Did the LEDs match the expected rates"; then
+    echo "$expected"
+    echo "Human acceptance is qualitative: both LEDs toggle and the relative speed is obvious."
+    echo "Observe for ${OBSERVE_SECONDS}s..."; sleep "$OBSERVE_SECONDS"
+    if ! yes_no "Did both LEDs toggle with the expected relative speed"; then
       status=FAIL; notes="User rejected visual criterion. $(ask_optional "Optional observation note")"
     fi
   fi
@@ -381,7 +365,7 @@ timing_case() {
   local case="$1" title="$2" prefix="timing_$1" status=PASS notes=""
   local elf="$ROOT_DIR/examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf"
   local glog="$RAW/${prefix}_gdb.log"
-  local criterion="Build/flash succeeds; timing_target_reached is observed; no kernel/example error; count equals $TIMING_SAMPLES; min <= avg <= max; SystemCoreClock and TIM2 PSC/ARR are recorded."
+  local criterion="Build/flash succeeds; target sample count is reached; no kernel/example error; min <= avg <= max."
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" --case "$case" --samples "$TIMING_SAMPLES"; then
     status=FAIL; notes="Build/flash failed."
@@ -406,9 +390,9 @@ preemption_case() {
   local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
   local glog="$RAW/${prefix}_gdb.log" criterion
   if [[ "$case" == priority ]]; then
-    criterion="ISR wake dispatches the higher-priority task before interrupted low-priority Thread mode continues; validator reports RESULT: PASS."
+    criterion="ISR wake dispatches the higher-priority task before interrupted lower-priority Thread mode continues."
   else
-    criterion="Trace is low-A -> high -> low-A -> low-B and low-A retains unused RR quantum; validator reports RESULT: PASS."
+    criterion="Trace is low-A -> high -> low-A -> low-B and low-A retains unused RR quantum."
   fi
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
@@ -419,25 +403,63 @@ preemption_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+ipc_case() {
+  local case="$1" title="$2" prefix="ipc_$case" status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_ipc_validation/build-cortex_m/hardrt_h755_ipc_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log" criterion
+  case "$case" in
+    semaphore) criterion="Counting/saturation checks pass; real TIM2 ISR wakes a blocked higher-priority waiter with correct need_switch." ;;
+    queue) criterion="FIFO/full/empty checks pass; ISR send->blocked receiver and ISR receive->blocked sender preserve payload and priority handoff." ;;
+    mutex) criterion="Ownership, blocking, direct handoff and immediate higher-priority execution after unlock are correct." ;;
+  esac
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/ipc_validation.dbg" "$prefix"; then status=FAIL; notes="IPC GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(case=|irq_count=|need_switch|observed|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+external_tick_case() {
+  local prefix=external_tick status=PASS notes=""
+  local title="External tick hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_external_tick/build-cortex_m/hardrt_h755_external_tick.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="SysTick stays disabled; periodic TIM2 ISR drives hrt_tick_from_isr(); sleeping high-priority work wakes at the requested tick count and preempts lower-priority work."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/external_tick_validation.dbg" "$prefix"; then status=FAIL; notes="External-tick GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(case=|irq_count=|tick|wake|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 PROBE="$RAW/00_probe.log"
 echo; echo "Checking ST-Link/OpenOCD target connection..."
 if ! run_logged "$PROBE" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; targets; shutdown"; then
   record "Board probe" FAIL "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" "Probe failed; remaining tests skipped."
 else
   record "Board probe" PASS "OpenOCD connects to STM32H755 before qualification." "raw/00_probe.log" ""
-  export STM32CUBE_H7_ROOT
-  visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 toggles every 250 ms and LD2/PE1 every 500 ms" c_blinky
-  visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 toggles every 100 ms and LD2/PE1 every 250 ms" cpp_blinky
+  visual_blinky "C blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" "$ROOT_DIR/examples/hardrt_h755_blinky/build-cortex_m/hardrt_h755_blinky.elf" "LD1/PB0 should be visibly about 2x faster than LD2/PE1 (250 ms vs 500 ms configured)." c_blinky
+  visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 should be clearly faster than LD2/PE1 (100 ms vs 250 ms configured)." cpp_blinky
   counter_demo
   timing_case event_to_task "DWT event_to_task timing"
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
   timing_case ready_to_task "DWT ready_to_task timing"
   preemption_case priority "Fixed-priority hardware preemption"
   preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
+  ipc_case semaphore "Semaphore hardware contract"
+  ipc_case queue "Queue hardware contract"
+  ipc_case mutex "Mutex hardware contract"
+  external_tick_case
 fi
 
 PASS=0; FAIL=0
 for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); done
+NOT_RUN=$((13 - PASS - FAIL)); (( NOT_RUN < 0 )) && NOT_RUN=0
+
 {
   echo "## Test results"; echo
   echo "| Test | Result | PASS criterion | Evidence | Notes |"
@@ -447,8 +469,10 @@ for s in "${STATUSES[@]}"; do [[ "$s" == PASS ]] && ((PASS+=1)) || ((FAIL+=1)); 
     printf '| %s | **%s** | %s | `%s` | %s |\n' "$n" "${STATUSES[$i]}" "$c" "$e" "${note:- }"
   done
   echo; echo "## Qualification verdict"; echo
-  echo "- Passed: **$PASS**"; echo "- Failed: **$FAIL**"
-  (( FAIL == 0 )) && echo "- Overall: **PASS**" || echo "- Overall: **FAIL**"
+  echo "- Passed: **$PASS / 13**"; echo "- Failed: **$FAIL**"; echo "- Not run: **$NOT_RUN**"
+  if (( FAIL == 0 && NOT_RUN == 0 )); then echo "- Overall: **PASS**"
+  elif (( FAIL > 0 )); then echo "- Overall: **FAIL**"
+  else echo "- Overall: **PARTIAL**"; fi
   echo; echo "## Tester notes"; echo
 } >> "$REPORT"
 
@@ -457,11 +481,50 @@ FINAL_NOTES="$(ask_optional "Final qualification notes (optional)")"
 printf '\n## Completion\n\n- UTC end: `%s`\n- Local end: `%s`\n- Runner: `scripts/stm32_manual_test_full.sh`\n' "$(date -u --iso-8601=seconds)" "$(date --iso-8601=seconds)" >> "$REPORT"
 FINALIZED=1
 
-echo; echo "=============================================="
-(( FAIL == 0 )) && echo "STM32 qualification result: PASS" || echo "STM32 qualification result: FAIL ($FAIL failed case(s))"
-echo "Report: $REPORT"
-echo "Raw evidence: $RAW"
-echo "Commit the whole run directory when using it as release qualification evidence."
-echo "=============================================="
+echo
+echo "============================================================"
+echo "HardRT STM32 hardware qualification summary"
+echo "============================================================"
+echo "HardRT SHA : $SHA"
+echo "Cube SHA   : $CUBE_SHA ($CUBE_STATE)"
+printf 'Cases      : %d/13 PASS, %d FAIL, %d NOT RUN\n' "$PASS" "$FAIL" "$NOT_RUN"
+echo
+printf '%-44s %s\n' "CASE" "RESULT"
+printf '%-44s %s\n' "--------------------------------------------" "------"
+for i in "${!NAMES[@]}"; do printf '%-44s %s\n' "${NAMES[$i]}" "${STATUSES[$i]}"; done
+if (( NOT_RUN > 0 )); then printf '%-44s %s\n' "remaining matrix cases" "$NOT_RUN NOT RUN"; fi
 
-(( FAIL == 0 ))
+echo
+ echo "Timing (cycles, min / avg / max):"
+for i in "${!NAMES[@]}"; do
+  case "${NAMES[$i]}" in
+    "DWT "*" timing")
+      min="$(sed -n 's/.*min=\([0-9][0-9]*\) cycles.*/\1/p' <<< "${NOTES[$i]}")"
+      avg="$(sed -n 's/.*avg=\([0-9][0-9]*\) cycles.*/\1/p' <<< "${NOTES[$i]}")"
+      max="$(sed -n 's/.*max=\([0-9][0-9]*\) cycles.*/\1/p' <<< "${NOTES[$i]}")"
+      label="${NAMES[$i]#DWT }"; label="${label% timing}"
+      [[ -n "$min" && -n "$avg" && -n "$max" ]] && printf '  %-24s %s / %s / %s\n' "$label" "$min" "$avg" "$max"
+      ;;
+  esac
+done
+
+echo
+for i in "${!NAMES[@]}"; do
+  if [[ "${NAMES[$i]}" == "PRIORITY_RR retained-quantum preemption" ]]; then
+    rr="$(grep -o 'RR remaining: expected=[0-9]* observed=[0-9]*' <<< "${NOTES[$i]}" || true)"
+    seq="$(grep -o 'sequence slots: \[[^]]*\]' <<< "${NOTES[$i]}" || true)"
+    [[ -n "$rr" ]] && echo "PRIORITY_RR: $rr"
+    [[ -n "$seq" ]] && echo "PRIORITY_RR: $seq"
+  fi
+done
+
+if (( FAIL == 0 && NOT_RUN == 0 )); then echo "Overall    : PASS"
+elif (( FAIL > 0 )); then echo "Overall    : FAIL"
+else echo "Overall    : PARTIAL"; fi
+
+echo "Report     : $REPORT"
+echo "Raw logs   : $RAW"
+echo "Release evidence: manually copy/move this run to validation/stm32/releases/vX.Y.Z/."
+echo "============================================================"
+
+(( FAIL == 0 && NOT_RUN == 0 ))

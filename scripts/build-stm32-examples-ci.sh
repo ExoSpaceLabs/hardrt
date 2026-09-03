@@ -21,8 +21,6 @@ fi
 
 bash -n \
   "$ROOT_DIR/scripts/stm32_manual_test_full.sh" \
-  "$ROOT_DIR/scripts/stm32_qualification.sh" \
-  "$ROOT_DIR/scripts/promote_stm32_qualification.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-demo.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" \
