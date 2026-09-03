@@ -431,6 +431,7 @@ else
   counter_demo
   timing_case event_to_task "DWT event_to_task timing"
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
+  timing_case ready_to_task "DWT ready_to_task timing"
   preemption_case priority "Fixed-priority hardware preemption"
   preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
 fi
