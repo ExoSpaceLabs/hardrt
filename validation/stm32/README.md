@@ -22,6 +22,12 @@ The scheduler-decision timing measurement is a separate targeted diagnostic and 
 
 It is not counted as a fourteenth functional qualification case.
 
+Latest development scheduler diagnostic on NUCLEO-H755ZI-Q / CM7 at 64 MHz, HardRT `7d208b5e`, 10,000 samples:
+
+- `scheduler_decision`: 268 / 322 / 337 cycles (min/avg/max)
+
+The diagnostic wraps `hrt__schedule()` only in the benchmark image, so production HardRT kernel code is unchanged.
+
 For a release candidate, run the same full 13-case script from the exact release SHA with a clean HardRT source tree and clean/pinned STM32CubeH7 checkout. After reviewing a full `13/13 PASS`, manually copy or move that single selected run into:
 
 ```text
