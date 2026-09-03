@@ -18,7 +18,7 @@
 
 #define WORKER_COUNT (HARDRT_MAX_TASKS - 2)
 #define WORKER_STACK_WORDS 256u
-#define SETUP_STACK_WORDS 256u
+#define DRIVER_STACK_WORDS 256u
 #define LONG_SLEEP_MS 60000u
 
 typedef struct {
@@ -52,8 +52,9 @@ static volatile uint32_t g_tim2_psc = 0u;
 static volatile uint32_t g_tim2_arr = 0u;
 
 static hrt_sem_t g_block_sem;
+static hrt_sem_t g_sample_sem;
 static uint32_t g_worker_stacks[WORKER_COUNT][WORKER_STACK_WORDS] __attribute__((aligned(8)));
-static uint32_t g_setup_stack[SETUP_STACK_WORDS] __attribute__((aligned(8)));
+static uint32_t g_driver_stack[DRIVER_STACK_WORDS] __attribute__((aligned(8)));
 
 extern void SystemInit(void);
 extern uint32_t SystemCoreClock;
@@ -144,12 +145,20 @@ static void tim2_init(void) {
     TIM2->EGR = TIM_EGR_UG;
     TIM2->SR = 0u;
     TIM2->DIER = TIM_DIER_UIE;
-    TIM2->CR1 = TIM_CR1_ARPE;
+    TIM2->CR1 = TIM_CR1_OPM;
 
     g_tim2_psc = psc;
     g_tim2_arr = arr;
 
     NVIC_SetPriority(TIM2_IRQn, 12);
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+    NVIC_DisableIRQ(TIM2_IRQn);
+}
+
+static void tim2_arm_one_shot(void) {
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+    TIM2->CNT = 0u;
+    TIM2->SR = 0u;
     NVIC_ClearPendingIRQ(TIM2_IRQn);
     NVIC_EnableIRQ(TIM2_IRQn);
     TIM2->CR1 |= TIM_CR1_CEN;
@@ -157,7 +166,10 @@ static void tim2_init(void) {
 
 void TIM2_IRQHandler(void) {
     if ((TIM2->SR & TIM_SR_UIF) == 0u) return;
+
     TIM2->SR &= ~TIM_SR_UIF;
+    TIM2->CR1 &= ~TIM_CR1_CEN;
+    NVIC_DisableIRQ(TIM2_IRQn);
 
     if (g_count >= HRT_TICK_BENCH_TARGET_SAMPLES) return;
 
@@ -167,10 +179,16 @@ void TIM2_IRQHandler(void) {
     record_sample(end - start);
 
     if (g_count >= HRT_TICK_BENCH_TARGET_SAMPLES) {
-        TIM2->CR1 &= ~TIM_CR1_CEN;
-        NVIC_DisableIRQ(TIM2_IRQn);
         finish_result();
     }
+
+    /* This handoff is deliberately outside the measured interval. The driver
+       has lower priority than every worker, so it cannot rearm TIM2 until all
+       workers made READY by this tick have run and returned to their intended
+       blocked/sleeping state. */
+    int should_switch = 0;
+    (void)hrt_sem_give_from_isr(&g_sample_sem, &should_switch);
+    (void)should_switch;
 }
 
 static void block_forever(void) {
@@ -220,10 +238,16 @@ static void worker_task(void *arg) {
 #endif
 }
 
-static void setup_task(void *arg) {
+static void driver_task(void *arg) {
     (void)arg;
+
     tim2_init();
-    hrt_task_delete();
+    tim2_arm_one_shot();
+
+    for (;;) {
+        (void)hrt_sem_take(&g_sample_sem);
+        tim2_arm_one_shot();
+    }
 }
 
 int main(void) {
@@ -231,6 +255,7 @@ int main(void) {
     hold_cm4();
     dwt_init();
     hrt_sem_init(&g_block_sem, 0);
+    hrt_sem_init(&g_sample_sem, 0);
 
     const hrt_config_t cfg = {
         .tick_hz = HRT_TICK_BENCH_EVENT_HZ,
@@ -243,7 +268,7 @@ int main(void) {
     if (hrt_init(&cfg) != 0) example_fail(1u);
 
     const hrt_task_attr_t worker_attr = { .priority = HRT_PRIO0, .timeslice = 0 };
-    const hrt_task_attr_t setup_attr = { .priority = HRT_PRIO1, .timeslice = 0 };
+    const hrt_task_attr_t driver_attr = { .priority = HRT_PRIO1, .timeslice = 0 };
 
     for (uint32_t i = 0u; i < WORKER_COUNT; ++i) {
         if (hrt_create_task(worker_task, (void *)(uintptr_t)i,
@@ -253,8 +278,8 @@ int main(void) {
         }
     }
 
-    if (hrt_create_task(setup_task, 0, g_setup_stack, SETUP_STACK_WORDS,
-                        &setup_attr) < 0) {
+    if (hrt_create_task(driver_task, 0, g_driver_stack, DRIVER_STACK_WORDS,
+                        &driver_attr) < 0) {
         example_fail(3u);
     }
 
