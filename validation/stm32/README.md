@@ -10,7 +10,11 @@ Each run creates a timestamped directory named `<UTC>_<short-sha>` containing:
 
 For release qualification, run from the exact HardRT commit being qualified and commit the
 complete generated run directory. Tracked source modifications are reported separately from
-untracked workspace files.
+untracked workspace files and from changes to previously generated qualification run
+directories. A modified, added, or deleted timestamped evidence directory therefore does not
+make the HardRT **tracked source state** dirty; it is recorded independently as qualification
+evidence state. Files that are part of the qualification implementation itself, such as this
+README or the runner scripts, still count as source changes.
 
 If generated HardRT/example build or install directories are present, the interactive runner
 can remove only those known generated directories before the run. Use `--clean-builds` to do
