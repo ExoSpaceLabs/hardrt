@@ -54,7 +54,11 @@ Timing measurements are not counted as functional features. This keeps functiona
 
 ## Hardware benchmarks
 
-The current benchmark suite contains four DWT measurements:
+The current suite contains **22 hardware benchmark images**.
+
+### Latency and switch benchmarks
+
+Four DWT measurements cover the current wake/switch path:
 
 1. `event_to_task`;
 2. `sem_isr_ready`;
@@ -68,9 +72,28 @@ Every benchmark is built and flashed as its own firmware image. `scripts/build-l
 - `ready_to_task`: private `ipc` timing profile with waiter-READY start hook;
 - `scheduler_decision`: measurement-only PendSV image calling the unmodified production `hrt__schedule()`.
 
-Instrumentation is therefore enabled only in benchmark builds that require it. Normal HardRT builds remain uninstrumented.
+### Tick/sleeper scaling benchmarks
 
-The benchmark list is expected to grow as qualification work adds measurements such as tick/sleeper scaling. Adding a benchmark must not change the functional-contract count.
+Eighteen measurements characterize the current tick-time TCB scan. The benchmark rebuilds HardRT at application-task capacities **8, 16, and 32**, then measures six workload shapes at each capacity:
+
+1. `none`: all worker task slots occupied by non-sleeping blocked tasks;
+2. `one_sleep`: one long-duration sleeper, all other workers blocked;
+3. `all_sleep`: all workers sleeping beyond the measurement window;
+4. `one_expiry`: one worker expires every tick and immediately sleeps for one tick again;
+5. `simultaneous`: all workers expire together every tick and then sleep again;
+6. `staggered`: worker `i` sleeps for `i+1` ticks, distributing expiries across ticks.
+
+The measured interval is application-side DWT around the production call:
+
+```c
+hrt_tick_from_isr();
+```
+
+These images use `HARDRT_TIMING_PROFILE=none`. No kernel timing hooks or replacement tick implementation are enabled. This makes the measurement directly representative of the configured production external-tick API, including the current O(`HARDRT_MAX_TASKS`) sleeper scan, wake processing, RR accounting, and reschedule request work reached by the selected scenario.
+
+The three configured capacities are real library builds, not partially populated instances of one fixed-capacity build. This lets the measured slope be compared against the configured task bound.
+
+Instrumentation is therefore enabled only in benchmark images that need private hooks. Normal HardRT builds remain uninstrumented, and the tick-scaling benchmark itself requires no kernel instrumentation.
 
 ## Scheduler/PendSV benchmark
 
@@ -101,7 +124,8 @@ Hardware qualification focuses on behavior that can differ because of the Cortex
 - scheduler-aware preemption and retained RR quantum;
 - semaphore, queue, and mutex blocking/wake/handoff paths;
 - C/C++ integration;
-- latency, scheduler-switch, and bounded-work benchmarks.
+- latency, scheduler-switch, and bounded-work benchmarks;
+- scaling of tick/sleeper work with configured task capacity.
 
 Pure argument validation and deterministic data-structure edge cases remain primarily hosted tests unless they interact with a port-specific path. Hardware validation is additive, not a replacement for the broader hosted suite.
 
@@ -119,6 +143,7 @@ A release STM32 package should be generated from the exact release-candidate SHA
 - all current hardware benchmarks passing;
 - timing sample counts and min/avg/max values;
 - scheduler/PendSV decomposition;
+- tick/sleeper scaling measurements for the qualified capacities;
 - raw debugger/build logs.
 
 A filtered `--only functional` or `--only benchmark` run is useful development evidence but is not the complete release package.
