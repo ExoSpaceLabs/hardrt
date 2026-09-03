@@ -30,6 +30,8 @@ int main(void) {
     append_group(g, n, registry, &total);
     g = get_tests_preemption_contract(&n);
     append_group(g, n, registry, &total);
+    g = get_tests_ready_bitmap(&n);
+    append_group(g, n, registry, &total);
     g = get_tests_coop_vs_rr(&n);
     append_group(g, n, registry, &total);
     g = get_tests_tick_rate(&n);
