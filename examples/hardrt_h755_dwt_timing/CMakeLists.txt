@@ -61,6 +61,13 @@ add_executable(${PROJECT_NAME}.elf
     src/main.c
 )
 
+if(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
+    # Diagnostic-only PendSV implementation. Defining PendSV_Handler here keeps
+    # the production handler out of this image while preserving the same switch
+    # algorithm and calling the unmodified hrt__schedule() directly.
+    target_sources(${PROJECT_NAME}.elf PRIVATE src/timing_pendsv_handler.S)
+endif()
+
 target_include_directories(${PROJECT_NAME}.elf PRIVATE ${STM32CUBE_INCLUDE_DIRS})
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE
     ${STM32_DEVICE}
@@ -82,9 +89,3 @@ target_link_options(${PROJECT_NAME}.elf PRIVATE
     -specs=nosys.specs
     -nostartfiles
 )
-
-if(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
-    # Diagnostic-only link wrapping. PendSV's call to hrt__schedule is redirected
-    # through the timing wrapper in main.c; normal HardRT builds are untouched.
-    target_link_options(${PROJECT_NAME}.elf PRIVATE -Wl,--wrap=hrt__schedule)
-endif()
