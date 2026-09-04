@@ -96,7 +96,7 @@ extern int g_failures;
         printf("  expected '%s', got '%s' (%s:%d)\n", (exp), (got), __FILE__, __LINE__); \
     } else { \
         printf(ANSI_GRN "PASS" ANSI_RST ": %s ('%s')\n", msg, (got)); \
-    }
+    } \
 } while(0)
 
 void hrt__inc_tick(void);
