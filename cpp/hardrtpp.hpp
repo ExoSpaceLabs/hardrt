@@ -22,7 +22,10 @@ namespace hardrt {
          * @brief Create a task with a statically allocated stack.
          *
          * Each unique combination of `StackWords` and `Tag` results in a separate
-         * static stack array being allocated.
+         * static stack array. Repeating the same specialization refers to the
+         * same storage. The C kernel rejects a second live task whose stack
+         * overlaps an existing live task; the same specialization becomes safe
+         * to reuse after its previous task has exited.
          *
          * @tparam StackWords Size of the stack in 32-bit words.
          * @tparam Tag Unique identifier to differentiate stacks of the same size.
@@ -45,6 +48,8 @@ namespace hardrt {
         /**
          * @brief Create a task using a user-provided external stack.
          *
+         * The stack may not overlap the stack of another live task.
+         *
          * @param fn     Pointer to the task function.
          * @param arg    User argument passed to the task function.
          * @param stack  Pointer to the beginning of the stack array (uint32_t).
@@ -61,22 +66,28 @@ namespace hardrt {
 
         /**
          * @brief Put the current task to sleep for a specified duration.
-         * @param ms Duration in milliseconds. In v0.4.0, zero sleeps for one tick.
+         * @param ms Duration in milliseconds. Zero currently sleeps for one tick.
          */
         static void sleep(uint32_t ms) {
             hrt_sleep(ms);
         }
 
         /**
-         * @brief Yield the CPU, moving the current READY task to the tail of its
-         * priority queue and refreshing its configured slice.
+         * @brief Voluntarily schedule away from the current RUNNING task.
+         *
+         * The core republishes it as READY according to the active policy;
+         * explicit yield rotates it to the applicable tail and refreshes its
+         * configured quantum.
          */
         static void yield() {
             hrt_yield();
         }
 
         /**
-         * @brief Permanently remove the current task from the scheduler.
+         * @brief End the current task and transition it to EXITED.
+         *
+         * The task stops being schedulable. Its TCB slot remains occupied until
+         * a later task creation reclaims it.
          */
         static void delete_current() {
             hrt_task_delete();
@@ -104,9 +115,9 @@ namespace hardrt {
         /**
          * @brief Initialize the RTOS kernel.
          *
-         * Applications should call this once before creating tasks or starting
-         * the scheduler. The v0.4.0 C implementation returns zero and does not
-         * validate repeated initialization or lifecycle ordering.
+         * Applications should call this before creating tasks or starting the
+         * scheduler. Full public lifecycle validation remains tracked by the
+         * v0.5 lifecycle work; this wrapper returns the C API result unchanged.
          * @param cfg Configuration structure (tick rate, scheduling policy, etc.).
          * @return The value returned by hrt_init().
          */
@@ -211,7 +222,8 @@ namespace hardrt {
         /**
          * @brief Give the semaphore.
          * @return 0.
-         * @note The current implementation yields when it wakes a waiter.
+         * @note A waiter wake uses the scheduler-aware preemption decision; it
+         *       is not automatically treated as an explicit yield.
          */
         int give() {
             return hrt_sem_give(&_sem);
@@ -219,8 +231,7 @@ namespace hardrt {
 
         /**
          * @brief Give the semaphore from an ISR.
-         * @param need_switch Set to 1 when any waiter is awakened. In v0.4.0
-         *        this is not a higher-priority comparison.
+         * @param need_switch Set to the scheduler-aware wake/preemption decision.
          * @return 0.
          */
         int give_from_isr(int& need_switch) {
