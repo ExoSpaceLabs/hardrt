@@ -20,8 +20,16 @@ static int _wq_pop(uint8_t *qbuf, uint8_t *head, uint8_t *count) {
     return id;
 }
 
-static void _preempt_task_after_wake(const int waiter) {
-    if (waiter >= 0 && hrt__should_preempt_after_wake(waiter)) {
+/* Caller holds the kernel critical section. Freeze the scheduling decision in
+ * the same protected state transition that publishes the waiter as READY. */
+static int _wake_waiter_locked(const int waiter) {
+    if (waiter < 0) return 0;
+    hrt__make_ready(waiter);
+    return hrt__should_preempt_after_wake(waiter);
+}
+
+static void _preempt_task_after_wake(const int should_switch) {
+    if (should_switch) {
         hrt__pend_context_switch();
         hrt_port_yield_to_scheduler();
     }
@@ -63,17 +71,17 @@ int hrt_queue_try_send(hrt_queue_t *q, const void *item) {
     HRT_ASSERT(q);
     HRT_ASSERT(item);
     int ok;
-    int waiter = -1;
+    int should_switch = 0;
 
     hrt_port_crit_enter();
     ok = _enqueue_cs(q, item);
     if (ok == 0) {
-        waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
-        if (waiter >= 0) hrt__make_ready(waiter);
+        const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
+        should_switch = _wake_waiter_locked(waiter);
     }
     hrt_port_crit_exit();
 
-    _preempt_task_after_wake(waiter);
+    _preempt_task_after_wake(should_switch);
     return ok;
 }
 
@@ -81,17 +89,16 @@ int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_swit
     HRT_ASSERT(q);
     HRT_ASSERT(item);
     int ok;
-    int waiter = -1;
+    int should_switch = 0;
 
     hrt_port_crit_enter();
     ok = _enqueue_cs(q, item);
     if (ok == 0) {
-        waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
-        if (waiter >= 0) hrt__make_ready(waiter);
+        const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
+        should_switch = _wake_waiter_locked(waiter);
     }
     hrt_port_crit_exit();
 
-    const int should_switch = waiter >= 0 && hrt__should_preempt_after_wake(waiter);
     if (need_switch) *need_switch = should_switch;
     if (should_switch) hrt__pend_context_switch();
     return ok;
@@ -108,9 +115,9 @@ int hrt_queue_send(hrt_queue_t *q, const void *item) {
         if (q->count < q->capacity) {
             const int ok = _enqueue_cs(q, item);
             const int waiter = _wq_pop(q->rx_q, &q->rx_head, &q->rx_wait);
-            if (waiter >= 0) hrt__make_ready(waiter);
+            const int should_switch = _wake_waiter_locked(waiter);
             hrt_port_crit_exit();
-            _preempt_task_after_wake(waiter);
+            _preempt_task_after_wake(should_switch);
             return ok;
         }
 
@@ -128,17 +135,17 @@ int hrt_queue_try_recv(hrt_queue_t *q, void *out) {
     HRT_ASSERT(q);
     HRT_ASSERT(out);
     int ok;
-    int waiter = -1;
+    int should_switch = 0;
 
     hrt_port_crit_enter();
     ok = _dequeue_cs(q, out);
     if (ok == 0) {
-        waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
-        if (waiter >= 0) hrt__make_ready(waiter);
+        const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
+        should_switch = _wake_waiter_locked(waiter);
     }
     hrt_port_crit_exit();
 
-    _preempt_task_after_wake(waiter);
+    _preempt_task_after_wake(should_switch);
     return ok;
 }
 
@@ -146,17 +153,16 @@ int hrt_queue_try_recv_from_isr(hrt_queue_t *q, void *out, int *need_switch) {
     HRT_ASSERT(q);
     HRT_ASSERT(out);
     int ok;
-    int waiter = -1;
+    int should_switch = 0;
 
     hrt_port_crit_enter();
     ok = _dequeue_cs(q, out);
     if (ok == 0) {
-        waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
-        if (waiter >= 0) hrt__make_ready(waiter);
+        const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
+        should_switch = _wake_waiter_locked(waiter);
     }
     hrt_port_crit_exit();
 
-    const int should_switch = waiter >= 0 && hrt__should_preempt_after_wake(waiter);
     if (need_switch) *need_switch = should_switch;
     if (should_switch) hrt__pend_context_switch();
     return ok;
@@ -173,9 +179,9 @@ int hrt_queue_recv(hrt_queue_t *q, void *out) {
         if (q->count) {
             const int ok = _dequeue_cs(q, out);
             const int waiter = _wq_pop(q->tx_q, &q->tx_head, &q->tx_wait);
-            if (waiter >= 0) hrt__make_ready(waiter);
+            const int should_switch = _wake_waiter_locked(waiter);
             hrt_port_crit_exit();
-            _preempt_task_after_wake(waiter);
+            _preempt_task_after_wake(should_switch);
             return ok;
         }
 
