@@ -772,6 +772,9 @@ void hrt__set_current(const int id) {
     }
 #endif
     g_current = id;
+    /* Reschedule flags describe only the outgoing context. Installing a new
+       current task starts a new context generation and discards stale flags. */
+    g_resched_flags = 0u;
 }
 
 void hrt__inc_tick(void) { g_tick++; }
