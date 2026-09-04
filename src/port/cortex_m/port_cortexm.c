@@ -111,6 +111,13 @@ static inline void _set_BASEPRI(uint32_t v) {
     __asm volatile ("msr BASEPRI, %0" :: "r"(v) : "memory");
 }
 
+static inline void _raise_BASEPRI(uint32_t v) {
+    /* BASEPRI_MAX applies the new threshold only when doing so increases
+       masking. This preserves any stricter mask already established by the
+       caller/interrupt context instead of accidentally weakening it. */
+    __asm volatile ("msr BASEPRI_MAX, %0" :: "r"(v) : "memory");
+}
+
 static inline uint32_t _get_BASEPRI(void) {
     uint32_t v;
     __asm volatile ("mrs %0, BASEPRI" : "=r"(v));
@@ -141,7 +148,7 @@ void hrt_port_crit_enter(void) {
     const uint32_t prev = _get_BASEPRI();
     if (g_cs_nest == 0u) {
         g_basepri_prev = prev;
-        _set_BASEPRI(_prio_to_basepri(HARDRT_MAX_SYSCALL_IRQ_PRIO));
+        _raise_BASEPRI(_prio_to_basepri(HARDRT_MAX_SYSCALL_IRQ_PRIO));
         _hrt_port_barrier();
     }
     g_cs_nest++;
