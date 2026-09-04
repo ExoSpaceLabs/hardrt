@@ -53,10 +53,12 @@ void hrt_port_yield_to_scheduler(void);
  * Context: task/startup context.
  * Blocking: must not block.
  * Ordering: construct/record the initial context and store required port state
- * before returning to the core.
+ * before returning success to the core. Return 0 only when the context is fully
+ * usable; return a negative value on failure so the core can roll the task slot
+ * back to UNUSED without publishing it to READY storage.
  */
-void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t *stack_base, size_t words);
+int hrt_port_prepare_task_stack(int id, void (*tramp)(void),
+                                uint32_t *stack_base, size_t words);
 
 /* Protect kernel scheduler/synchronization state.
  * Context: task context and supported kernel-aware ISR context.

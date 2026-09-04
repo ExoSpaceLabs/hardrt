@@ -253,15 +253,15 @@ void hrt_port_start_systick(uint32_t tick_hz) {
     __asm volatile ("cpsie i");
 }
 
-void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
-                                 uint32_t *stack_base, const size_t words) {
+int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                uint32_t *stack_base, const size_t words) {
     (void)tramp;
     uint32_t *stack_end = stack_base + words;
     uint32_t *stk = (uint32_t *)((uintptr_t)stack_end & ~(uintptr_t)0x7u);
 
     if (stk <= stack_base || stk > stack_end) {
         hrt_error(ERR_STACK_RANGE);
-        return;
+        return -1;
     }
 
     *(--stk) = 0x01000000u;
@@ -279,9 +279,10 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 
     if (stk < stack_base) {
         hrt_error(ERR_STACK_UNDERFLOW_INIT);
-        return;
+        return -1;
     }
     _set_sp(id, stk);
+    return 0;
 }
 
 void hrt_port_enter_scheduler(void) {

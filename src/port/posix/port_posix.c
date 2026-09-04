@@ -30,14 +30,17 @@ static sigset_t g_sigalrm_set;
 #ifdef HARDRT_TEST_HOOKS
 static volatile sig_atomic_t g_test_stop = 0;
 static volatile unsigned long long g_idle_counter = 0;
+static volatile sig_atomic_t g_test_fail_next_prepare = 0;
 
 void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
 void hrt__test_reset_scheduler_state(void) {
     g_test_stop = 0;
     g_switch_pending = 1;
+    g_test_fail_next_prepare = 0;
 }
 void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
 unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
+void hrt__test_fail_next_prepare_task_stack(void) { g_test_fail_next_prepare = 1; }
 
 void hrt__test_fast_forward_ticks(uint32_t delta) {
     sigset_t old;
@@ -69,11 +72,22 @@ void hrt__task_trampoline(void) {
     hrt_task_delete();
 }
 
-void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
-                                 uint32_t *stack_base, const size_t words) {
+int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                uint32_t *stack_base, const size_t words) {
     (void)tramp;
+#ifdef HARDRT_TEST_HOOKS
+    if (g_test_fail_next_prepare != 0) {
+        g_test_fail_next_prepare = 0;
+        g_ctxs[id].valid = 0;
+        return -1;
+    }
+#endif
+
     const size_t bytes = words * sizeof(uint32_t);
-    getcontext(&g_ctxs[id].ctx);
+    if (getcontext(&g_ctxs[id].ctx) != 0) {
+        g_ctxs[id].valid = 0;
+        return -1;
+    }
     g_ctxs[id].ctx.uc_stack.ss_sp = (void *)stack_base;
     g_ctxs[id].ctx.uc_stack.ss_size = bytes;
     g_ctxs[id].ctx.uc_link = &g_sched_ctx;
@@ -81,6 +95,7 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
     g_ctxs[id].stk_ptr = (void *)stack_base;
     g_ctxs[id].stk_bytes = bytes;
     g_ctxs[id].valid = 1;
+    return 0;
 }
 
 static void _tick_sighandler(const int signo) {

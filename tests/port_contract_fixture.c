@@ -7,9 +7,10 @@ void hrt_port_start_systick(uint32_t tick_hz) { (void)tick_hz; }
 void hrt_port_idle_wait(void) {}
 void hrt_port_enter_scheduler(void) {}
 void hrt_port_yield_to_scheduler(void) {}
-void hrt_port_prepare_task_stack(int id, void (*tramp)(void),
-                                 uint32_t *stack_base, size_t words) {
+int hrt_port_prepare_task_stack(int id, void (*tramp)(void),
+                                uint32_t *stack_base, size_t words) {
     (void)id; (void)tramp; (void)stack_base; (void)words;
+    return 0;
 }
 void hrt_port_crit_enter(void) {}
 void hrt_port_crit_exit(void) {}

@@ -82,6 +82,18 @@ jobs:
         run: |
           ctest -V --test-dir build-posix --output-on-failure
 
+      - name: Validate single-priority task creation
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cmake -S . -B build-min-prio -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_CFG_MAX_PRIO=1
+          cmake --build build-min-prio --target hardrt_min_prio_smoke --parallel
+          ctest -V --test-dir build-min-prio -R '^hardrt_min_prio_smoke$' --output-on-failure
+
       - name: Build and self-test POSIX examples
         run: |
           HARDRT_EXAMPLE_TIMEOUT=3s ./scripts/run-all-examples.sh

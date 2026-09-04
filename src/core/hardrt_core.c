@@ -400,6 +400,17 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
         return -1;
     }
 
+    /* Preserve the historical default priority when it exists, but keep
+       attr==NULL valid for the supported one-priority configuration. */
+    const int priority = attr ? (int)attr->priority
+                              : ((HARDRT_MAX_PRIO > 1) ? (int)HRT_PRIO1
+                                                       : (int)HRT_PRIO0);
+    if (priority < 0 || priority >= HARDRT_MAX_PRIO) {
+        hrt_error(ERR_INVALID_PRIO);
+        return -1;
+    }
+    const uint16_t timeslice = (uint16_t)(attr ? attr->timeslice : g_default_slice);
+
     int id = -1;
     /* Application allocation never examines the private idle TCB slot. */
     for (int i = 0; i < HARDRT_APP_MAX_TASKS; ++i) {
@@ -418,23 +429,35 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
         hrt_error(ERR_TCB_NULL);
         return -1;
     }
-    memset(t, 0, sizeof(*t));
 
+    /* Keep the slot non-runnable until every fallible creation step succeeds. */
+    memset(t, 0, sizeof(*t));
+    t->state = HRT_UNUSED;
     t->entry = fn;
     t->arg = arg;
-    t->prio = (uint8_t)(attr ? attr->priority : HRT_PRIO1);
-    t->timeslice_cfg = (uint16_t)(attr ? attr->timeslice : g_default_slice);
+    t->prio = (uint8_t)priority;
+    t->timeslice_cfg = timeslice;
     t->stack_base = stack_words;
     t->stack_words = n_words;
 
-    hrt_port_prepare_task_stack(id, hrt__task_trampoline, stack_words, n_words);
+    if (hrt_port_prepare_task_stack(id, hrt__task_trampoline,
+                                    stack_words, n_words) != 0) {
+        memset(t, 0, sizeof(*t));
+        t->state = HRT_UNUSED;
+        return -1;
+    }
 #if HARDRT_DEBUG == 1
     dbg_ct_id = id;
     dbg_ct_sp = (uintptr_t)t->sp;
 #endif
+
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
-    ready_push_tail(id);
+    if (!ready_push_tail(id)) {
+        memset(t, 0, sizeof(*t));
+        t->state = HRT_UNUSED;
+        return -1;
+    }
     return id;
 }
 

@@ -45,12 +45,13 @@ void hrt__task_trampoline(void) {
     hrt_task_delete();
 }
 
-void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
-                                 uint32_t *stack_base, const size_t words) {
+int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
+                                uint32_t *stack_base, const size_t words) {
     (void)id;
     (void)tramp;
     (void)stack_base;
     (void)words;
+    return 0;
 }
 
 void hrt_port_crit_enter(void) {
