@@ -1,0 +1,56 @@
+# HardRT STM32H755 BASEPRI critical-section validator (OpenOCD)
+# Firmware passes a fixed-layout qualification record in r0.
+
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break *basepri_validation_emit
+commands
+  silent
+  printf "\n--- HardRT BASEPRI validation stopped ---\n"
+
+  # hrt_basepri_result_t is 17 x 32-bit words.
+  set $base = (unsigned int)$r0
+  set $pass = *(unsigned int*)($base + 0)
+  set $error = *(unsigned int*)($base + 4)
+  set $step = *(unsigned int*)($base + 8)
+  set $hardrt = *(unsigned int*)($base + 12)
+  set $zero_inside = *(unsigned int*)($base + 16)
+  set $zero_after = *(unsigned int*)($base + 20)
+  set $weak_before = *(unsigned int*)($base + 24)
+  set $weak_inside = *(unsigned int*)($base + 28)
+  set $weak_nested = *(unsigned int*)($base + 32)
+  set $weak_after_inner = *(unsigned int*)($base + 36)
+  set $weak_after_outer = *(unsigned int*)($base + 40)
+  set $strict_before = *(unsigned int*)($base + 44)
+  set $strict_inside = *(unsigned int*)($base + 48)
+  set $strict_nested = *(unsigned int*)($base + 52)
+  set $strict_after_inner = *(unsigned int*)($base + 56)
+  set $strict_after_outer = *(unsigned int*)($base + 60)
+  set $final = *(unsigned int*)($base + 64)
+
+  printf "pass=%u error=%u priority_step=0x%02x hardrt_mask=0x%02x\n", $pass, $error, $step, $hardrt
+  printf "zero: inside=0x%02x after=0x%02x\n", $zero_inside, $zero_after
+  printf "weaker: before=0x%02x inside=0x%02x nested=0x%02x after_inner=0x%02x after_outer=0x%02x\n", \
+         $weak_before, $weak_inside, $weak_nested, $weak_after_inner, $weak_after_outer
+  printf "stricter: before=0x%02x inside=0x%02x nested=0x%02x after_inner=0x%02x after_outer=0x%02x\n", \
+         $strict_before, $strict_inside, $strict_nested, $strict_after_inner, $strict_after_outer
+  printf "final_basepri=0x%02x\n", $final
+
+  if $pass == 1 && $error == 0 && $final == 0
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", $error
+  end
+
+  detach
+  quit
+end
+
+continue
