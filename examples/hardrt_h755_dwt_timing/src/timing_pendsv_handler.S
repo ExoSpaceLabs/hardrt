@@ -12,6 +12,16 @@
 .extern g_pendsv_restore_cycles
 .extern g_pendsv_software_cycles
 
+#ifndef HARDRT_NVIC_PRIO_BITS
+#define HARDRT_NVIC_PRIO_BITS 4
+#endif
+
+#ifndef HARDRT_MAX_SYSCALL_IRQ_PRIO
+#define HARDRT_MAX_SYSCALL_IRQ_PRIO 5
+#endif
+
+#define HRT_PENDSV_BASEPRI ((HARDRT_MAX_SYSCALL_IRQ_PRIO << (8 - HARDRT_NVIC_PRIO_BITS)) & 0xFF)
+
 .global PendSV_Handler
 .type PendSV_Handler, %function
 
@@ -23,18 +33,23 @@
  *
  * On hardware-FP builds this mirror also preserves task EXC_RETURN and saves
  * s16-s31 only for an extended FP context, matching production semantics.
+ * PendSV uses the same BASEPRI ceiling as production rather than PRIMASK, so
+ * the timing image measures the actual v0.5 interrupt-mask contract.
  */
 PendSV_Handler:
-    cpsid   i
-
-    /* If this is the armed TIM2 wake, capture software-handler entry in r12.
-       r12 is hardware-stacked on exception entry and can be used as scratch. */
-    ldr     r1, =g_pendsv_measure_armed
-    ldr     r2, [r1]
-    cbz     r2, 1f
+    /* Capture software-handler entry before the BASEPRI prologue. r12 is
+       hardware-stacked and therefore safe scratch in Handler mode. */
     ldr     r3, =0xE0001004
     ldr     r12, [r3]
-1:
+
+    mrs     r2, BASEPRI
+    mov     r3, lr
+    movs    r1, #HRT_PENDSV_BASEPRI
+    msr     BASEPRI_MAX, r1
+    dsb     0xF
+    isb     0xF
+    push    {r2, r3}
+
     mrs     r0, psp
     cmp     r0, #0
     beq.w   first_switch
@@ -52,7 +67,8 @@ PendSV_Handler:
     ldr     r2, [r1]
     cbz     r2, unmeasured_schedule
 
-    /* Save segment: DWT read immediately after the outgoing context store. */
+    /* Save segment: handler entry through outgoing context store, including
+       the production BASEPRI prologue and MSP bookkeeping. */
     ldr     r3, =0xE0001004
     ldr     r2, [r3]
     subs    r2, r2, r12
@@ -92,12 +108,19 @@ PendSV_Handler:
 #endif
     msr     psp, r0
 
+    pop     {r2, r3}
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
+
+    ldr     r3, =0xE0001004
     ldr     r2, [r3]
     subs    r1, r2, r1
     ldr     r3, =g_pendsv_restore_cycles
     str     r1, [r3]
 
-    /* Same end timestamp gives software-handler entry -> restored context. */
+    /* Same end timestamp gives software-handler entry -> restored context and
+       exact pre-entry BASEPRI state. */
     subs    r1, r2, r12
     ldr     r3, =g_pendsv_software_cycles
     str     r1, [r3]
@@ -113,7 +136,6 @@ PendSV_Handler:
     ldr     r3, =g_pendsv_measure_armed
     str     r2, [r3]
 
-    cpsie   i
     bx      lr
 
 unmeasured_schedule:
@@ -132,7 +154,10 @@ unmeasured_schedule:
 #endif
     msr     psp, r0
 
-    cpsie   i
+    pop     {r2, r3}
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
 first_switch:
@@ -152,7 +177,10 @@ first_switch:
 #endif
     msr     psp, r0
 
-    cpsie   i
+    pop     {r2, r3}
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
 measured_resume:
@@ -163,7 +191,11 @@ measured_resume:
     str     r2, [r3]
 
 resume:
-    cpsie   i
+    pop     {r2, r3}
+    mov     lr, r3
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
 .size PendSV_Handler, .-PendSV_Handler

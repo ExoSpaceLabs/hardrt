@@ -1,4 +1,4 @@
-# HardRT STM32H755 BASEPRI critical-section validator (OpenOCD)
+# HardRT STM32H755 BASEPRI/PendSV interrupt-mask validator (OpenOCD)
 # Firmware passes a fixed-layout qualification record in r0.
 
 set confirm off
@@ -13,9 +13,9 @@ monitor reset halt
 break *basepri_validation_emit
 commands
   silent
-  printf "\n--- HardRT BASEPRI validation stopped ---\n"
+  printf "\n--- HardRT BASEPRI/PendSV validation stopped ---\n"
 
-  # hrt_basepri_result_t is 17 x 32-bit words.
+  # hrt_basepri_result_t is 28 x 32-bit words.
   set $base = (unsigned int)$r0
   set $pass = *(unsigned int*)($base + 0)
   set $error = *(unsigned int*)($base + 4)
@@ -34,6 +34,17 @@ commands
   set $strict_after_inner = *(unsigned int*)($base + 56)
   set $strict_after_outer = *(unsigned int*)($base + 60)
   set $final = *(unsigned int*)($base + 64)
+  set $pendsv_expected = *(unsigned int*)($base + 68)
+  set $high_irq = *(unsigned int*)($base + 72)
+  set $low_irq = *(unsigned int*)($base + 76)
+  set $high_pendsv = *(unsigned int*)($base + 80)
+  set $high_mask_match = *(unsigned int*)($base + 84)
+  set $high_primask_nonzero = *(unsigned int*)($base + 88)
+  set $low_pendsv = *(unsigned int*)($base + 92)
+  set $low_while_masked = *(unsigned int*)($base + 96)
+  set $task_a_yields = *(unsigned int*)($base + 100)
+  set $task_b_yields = *(unsigned int*)($base + 104)
+  set $final_primask = *(unsigned int*)($base + 108)
 
   printf "pass=%u error=%u priority_step=0x%02x hardrt_mask=0x%02x\n", $pass, $error, $step, $hardrt
   printf "zero: inside=0x%02x after=0x%02x\n", $zero_inside, $zero_after
@@ -41,9 +52,12 @@ commands
          $weak_before, $weak_inside, $weak_nested, $weak_after_inner, $weak_after_outer
   printf "stricter: before=0x%02x inside=0x%02x nested=0x%02x after_inner=0x%02x after_outer=0x%02x\n", \
          $strict_before, $strict_inside, $strict_nested, $strict_after_inner, $strict_after_outer
-  printf "final_basepri=0x%02x\n", $final
+  printf "pendsv: expected_basepri=0x%02x high_irq=%u low_irq=%u high_preempt=%u high_mask_match=%u high_primask_nonzero=%u low_preempt=%u low_while_masked=%u\n", \
+         $pendsv_expected, $high_irq, $low_irq, $high_pendsv, $high_mask_match, $high_primask_nonzero, $low_pendsv, $low_while_masked
+  printf "yields: A=%u B=%u\n", $task_a_yields, $task_b_yields
+  printf "final_basepri=0x%02x final_primask=%u\n", $final, $final_primask
 
-  if $pass == 1 && $error == 0 && $final == 0
+  if $pass == 1 && $error == 0 && $final == 0 && $final_primask == 0 && $high_mask_match > 0 && $high_primask_nonzero == 0 && $low_while_masked == 0
     printf "RESULT: PASS\n"
   else
     printf "RESULT: FAIL (error=%u)\n", $error

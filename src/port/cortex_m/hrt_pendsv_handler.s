@@ -7,6 +7,16 @@
 .global PendSV_Handler
 .type   PendSV_Handler, %function
 
+#ifndef HARDRT_NVIC_PRIO_BITS
+#define HARDRT_NVIC_PRIO_BITS 4
+#endif
+
+#ifndef HARDRT_MAX_SYSCALL_IRQ_PRIO
+#define HARDRT_MAX_SYSCALL_IRQ_PRIO 5
+#endif
+
+#define HRT_PENDSV_BASEPRI ((HARDRT_MAX_SYSCALL_IRQ_PRIO << (8 - HARDRT_NVIC_PRIO_BITS)) & 0xFF)
+
 /*
  * PendSV_Handler - Cortex-M context switch handler for HardRT
  *
@@ -21,10 +31,23 @@
  * EXC_RETURN is saved only on hardware-FP builds because bit 4 selects the
  * basic versus extended exception frame. The FP high bank is therefore paid
  * only by tasks that actually own an FP context.
+ *
+ * PendSV masks only kernel-aware interrupts through BASEPRI while scheduler
+ * state is being saved/selected/restored. Higher-priority non-kernel-aware
+ * interrupts remain able to preempt the context switch. The pre-entry BASEPRI
+ * and EXC_RETURN are kept on MSP so both can be restored exactly on every exit.
  */
 
 PendSV_Handler:
-    cpsid   i
+    /* No kernel state has been touched yet, so an IRQ racing these first few
+       instructions still observes a coherent pre-switch scheduler state. */
+    mrs     r2, BASEPRI
+    mov     r3, lr
+    movs    r1, #HRT_PENDSV_BASEPRI
+    msr     BASEPRI_MAX, r1
+    dsb     0xF
+    isb     0xF
+    push    {r2, r3}
 
     mrs     r0, psp
     cbz     r0, first_switch
@@ -56,7 +79,10 @@ normal_switch:
 #endif
     msr     psp, r0
 
-    cpsie   i
+    pop     {r2, r3}
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
 first_switch:
@@ -77,11 +103,20 @@ first_switch:
 #endif
     msr     psp, r0
 
-    cpsie   i
+    pop     {r2, r3}
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
 resume:
-    cpsie   i
+    /* hrt__schedule() returning zero means no new task context was selected.
+       Restore both the original exception return token and interrupt mask. */
+    pop     {r2, r3}
+    mov     lr, r3
+    msr     BASEPRI, r2
+    dsb     0xF
+    isb     0xF
     bx      lr
 
     .size PendSV_Handler, .-PendSV_Handler
