@@ -74,6 +74,7 @@ jobs:
           cmake -S . -B build-posix -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=ON \
             -DHARDRT_BUILD_TESTS=ON \
             -DHARDRT_BUILD_EXAMPLES=OFF
           cmake --build build-posix --parallel
