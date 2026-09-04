@@ -8,13 +8,6 @@ This page summarizes the public C surface used by HardRT. Versioned notes identi
 typedef void (*hrt_task_fn)(void *arg);
 
 typedef enum {
-    HRT_READY = 0,
-    HRT_SLEEP,
-    HRT_BLOCKED,
-    HRT_UNUSED
-} hrt_state_t;
-
-typedef enum {
     HRT_SCHED_PRIORITY = 0,
     HRT_SCHED_RR,
     HRT_SCHED_PRIORITY_RR
@@ -41,6 +34,16 @@ typedef struct {
 
 Priority `0` is the highest priority. The usable range is limited by `HARDRT_MAX_PRIO`, even though symbolic values through `HRT_PRIO11` are declared.
 
+Task execution state and TCB-slot ownership are kernel-private implementation details, not public C types. The v0.5 kernel deliberately keeps them separate:
+
+- slot ownership is `UNUSED` or `USED`;
+- a used task is `READY`, `RUNNING`, `SLEEP`, `BLOCKED`, or `EXITED`;
+- `READY` means present in the runnable scheduler representation;
+- `RUNNING` means currently dispatched;
+- `EXITED` remains a valid task state while its slot is still occupied, until a later task creation reclaims that slot.
+
+This separation avoids treating allocation status as an execution state.
+
 ## Version and port identity
 
 ```c
@@ -50,7 +53,7 @@ const char *hrt_port_name(void);
 int         hrt_port_id(void);
 ```
 
-For v0.4.0, `hrt_version_u32()` encodes the version as `(major << 16) | (minor << 8) | patch`.
+`hrt_version_u32()` encodes the version as `(major << 16) | (minor << 8) | patch`.
 
 ## Kernel lifecycle
 
@@ -73,29 +76,28 @@ void hrt_start(void);
 - default slice: `5` ticks;
 - tick source: `HRT_TICK_SYSTICK`.
 
-With an explicit configuration:
+With an explicit configuration, an explicit `default_slice == 0` is preserved and means cooperative scheduling for subsequently default-created tasks. Tick configuration is prepared during initialization, but the configured periodic tick is not activated until scheduler start.
 
-- `tick_hz == 0` becomes `1000`;
-- `default_slice == 0` becomes `5`;
-- `policy` and `tick_src` are stored without validation;
-- the port tick-start hook is called during initialization.
-
-The current implementation always returns `0`. It does not reject repeated initialization or invalid lifecycle ordering. Applications should call it once before creating tasks or starting the scheduler.
+Full public lifecycle/configuration validation remains tracked separately by issue #33.
 
 ### `hrt_create_task`
 
-The function returns a non-negative task ID on success and `-1` on the checked failure paths.
+The function returns a non-negative task ID on success and `-1` on checked failure paths.
 
-Current requirements:
+Current requirements include:
 
 - `fn` is non-null;
 - `stack_words` is non-null;
 - `n_words >= 64`;
-- a task slot is available.
+- priority is within the configured priority range;
+- the supplied stack range does not overlap the stack of any live task;
+- a free or reclaimable application TCB slot is available.
 
-If `attr == NULL`, the task uses priority `HRT_PRIO1` and the current default slice. If an attribute object is supplied, its `timeslice` is used exactly; `timeslice == 0` makes that task cooperative.
+If `attr == NULL`, the task uses the configured default slice and a valid default priority. If an attribute object is supplied, its `timeslice` is used exactly; `timeslice == 0` makes that task cooperative.
 
-The CMake build reserves one additional slot for the idle task by defining `HARDRT_MAX_TASKS` as `HARDRT_CFG_MAX_TASKS + 1`.
+Task creation is transactional. A newly allocated slot is not published as USED/READY until port context preparation succeeds. An EXITED task no longer executes and its slot may later be reclaimed. Reusing the exact stack of an EXITED task preferentially reclaims that task's slot. A live task's stack may never be reused or partially overlapped by another live task.
+
+The CMake build reserves one additional slot for the idle task by defining total task storage as `HARDRT_APP_MAX_TASKS + 1`.
 
 ### `hrt_start`
 
@@ -111,10 +113,10 @@ Ready tasks use a policy-specific intrusive FIFO representation. `HRT_SCHED_PRIO
 
 - `HRT_SCHED_PRIORITY` uses strict fixed-priority selection without tick-driven slice accounting. A strictly higher-priority wake requests preemption; equal- and lower-priority wakes do not force a switch merely because they became READY.
 - `HRT_SCHED_PRIORITY_RR` uses the same priority dominance and rotates tasks only within the selected priority class. Higher-priority preemption preserves the interrupted task's queue precedence and unused quantum; explicit yield or quantum expiry rotates it to the tail exactly once and refreshes the next quantum.
-- `HRT_SCHED_RR` is true global round-robin on `develop`: every READY application task participates in one FIFO regardless of its priority value. A wake joins the global tail and does not steal the running task's remaining quantum. Explicit yield or quantum expiry rotates to the global tail.
+- `HRT_SCHED_RR` is true global round-robin: every READY application task participates in one FIFO regardless of priority value. A wake joins the global tail and does not steal the RUNNING task's remaining quantum. Explicit yield or quantum expiry rotates to the global tail.
 - `timeslice == 0` disables tick-driven rotation for that task under either RR-capable policy.
 
-A timeslice is measured in ticks. See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition, runtime policy-switching, scheduler-entry, and `need_switch` contract.
+A timeslice is measured in ticks. See [SCHEDULING.md](SCHEDULING.md) for the complete READY transition, runtime policy-switching, scheduler-entry, and `need_switch` contract.
 
 ## Task control and time
 
@@ -138,11 +140,11 @@ Positive durations shorter than one tick sleep for one tick. In v0.4.0 and the c
 
 ### `hrt_yield`
 
-The current READY task is rotated to the tail of the active policy queue exactly once, its configured slice is refreshed, rescheduling is requested, and task context is transferred to the port scheduler. Under global RR this is the single global FIFO; under priority-based policies it is the task's priority FIFO.
+The current RUNNING task reaches a scheduling point. It is returned to READY state and reinserted according to the active scheduler policy. Explicit yield rotates it to the appropriate tail and refreshes its configured quantum.
 
 ### `hrt_task_delete`
 
-The current non-idle task is marked `HRT_UNUSED` and yields to the scheduler. Both reference task trampolines call this function when a task entry returns.
+The current non-idle RUNNING task enters `EXITED` and yields to the scheduler. Its TCB slot remains USED until a later creation reclaims it. Both reference task trampolines call this function automatically when a task entry returns.
 
 ### Time queries
 
@@ -155,7 +157,7 @@ void hrt_set_policy(hrt_policy_t policy);
 void hrt_set_default_timeslice(uint16_t ticks);
 ```
 
-`hrt_set_policy()` supports runtime switching among `HRT_SCHED_PRIORITY`, `HRT_SCHED_RR`, and `HRT_SCHED_PRIORITY_RR`. If the requested policy differs from the active one, queued READY tasks are snapshotted and rebuilt under the target representation while the kernel critical section is held. READY-task quanta are refreshed, and a running application task treats the change as a scheduling point and rejoins the target policy at its tail. Selecting the already-active policy is a no-op. Policy switching is task-context-only.
+`hrt_set_policy()` supports runtime switching among `HRT_SCHED_PRIORITY`, `HRT_SCHED_RR`, and `HRT_SCHED_PRIORITY_RR`. If the requested policy differs from the active one, queued READY tasks are snapshotted and rebuilt under the target representation while the kernel critical section is held. READY-task quanta are refreshed, and a RUNNING application task treats the change as a scheduling point and rejoins the target policy at its tail. Selecting the already-active policy is a no-op. Policy switching is task-context-only.
 
 For priority-to-global conversion, queued tasks are flattened from highest to lowest priority while preserving FIFO order inside each class. For global-to-priority conversion, global FIFO order is preserved within each resulting priority class.
 
@@ -169,7 +171,7 @@ void hrt_tick_from_isr(void);
 
 This public function is only for `HRT_TICK_EXTERNAL`. It advances time through the core tick handler and internally requests rescheduling when a sleeper wake or slice expiry requires it.
 
-When the selected source is `HRT_TICK_SYSTICK`, the current implementation ignores calls to `hrt_tick_from_isr()`. Port-owned tick handlers call the private `hrt__tick_isr()` path instead.
+When the selected source is `HRT_TICK_SYSTICK`, calling `hrt_tick_from_isr()` is diagnosed as a tick-source mismatch and does not advance time. Port-owned tick handlers call the private `hrt__tick_isr()` path instead.
 
 ## Semaphores
 
@@ -184,18 +186,15 @@ int  hrt_sem_give(hrt_sem_t *sem);
 int  hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 ```
 
-Current `develop` behavior:
+Current behavior:
 
 - binary semaphores saturate at `1`;
 - counting semaphores saturate at `max_count`;
 - `max_count == 0` is changed to `1`;
 - waiters are stored FIFO;
-- a give with a waiter performs direct handoff and wakes exactly one task;
-- task-context give requests preemption only when the awakened waiter should run before the current task under the active scheduler contract;
+- task-context give requests preemption only when the awakened waiter should run before the current RUNNING task under the active scheduler contract;
 - that preemption is not treated as explicit yield, so an interrupted PRIORITY_RR task retains precedence and unused quantum;
-- ISR give sets `need_switch` to the same scheduler-aware decision and requests the switch internally when required.
-
-For priority-based policies, `need_switch == 1` means the awakened waiter has strictly higher priority than the current READY task, or there is no normal READY current task. Under global RR, a wake joins the global FIFO tail and reports `need_switch == 0` while a normal READY task is still running; if no normal task is running, scheduling is requested.
+- ISR give exposes the same scheduler-aware decision through `need_switch` and requests the switch internally when required.
 
 See [SEMAPHORES.md](SEMAPHORES.md).
 
@@ -208,7 +207,9 @@ int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
 int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
 
-Mutexes are owner-tracked, non-recursive, task-context-only, and use FIFO waiters with direct handoff. Unlock uses the same scheduler-aware wake/preemption rule as other IPC paths. There is no timed lock, recursive mode, ISR API, or priority inheritance.
+Mutexes are owner-tracked, non-recursive, task-context-only, and use FIFO waiters with direct handoff. Unlock uses the same scheduler-aware wake/preemption rule as other IPC paths. There is no timed lock, recursive mode, ISR API, priority inheritance, or automatic owner-death recovery.
+
+A task must release every mutex it owns before returning or calling `hrt_task_delete()`. An EXITED task is not automatically removed as a mutex owner in v0.5.
 
 See [MUTEXES.md](MUTEXES.md).
 
@@ -233,6 +234,8 @@ uint16_t hrt_queue_count(const hrt_queue_t *queue);
 ```
 
 Items are copied with `memcpy` while the port critical section is held. Blocking operations wait indefinitely. Task and ISR wake paths use the common scheduler-aware preemption rule. ISR variants are non-blocking, expose that decision through `need_switch`, and request rescheduling internally when required.
+
+The C++ `QueueRef<T>` and `StaticQueue<T, Capacity>` wrappers require trivially-copyable payloads because the C queue copies object representation with `memcpy`. `StaticQueue` also rejects capacity above the C API's `uint16_t` range at compile time.
 
 See [QUEUES.md](QUEUES.md).
 
