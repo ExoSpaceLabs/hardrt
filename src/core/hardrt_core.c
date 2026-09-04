@@ -16,6 +16,9 @@
 #define HARDRT_DEBUG 0
 #endif
 
+#define HRT_RESCHED_YIELD          (1u << 0)
+#define HRT_RESCHED_CURRENT_QUEUED (1u << 1)
+
 /* Globals */
 static _hrt_tcb_t g_tcbs[HARDRT_MAX_TASKS];
 static int g_current = -1;
@@ -25,7 +28,7 @@ static hrt_policy_t g_policy = HRT_SCHED_PRIORITY_RR;
 static uint16_t g_default_slice = 5;
 static uint32_t g_core_hz = 0;
 static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
-static uint8_t g_explicit_yield = 0u;
+static volatile uint8_t g_resched_flags = 0u;
 static uint32_t g_ready_prio_mask = 0u;
 volatile hrt_err g_error = NONE;
 
@@ -370,7 +373,7 @@ int hrt_init(const hrt_config_t *cfg) {
 
     g_tick = 0;
     g_current = -1;
-    g_explicit_yield = 0u;
+    g_resched_flags = 0u;
     g_sleep_head = HRT_SLEEP_NONE;
 
     if (cfg) {
@@ -500,7 +503,7 @@ void hrt_yield(void) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) g_explicit_yield = 1u;
+    if (t->state == HRT_READY) g_resched_flags |= HRT_RESCHED_YIELD;
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
@@ -559,7 +562,7 @@ void hrt_set_policy(const hrt_policy_t p) {
             t->slice_left = t->timeslice_cfg;
             /* A policy change is a scheduling point. The current task joins
              * the target policy at the tail when scheduler entry occurs. */
-            g_explicit_yield = 1u;
+            g_resched_flags |= HRT_RESCHED_YIELD;
             yield_current = 1;
             hrt__pend_context_switch();
         }
@@ -607,6 +610,11 @@ void hrt__make_ready(const int id) {
     if (g_policy != HRT_SCHED_RR) {
         g_ready_prio_mask |= (uint32_t)(1u << t->prio);
     }
+
+    /* If the still-recorded current task was woken before scheduler entry,
+       it is already present in READY storage. Record that rare transition at
+       the wake site so normal scheduler decisions do not need a queue lookup. */
+    if (id == g_current) g_resched_flags |= HRT_RESCHED_CURRENT_QUEUED;
 }
 
 void hrt__requeue_noreset(const int id) {
@@ -648,9 +656,9 @@ void hrt__requeue_front_noreset(const int id) {
 }
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
- * State + explicit-yield + slice exhaustion encode the current reschedule cause:
+ * State + reschedule flags + slice exhaustion encode the scheduling cause:
  * - blocked/sleeping/deleted: do not requeue;
- * - already requeued by a racing wake: do not enqueue again;
+ * - already requeued by a racing wake: consume the flag and do not enqueue;
  * - explicit yield: rotate to tail and refresh quantum;
  * - RR quantum expiry: rotate to tail and refresh quantum;
  * - otherwise: retain precedence at the front with remaining quantum untouched.
@@ -658,18 +666,24 @@ void hrt__requeue_front_noreset(const int id) {
 void hrt__prepare_current_for_reschedule(void) {
     const int cur = g_current;
     if (cur < 0 || cur >= HARDRT_MAX_TASKS || cur == HRT_IDLE_ID) {
-        g_explicit_yield = 0u;
+        g_resched_flags = 0u;
         return;
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t == NULL || t->state != HRT_READY || ready_is_queued(cur)) {
-        g_explicit_yield = 0u;
+    if (t == NULL || t->state != HRT_READY) {
+        g_resched_flags = 0u;
+        return;
+    }
+
+    const uint8_t resched_flags = g_resched_flags;
+    if ((resched_flags & HRT_RESCHED_CURRENT_QUEUED) != 0u) {
+        g_resched_flags = 0u;
         return;
     }
 
     const int rr_policy = (g_policy == HRT_SCHED_RR || g_policy == HRT_SCHED_PRIORITY_RR);
-    if (g_explicit_yield != 0u) {
+    if ((resched_flags & HRT_RESCHED_YIELD) != 0u) {
         t->slice_left = t->timeslice_cfg;
         ready_push_tail_known_unqueued(cur);
     } else if (rr_policy && t->timeslice_cfg > 0u && t->slice_left == 0u) {
@@ -679,7 +693,7 @@ void hrt__prepare_current_for_reschedule(void) {
         ready_push_front_known_unqueued(cur);
     }
 
-    g_explicit_yield = 0u;
+    g_resched_flags = 0u;
 }
 
 int hrt__should_preempt_after_wake(const int woken_id) {
