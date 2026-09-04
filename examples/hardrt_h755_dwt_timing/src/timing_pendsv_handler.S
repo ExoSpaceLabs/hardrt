@@ -36,7 +36,8 @@ PendSV_Handler:
     ldr     r12, [r3]
 1:
     mrs     r0, psp
-    cbz     r0, first_switch
+    cmp     r0, #0
+    beq.w   first_switch
 
 #if defined(__ARM_FP) && (__ARM_FP != 0)
     tst     lr, #0x10
