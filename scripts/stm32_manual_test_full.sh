@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=10
+FUNCTIONAL_TOTAL=11
 BENCHMARK_TOTAL=22
 
 NAMES=()
@@ -31,7 +31,7 @@ Usage:
   scripts/stm32_manual_test_full.sh --stm32h7-root /path/to/STM32CubeH7 [options]
 
 Modes:
-  no --only            Run functional hardware validation AND every hardware benchmark.
+  no --only            Run ALL available tests: every functional hardware validation AND every hardware benchmark.
   --only functional    Run only functional hardware validation.
   --only benchmark     Run only every hardware benchmark, one image at a time.
 
@@ -50,7 +50,7 @@ Options:
   --openocd-scripts DIR   OpenOCD scripts directory.
   --clean-builds          Remove known generated build/install directories before qualification.
   --no-clean-builds       Never offer pre-run generated-build cleanup.
-  --only MODE             MODE is functional or benchmark. Omit to run both.
+  --only MODE             MODE is functional or benchmark. Omit to run all available tests.
   -h, --help              Show help.
 USAGE
 }
@@ -235,7 +235,7 @@ cat > "$REPORT" <<EOF
 - LED observation duration: \`${OBSERVE_SECONDS}s\`
 - Functional contracts: **$FUNCTIONAL_TOTAL**
 - Hardware benchmarks: **$BENCHMARK_TOTAL**
-- Selected mode: **${ONLY_MODE:-functional + benchmark}**
+- Selected mode: **${ONLY_MODE:-all tests (functional + benchmark)}**
 
 The board probe is reported separately from functional and benchmark counts.
 Each benchmark is rebuilt and flashed as a separate image. The build script enables
@@ -492,6 +492,20 @@ external_tick_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+basepri_case() {
+  local prefix=basepri_validation status=PASS notes=""
+  local title="BASEPRI critical-section hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_basepri_validation/build-cortex_m/hardrt_h755_basepri_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Unmasked entry installs the HardRT BASEPRI ceiling; weaker masks are tightened; stricter pre-existing masks are preserved; nested sections restore only on outer exit; final BASEPRI is zero."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-basepri-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/basepri_validation.dbg" "$prefix"; then status=FAIL; notes="BASEPRI GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|zero:|weaker:|stricter:|final_basepri=|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 append_switch_breakdown_report() {
   local glog="$RAW/timing_scheduler_decision_gdb.log"
   [[ -f "$glog" ]] || return 0
@@ -524,6 +538,7 @@ run_functional_matrix() {
   ipc_case queue "Queue hardware contract"
   ipc_case mutex "Mutex hardware contract"
   external_tick_case
+  basepri_case
 }
 
 run_benchmarks() {
@@ -543,6 +558,11 @@ run_benchmarks() {
   done
 }
 
+run_all_tests() {
+  run_functional_matrix
+  run_benchmarks
+}
+
 PROBE="$RAW/00_probe.log"
 echo; echo "Checking ST-Link/OpenOCD target connection..."
 if ! run_logged "$PROBE" openocd -s "$OPENOCD_SCRIPTS" -f "$ROOT_DIR/scripts/openocd_h755.cfg" -c "init; targets; shutdown"; then
@@ -552,10 +572,7 @@ else
   case "$ONLY_MODE" in
     functional) run_functional_matrix ;;
     benchmark) run_benchmarks ;;
-    "")
-      run_functional_matrix
-      run_benchmarks
-      ;;
+    "") run_all_tests ;;
   esac
 fi
 
@@ -684,6 +701,12 @@ for i in "${!NAMES[@]}"; do
     seq="$(grep -o 'sequence slots: \[[^]]*\]' <<< "${NOTES[$i]}" || true)"
     [[ -n "$rr" ]] && echo "PRIORITY_RR: $rr"
     [[ -n "$seq" ]] && echo "PRIORITY_RR: $seq"
+  fi
+  if [[ "${NAMES[$i]}" == "BASEPRI critical-section hardware contract" ]]; then
+    stricter="$(grep -o 'stricter: before=0x[0-9a-fA-F]* inside=0x[0-9a-fA-F]* nested=0x[0-9a-fA-F]* after_inner=0x[0-9a-fA-F]* after_outer=0x[0-9a-fA-F]*' <<< "${NOTES[$i]}" || true)"
+    final="$(grep -o 'final_basepri=0x[0-9a-fA-F]*' <<< "${NOTES[$i]}" || true)"
+    [[ -n "$stricter" ]] && echo "BASEPRI: $stricter"
+    [[ -n "$final" ]] && echo "BASEPRI: $final"
   fi
 done
 
