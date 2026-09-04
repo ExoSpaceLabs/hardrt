@@ -376,7 +376,7 @@ int hrt_init(const hrt_config_t *cfg) {
     if (cfg) {
         g_tick_hz = cfg->tick_hz ? cfg->tick_hz : 1000;
         g_policy = cfg->policy;
-        g_default_slice = cfg->default_slice ? cfg->default_slice : 5;
+        g_default_slice = cfg->default_slice;
         g_core_hz = cfg->core_hz;
         g_tick_src = cfg->tick_src;
     } else {

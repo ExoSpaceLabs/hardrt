@@ -110,7 +110,7 @@ static void test_min_stack_rejected(void) {
 }
 
 /* Verify attr==NULL inherits the configured default slice and a valid default
- * priority. P1-4 separately tightens the explicit default_slice=0 contract. */
+ * priority. An explicit default_slice=0 means cooperative scheduling. */
 static volatile int g_rr_iters = 0;
 static volatile int g_rr_before_peer_sleep = 0;
 static volatile int g_peer_slept = 0;
@@ -152,6 +152,10 @@ static void test_attr_null_inherits_default_slice_zero(void) {
     if (a_id >= 0) {
         T_ASSERT_EQ_INT(expected_default_prio, hrt__tcb(a_id)->prio,
                         "attr==NULL always selects a configured-valid default priority");
+        T_ASSERT_EQ_INT(0, hrt__tcb(a_id)->timeslice_cfg,
+                        "explicit default_slice=0 remains cooperative");
+        T_ASSERT_EQ_INT(0, hrt__test_task_slice_left(a_id),
+                        "cooperative task starts with zero slice remaining");
     }
 
     hrt_task_attr_t rr = {.priority = HRT_PRIO1, .timeslice = 3};
@@ -180,7 +184,7 @@ static const test_case_t CASES[] = {
     {"Create: invalid priority rolls back transaction", test_invalid_priority_is_transactional},
     {"Create: port context failure rolls back transaction", test_prepare_failure_is_transactional},
     {"Create: minimum stack rejected", test_min_stack_rejected},
-    {"Create: attr==NULL uses valid default attributes", test_attr_null_inherits_default_slice_zero},
+    {"Create: attr==NULL preserves cooperative default slice", test_attr_null_inherits_default_slice_zero},
 };
 
 const test_case_t *get_tests_create_limits(int *out_count) {
