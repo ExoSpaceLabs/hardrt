@@ -44,6 +44,7 @@ void _set_sp(int id, uint32_t *sp);
 
 int hrt__get_current(void);
 void hrt__set_current(int id);
+void hrt__block_current(hrt_state_t state);
 void hrt__make_ready(int id);
 void hrt__requeue_noreset(int id);
 void hrt__requeue_front_noreset(int id);

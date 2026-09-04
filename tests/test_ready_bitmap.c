@@ -132,7 +132,7 @@ static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blo
         /* Simulate the exact vulnerable window: the still-running task has
          * published SLEEP/BLOCKED, an IRQ wakes it, then PendSV finally enters
          * scheduler-side outgoing-task preparation. */
-        t->state = (uint8_t)blocked_state;
+        hrt__block_current(blocked_state);
         hrt__make_ready(id);
 
         T_ASSERT_EQ_INT(HRT_READY, t->state,
@@ -180,9 +180,60 @@ static void test_wake_before_reschedule_keeps_single_ready_membership(void) {
     }
 }
 
+static void test_completed_block_does_not_suppress_later_requeue(void) {
+    hrt__test_reset_scheduler_state();
+    const hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = HRT_SCHED_PRIORITY,
+        .default_slice = 1,
+        .tick_src = HRT_TICK_SYSTICK
+    };
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "late-wake init");
+    hrt__test_block_sigalrm();
+
+    static uint32_t stack[128];
+    const hrt_task_attr_t attr = {.priority = HRT_PRIO0, .timeslice = 1};
+    const int id = hrt_create_task(wake_race_dummy_task, NULL, stack, 128, &attr);
+    T_ASSERT_TRUE(id >= 0, "late-wake task created");
+    T_ASSERT_EQ_INT(id, hrt__pick_next_ready(), "late-wake task selected as current");
+    hrt__set_current(id);
+
+    _hrt_tcb_t *const t = hrt__tcb(id);
+    T_ASSERT_TRUE(t != NULL, "late-wake TCB exists");
+    if (t != NULL) {
+        /* Complete scheduler entry while still blocked. This must consume the
+         * transient BLOCK_PENDING reason before a later, ordinary wake occurs. */
+        hrt__block_current(HRT_BLOCKED);
+        hrt__prepare_current_for_reschedule();
+        T_ASSERT_EQ_INT(HRT_BLOCKED, t->state,
+                        "completed block remains blocked at scheduler boundary");
+        T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
+                        "completed block has no READY membership");
+
+        /* Wake after the vulnerable boundary has already closed. g_current may
+         * still contain the old task ID, but that must not create stale race
+         * provenance or suppress a future legitimate requeue. */
+        hrt__make_ready(id);
+        T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                        "late wake creates exactly one READY entry");
+        T_ASSERT_EQ_INT(id, hrt__pick_next_ready(),
+                        "late-woken task dispatches normally");
+        hrt__set_current(id);
+
+        hrt__prepare_current_for_reschedule();
+        T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                        "later normal preemption requeues current task");
+        T_ASSERT_EQ_INT(id, hrt__pick_next_ready(),
+                        "requeued late-woken task remains dispatchable");
+    }
+
+    hrt__test_unblock_sigalrm();
+}
+
 static const test_case_t CASES[] = {
     {"Ready priority bitmap tracks scheduler FIFO occupancy", test_ready_priority_mask_tracks_fifo_occupancy},
     {"Wake before reschedule preserves single READY membership", test_wake_before_reschedule_keeps_single_ready_membership},
+    {"Completed block does not suppress later requeue", test_completed_block_does_not_suppress_later_requeue},
 };
 
 const test_case_t *get_tests_ready_bitmap(int *out_count) {

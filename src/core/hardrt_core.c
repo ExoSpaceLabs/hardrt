@@ -16,8 +16,9 @@
 #define HARDRT_DEBUG 0
 #endif
 
-#define HRT_RESCHED_YIELD          (1u << 0)
-#define HRT_RESCHED_CURRENT_QUEUED (1u << 1)
+#define HRT_RESCHED_NONE          0u
+#define HRT_RESCHED_YIELD         1u
+#define HRT_RESCHED_BLOCK_PENDING 2u
 
 /* Globals */
 static _hrt_tcb_t g_tcbs[HARDRT_MAX_TASKS];
@@ -28,7 +29,7 @@ static hrt_policy_t g_policy = HRT_SCHED_PRIORITY_RR;
 static uint16_t g_default_slice = 5;
 static uint32_t g_core_hz = 0;
 static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
-static volatile uint8_t g_resched_flags = 0u;
+static uint8_t g_resched_reason = HRT_RESCHED_NONE;
 static uint32_t g_ready_prio_mask = 0u;
 volatile hrt_err g_error = NONE;
 
@@ -373,7 +374,7 @@ int hrt_init(const hrt_config_t *cfg) {
 
     g_tick = 0;
     g_current = -1;
-    g_resched_flags = 0u;
+    g_resched_reason = HRT_RESCHED_NONE;
     g_sleep_head = HRT_SLEEP_NONE;
 
     if (cfg) {
@@ -479,7 +480,7 @@ void hrt_sleep(const uint32_t ms) {
      * sleeper from being woken/requeued while it is still the running task. */
     hrt_port_crit_enter();
     t->wake_tick = g_tick + ticks;
-    t->state = HRT_SLEEP;
+    hrt__block_current(HRT_SLEEP);
     sleepq_insert(g_current, ticks);
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
@@ -503,7 +504,7 @@ void hrt_yield(void) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) g_resched_flags |= HRT_RESCHED_YIELD;
+    if (t->state == HRT_READY) g_resched_reason = HRT_RESCHED_YIELD;
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
@@ -562,7 +563,7 @@ void hrt_set_policy(const hrt_policy_t p) {
             t->slice_left = t->timeslice_cfg;
             /* A policy change is a scheduling point. The current task joins
              * the target policy at the tail when scheduler entry occurs. */
-            g_resched_flags |= HRT_RESCHED_YIELD;
+            g_resched_reason = HRT_RESCHED_YIELD;
             yield_current = 1;
             hrt__pend_context_switch();
         }
@@ -575,6 +576,24 @@ void hrt_set_policy(const hrt_policy_t p) {
 void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 
 /* ------------- Internal helpers used by scheduler/time/IPC ------------- */
+void hrt__block_current(const hrt_state_t state) {
+#if HARDRT_DEBUG == 1
+    if (g_current < 0 || g_current >= HARDRT_MAX_TASKS || g_current == HRT_IDLE_ID) {
+        hrt_error(ERR_INVALID_ID);
+        return;
+    }
+    if (state != HRT_BLOCKED && state != HRT_SLEEP) {
+        hrt_error(ERR_INVALID_TASK);
+        return;
+    }
+#endif
+    /* Arm provenance before publishing the blocking state. If an IRQ wakes
+       this still-running task before scheduler entry, READY + BLOCK_PENDING
+       proves it has already been inserted into READY storage exactly once. */
+    g_resched_reason = HRT_RESCHED_BLOCK_PENDING;
+    g_tcbs[g_current].state = (uint8_t)state;
+}
+
 void hrt__make_ready(const int id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
@@ -610,11 +629,6 @@ void hrt__make_ready(const int id) {
     if (g_policy != HRT_SCHED_RR) {
         g_ready_prio_mask |= (uint32_t)(1u << t->prio);
     }
-
-    /* If the still-recorded current task was woken before scheduler entry,
-       it is already present in READY storage. Record that rare transition at
-       the wake site so normal scheduler decisions do not need a queue lookup. */
-    if (id == g_current) g_resched_flags |= HRT_RESCHED_CURRENT_QUEUED;
 }
 
 void hrt__requeue_noreset(const int id) {
@@ -656,34 +670,38 @@ void hrt__requeue_front_noreset(const int id) {
 }
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
- * State + reschedule flags + slice exhaustion encode the scheduling cause:
- * - blocked/sleeping/deleted: do not requeue;
- * - already requeued by a racing wake: consume the flag and do not enqueue;
+ * State + one task-context reschedule reason encode the scheduling cause:
+ * - blocked/sleeping/deleted: consume transient provenance and do not requeue;
+ * - READY + BLOCK_PENDING: a wake raced ahead of scheduler entry and already
+ *   inserted the current task, so consume provenance and do not enqueue again;
  * - explicit yield: rotate to tail and refresh quantum;
  * - RR quantum expiry: rotate to tail and refresh quantum;
  * - otherwise: retain precedence at the front with remaining quantum untouched.
+ *
+ * BLOCK_PENDING is armed only by the running task when it publishes BLOCKED or
+ * SLEEP. Normal wake and dispatch paths therefore carry no race-specific cost.
  */
 void hrt__prepare_current_for_reschedule(void) {
     const int cur = g_current;
     if (cur < 0 || cur >= HARDRT_MAX_TASKS || cur == HRT_IDLE_ID) {
-        g_resched_flags = 0u;
+        g_resched_reason = HRT_RESCHED_NONE;
         return;
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
     if (t == NULL || t->state != HRT_READY) {
-        g_resched_flags = 0u;
+        g_resched_reason = HRT_RESCHED_NONE;
         return;
     }
 
-    const uint8_t resched_flags = g_resched_flags;
-    if ((resched_flags & HRT_RESCHED_CURRENT_QUEUED) != 0u) {
-        g_resched_flags = 0u;
+    const uint8_t resched_reason = g_resched_reason;
+    if (resched_reason == HRT_RESCHED_BLOCK_PENDING) {
+        g_resched_reason = HRT_RESCHED_NONE;
         return;
     }
 
     const int rr_policy = (g_policy == HRT_SCHED_RR || g_policy == HRT_SCHED_PRIORITY_RR);
-    if ((resched_flags & HRT_RESCHED_YIELD) != 0u) {
+    if (resched_reason == HRT_RESCHED_YIELD) {
         t->slice_left = t->timeslice_cfg;
         ready_push_tail_known_unqueued(cur);
     } else if (rr_policy && t->timeslice_cfg > 0u && t->slice_left == 0u) {
@@ -693,7 +711,7 @@ void hrt__prepare_current_for_reschedule(void) {
         ready_push_front_known_unqueued(cur);
     }
 
-    g_resched_flags = 0u;
+    g_resched_reason = HRT_RESCHED_NONE;
 }
 
 int hrt__should_preempt_after_wake(const int woken_id) {
@@ -772,9 +790,6 @@ void hrt__set_current(const int id) {
     }
 #endif
     g_current = id;
-    /* Reschedule flags describe only the outgoing context. Installing a new
-       current task starts a new context generation and discards stale flags. */
-    g_resched_flags = 0u;
 }
 
 void hrt__inc_tick(void) { g_tick++; }
