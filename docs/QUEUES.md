@@ -10,6 +10,7 @@ HardRT provides fixed-capacity, copy-based FIFO queues for communication between
 - Blocking task operations may wait indefinitely.
 - Non-blocking task and ISR operations return immediately.
 - Sender and receiver waiters are stored in separate FIFO task-ID queues.
+- Waiter FIFO order selects which blocked task is woken first; it does not reserve an item or queue slot for that task.
 
 ## Initialization
 
@@ -117,11 +118,22 @@ The selected port's ISR critical-section rules still apply. On Cortex-M, only in
 
 See [SCHEDULING.md](SCHEDULING.md) for the complete READY-transition and retained-quantum contract.
 
-## Wake behavior
+## Wake, FIFO, and barging behavior
 
-A successful enqueue wakes at most one receiver. A successful dequeue wakes at most one sender. Waiters are removed FIFO and passed to the common ready-queue insertion path.
+A successful enqueue wakes at most one receiver. A successful dequeue wakes at most one sender. Waiters are removed from the corresponding waiter FIFO and passed to the common READY-queue insertion path.
 
-The queue does not directly transfer an item between waiting tasks. The awakened task resumes and retries its operation.
+The v0.5 queue contract is **FIFO waiter selection with retry-on-resume**. The queue does not directly transfer an item to a waiting receiver and does not reserve newly available capacity for a waiting sender. The selected waiter is merely made READY and later resumes its blocking operation.
+
+Therefore waiter FIFO order is **not** a strict completion-order or resource-reservation guarantee. Before the selected waiter actually runs, another task or ISR may consume the available item or capacity. The selected waiter then retries and may block again if the resource is no longer available. This permitted behavior is commonly called barging.
+
+Consequences:
+
+- RX waiter FIFO determines which blocked receiver is woken first, not which receiver is guaranteed to consume the newly queued item.
+- TX waiter FIFO determines which blocked sender is woken first, not which sender is guaranteed to own newly freed capacity.
+- scheduler priority and already-READY work can therefore affect which caller completes first;
+- v0.5 does not claim strict queue completion fairness or starvation freedom under adversarial contention.
+
+Strict reservation/direct-handoff semantics would require additional per-waiter or per-queue reservation state and are intentionally deferred to a later queue redesign rather than being introduced during v0.5 release hardening.
 
 ## Copy and critical-section cost
 
@@ -152,7 +164,7 @@ The public `hrt_queue_t` contains:
 - one RX waiter FIFO;
 - one TX waiter FIFO.
 
-Waiter arrays are sized by `HARDRT_MAX_TASKS`. In a CMake build, that macro currently includes the additional idle slot, although the idle task should never wait on a queue.
+Waiter arrays are sized by `HARDRT_APP_MAX_TASKS`, the configured application-task capacity. The private idle task is not a valid queue waiter and does not consume waiter storage.
 
 ## Constraints
 
@@ -161,3 +173,4 @@ Waiter arrays are sized by `HARDRT_MAX_TASKS`. In a CMake build, that macro curr
 - No dynamic allocation is performed.
 - Queue state and item storage must outlive all users.
 - ISR operations are non-blocking only; they still execute the configured critical-section mechanism and item copy.
+- FIFO waiter selection does not imply reserved-resource or strict completion-order fairness.

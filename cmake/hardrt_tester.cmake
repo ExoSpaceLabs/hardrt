@@ -20,6 +20,7 @@ if(HARDRT_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_priority.c
           ${CMAKE_SOURCE_DIR}/tests/test_preemption_contract.c
           ${CMAKE_SOURCE_DIR}/tests/test_queue_wake_policy.c
+          ${CMAKE_SOURCE_DIR}/tests/test_queue_barging.c
           ${CMAKE_SOURCE_DIR}/tests/test_waitq_overflow.c
           ${CMAKE_SOURCE_DIR}/tests/test_ready_bitmap.c
           ${CMAKE_SOURCE_DIR}/tests/test_coop_vs_rr.c
