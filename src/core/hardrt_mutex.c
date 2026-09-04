@@ -2,11 +2,12 @@
 #include "hardrt_mutex.h"
 #include "hardrt_port_int.h"
 
-static void _waitq_push(hrt_mutex_t *m, uint8_t id) {
-    if (m->count_wait >= HARDRT_APP_MAX_TASKS) return;
+static int _waitq_push(hrt_mutex_t *m, uint8_t id) {
+    if (m->count_wait >= HARDRT_APP_MAX_TASKS) return -1;
     m->q[m->tail] = id;
     m->tail = (uint8_t)((m->tail + 1u) % HARDRT_APP_MAX_TASKS);
     m->count_wait++;
+    return 0;
 }
 
 static int _waitq_pop(hrt_mutex_t *m) {
@@ -61,7 +62,13 @@ int hrt_mutex_lock(hrt_mutex_t *m) {
         return -1;
     }
 
-    _waitq_push(m, (uint8_t)me);
+    if (_waitq_push(m, (uint8_t)me) != 0) {
+        /* Do not strand the caller as BLOCKED unless its waiter membership was
+         * actually published. A full waiter queue here indicates inconsistent
+         * kernel/IPC state rather than a normal resource-exhaustion case. */
+        hrt_port_crit_exit();
+        return -1;
+    }
     _hrt_tcb_t *t = hrt__tcb(me);
     if (!t) {
         hrt_port_crit_exit();

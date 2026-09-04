@@ -5,11 +5,12 @@
 
 #include <string.h>
 
-static void _wq_push(uint8_t *qbuf, uint8_t *tail, uint8_t *count, const uint8_t id) {
-    if (*count >= HARDRT_APP_MAX_TASKS) return;
+static int _wq_push(uint8_t *qbuf, uint8_t *tail, uint8_t *count, const uint8_t id) {
+    if (*count >= HARDRT_APP_MAX_TASKS) return -1;
     qbuf[*tail] = id;
     *tail = (uint8_t)((*tail + 1u) % HARDRT_APP_MAX_TASKS);
     (*count)++;
+    return 0;
 }
 
 static int _wq_pop(uint8_t *qbuf, uint8_t *head, uint8_t *count) {
@@ -121,7 +122,11 @@ int hrt_queue_send(hrt_queue_t *q, const void *item) {
             return ok;
         }
 
-        _wq_push(q->tx_q, &q->tx_tail, &q->tx_wait, (uint8_t)me);
+        if (_wq_push(q->tx_q, &q->tx_tail, &q->tx_wait, (uint8_t)me) != 0) {
+            /* A task may become BLOCKED only after TX waiter membership exists. */
+            hrt_port_crit_exit();
+            return -1;
+        }
         _hrt_tcb_t *t = hrt__tcb(me);
         if (t) t->state = HRT_BLOCKED;
         hrt_port_crit_exit();
@@ -185,7 +190,11 @@ int hrt_queue_recv(hrt_queue_t *q, void *out) {
             return ok;
         }
 
-        _wq_push(q->rx_q, &q->rx_tail, &q->rx_wait, (uint8_t)me);
+        if (_wq_push(q->rx_q, &q->rx_tail, &q->rx_wait, (uint8_t)me) != 0) {
+            /* A task may become BLOCKED only after RX waiter membership exists. */
+            hrt_port_crit_exit();
+            return -1;
+        }
         _hrt_tcb_t *t = hrt__tcb(me);
         if (t) t->state = HRT_BLOCKED;
         hrt_port_crit_exit();

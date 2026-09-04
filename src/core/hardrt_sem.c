@@ -16,14 +16,18 @@
 #include <stdio.h>
 #endif
 
-static void _waitq_push(hrt_sem_t *s, const uint8_t id) {
+static int _waitq_push(hrt_sem_t *s, const uint8_t id) {
 #if HARDRT_DEBUG == 1
-    if (id >= HARDRT_APP_MAX_TASKS) hrt_error(ERR_INVALID_ID);
+    if (id >= HARDRT_APP_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return -1;
+    }
 #endif
-    if (s->count_wait >= HARDRT_APP_MAX_TASKS) return;
+    if (s->count_wait >= HARDRT_APP_MAX_TASKS) return -1;
     s->q[s->tail] = id;
     s->tail = (uint8_t)((s->tail + 1u) % HARDRT_APP_MAX_TASKS);
     s->count_wait++;
+    return 0;
 }
 
 static int _waitq_pop(hrt_sem_t *s) {
@@ -74,7 +78,13 @@ int hrt_sem_take(hrt_sem_t *s) {
         return 0;
     }
 
-    _waitq_push(s, (uint8_t)me);
+    if (_waitq_push(s, (uint8_t)me) != 0) {
+        /* A valid N-task system cannot legitimately have N existing waiters
+         * plus the running caller. Fail without publishing a BLOCKED task that
+         * has no waiter-queue membership. */
+        hrt_port_crit_exit();
+        return -1;
+    }
 #if HRT_SEM_DEBUG
     printf("[sem] take: task %d queued, waiters=%u\n", me, (unsigned)s->count_wait);
 #endif

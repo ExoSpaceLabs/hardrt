@@ -3,6 +3,7 @@
 
 const test_case_t *get_tests_preemption_contract(int *out_count);
 const test_case_t *get_tests_queue_wake_policy(int *out_count);
+const test_case_t *get_tests_waitq_overflow(int *out_count);
 
 /* Global failure counter used by assertion macros */
 int g_failures = 0;
@@ -49,6 +50,7 @@ int main(void) {
     APPEND_GROUP(get_tests_priority);
     APPEND_GROUP(get_tests_preemption_contract);
     APPEND_GROUP(get_tests_queue_wake_policy);
+    APPEND_GROUP(get_tests_waitq_overflow);
     APPEND_GROUP(get_tests_ready_bitmap);
     APPEND_GROUP(get_tests_coop_vs_rr);
     APPEND_GROUP(get_tests_tick_rate);
