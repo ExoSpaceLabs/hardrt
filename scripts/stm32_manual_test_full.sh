@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=9
+FUNCTIONAL_TOTAL=10
 BENCHMARK_TOTAL=22
 
 NAMES=()
@@ -446,6 +446,20 @@ preemption_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+global_rr_case() {
+  local prefix=global_rr status=PASS notes=""
+  local title="Global RR mixed-priority hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_global_rr/build-cortex_m/hardrt_h755_global_rr.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Under HRT_SCHED_RR, mixed-priority READY tasks follow one global FIFO; a real TIM2 ISR wake reports need_switch=0; the interrupted task continues and the woken high-priority task joins the tail behind already READY work."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-global-rr.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/global_rr.dbg" "$prefix"; then status=FAIL; notes="Global RR GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|irq_count=|runs:|sequence slots:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 ipc_case() {
   local case="$1" title="$2" status=PASS notes=""
   local prefix="ipc_$case"
@@ -504,6 +518,7 @@ run_functional_matrix() {
   visual_blinky "C++ blinky" "$ROOT_DIR/scripts/build-lib-stm32h7xx-blinky-cpp.sh" "$ROOT_DIR/examples/hardrt_h755_blinky_cpp/build-cortex_m/hardrt_h755_blinky_cpp.elf" "LD1/PB0 should be clearly faster than LD2/PE1 (100 ms vs 250 ms configured)." cpp_blinky
   counter_demo
   preemption_case priority "Fixed-priority hardware preemption"
+  global_rr_case
   preemption_case priority_rr "PRIORITY_RR retained-quantum preemption"
   ipc_case semaphore "Semaphore hardware contract"
   ipc_case queue "Queue hardware contract"
@@ -656,6 +671,14 @@ print_switch_breakdown
 
 echo
 for i in "${!NAMES[@]}"; do
+  if [[ "${NAMES[$i]}" == "Global RR mixed-priority hardware contract" ]]; then
+    irq="$(grep -o 'irq_count=[0-9]* need_switch=-*[0-9]*' <<< "${NOTES[$i]}" || true)"
+    runs="$(grep -o 'runs: A=[0-9]* B=[0-9]* high=[0-9]*' <<< "${NOTES[$i]}" || true)"
+    seq="$(grep -o 'sequence slots: \[[^]]*\]' <<< "${NOTES[$i]}" || true)"
+    [[ -n "$irq" ]] && echo "RR: $irq"
+    [[ -n "$runs" ]] && echo "RR: $runs"
+    [[ -n "$seq" ]] && echo "RR: $seq"
+  fi
   if [[ "${NAMES[$i]}" == "PRIORITY_RR retained-quantum preemption" ]]; then
     rr="$(grep -o 'RR remaining: expected=[0-9]* observed=[0-9]*' <<< "${NOTES[$i]}" || true)"
     seq="$(grep -o 'sequence slots: \[[^]]*\]' <<< "${NOTES[$i]}" || true)"
