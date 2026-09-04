@@ -387,8 +387,10 @@ int hrt_init(const hrt_config_t *cfg) {
         g_tick_src = HRT_TICK_SYSTICK;
     }
 
-    hrt_port_start_systick(g_tick_hz);
+    /* Finish all kernel-owned state before a port is allowed to touch its tick
+       mechanism. Tick configuration itself remains inactive until hrt_start(). */
     hrt__init_idle_task();
+    if (hrt_port_configure_tick(g_tick_hz) != 0) return -1;
     return 0;
 }
 
@@ -462,7 +464,8 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 }
 
 void hrt_start(void) {
-    hrt__pend_context_switch();
+    /* The port owns the atomic scheduler-start boundary, including first
+       dispatch and activation of a configured periodic tick. */
     hrt_port_enter_scheduler();
 }
 

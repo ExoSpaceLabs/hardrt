@@ -23,25 +23,31 @@ extern "C" {
 
 /* ---------------- Hooks that every port must implement ---------------- */
 
-/* Called by hrt_init() during initialization.
+/* Called by hrt_init() after core state and the idle task are initialized.
  * Context: task/startup context, never ISR.
  * Blocking: must not block or dispatch a task.
- * Ordering: configure the selected tick/context-switch mechanism only; scheduler
- * entry happens later through hrt_port_enter_scheduler().
+ * Ordering: configure the selected tick/context-switch mechanism, but leave the
+ * periodic tick inactive and do not globally enable interrupts. Return 0 on
+ * success or a negative value if the requested tick cannot be represented by
+ * the port.
  */
-void hrt_port_start_systick(uint32_t tick_hz);
+int hrt_port_configure_tick(uint32_t tick_hz);
+
+/* Called by hrt_start() to cross the scheduler-start boundary.
+ * Context: startup/task context.
+ * Blocking: may not return on embedded ports; null port may return.
+ * Ordering: perform any architecture startup required before task execution,
+ * activate the configured periodic tick when HardRT owns it, request the first
+ * scheduling decision, then allow the first task to execute. No task may run
+ * before this startup sequence is complete.
+ */
+void hrt_port_enter_scheduler(void);
 
 /* Called when the port has no application task to execute.
  * Context: scheduler/idle context.
  * Blocking: may wait for an interrupt/event; must not modify kernel queues.
  */
 void hrt_port_idle_wait(void);
-
-/* Called by hrt_start() after an initial reschedule has been requested.
- * Context: startup/task context.
- * Blocking: may not return on embedded ports; null port may return.
- */
-void hrt_port_enter_scheduler(void);
 
 /* Called after a task changes state or voluntarily yields.
  * Context: task context only.
@@ -75,7 +81,7 @@ void hrt_port_crit_exit(void);
 void hrt_port_sp_valid(uintptr_t sp);
 
 /* Request a reschedule without directly switching task context.
- * Context: task or supported ISR context.
+ * Context: task or supported ISR context after scheduler startup.
  * Blocking: non-blocking and safe to request repeatedly.
  * Cortex-M: pend PendSV. POSIX: set the pending scheduler flag.
  */
@@ -91,7 +97,7 @@ void hrt__task_trampoline(void);
 /* Initialize the port's idle representation.
  * Context: startup context.
  * Blocking: must not block.
- * Ordering: completed before hrt_start(); lifecycle ordering is tightened in #33.
+ * Ordering: completed before tick configuration and before hrt_start().
  */
 void hrt__init_idle_task(void);
 

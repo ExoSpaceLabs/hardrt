@@ -3,7 +3,7 @@
 
 /* Required port hooks. If the authoritative prototypes drift, this fixture must
  * be updated or compilation fails. No object from this target is linked. */
-void hrt_port_start_systick(uint32_t tick_hz) { (void)tick_hz; }
+int hrt_port_configure_tick(uint32_t tick_hz) { (void)tick_hz; return 0; }
 void hrt_port_idle_wait(void) {}
 void hrt_port_enter_scheduler(void) {}
 void hrt_port_yield_to_scheduler(void) {}

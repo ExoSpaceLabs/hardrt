@@ -4,7 +4,7 @@
 #include "hardrt_port_contract.h"
 
 /* Null port: provides stub hooks so the library links.
-   - No tick source is started.
+   - No tick source is activated.
    - No context switching happens.
    - Useful only to compile and link the core on bare toolchains.
 */
@@ -21,12 +21,13 @@ void hrt__init_idle_task(void) {
     idle->slice_left = 0u;
 }
 
-void hrt_port_enter_scheduler(void) {
-    /* No scheduler in null port; hrt_start() returns immediately. */
+int hrt_port_configure_tick(const uint32_t tick_hz) {
+    (void)tick_hz;
+    return 0;
 }
 
-void hrt_port_start_systick(const uint32_t tick_hz) {
-    (void)tick_hz;
+void hrt_port_enter_scheduler(void) {
+    /* No scheduler or periodic tick in the null port; hrt_start() returns. */
 }
 
 void hrt_port_idle_wait(void) {

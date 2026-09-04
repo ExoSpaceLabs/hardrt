@@ -26,6 +26,7 @@ static _port_ctx_t g_ctxs[HARDRT_MAX_TASKS];
 static ucontext_t g_sched_ctx;
 static volatile sig_atomic_t g_switch_pending = 0;
 static sigset_t g_sigalrm_set;
+static struct itimerval g_tick_timer;
 
 #ifdef HARDRT_TEST_HOOKS
 static volatile sig_atomic_t g_test_stop = 0;
@@ -104,24 +105,31 @@ static void _tick_sighandler(const int signo) {
     g_switch_pending = 1;
 }
 
-void hrt_port_start_systick(const uint32_t tick_hz) {
-    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) return;
-
+int hrt_port_configure_tick(const uint32_t tick_hz) {
     sigemptyset(&g_sigalrm_set);
     sigaddset(&g_sigalrm_set, SIGALRM);
+
+    /* Reconfiguration never leaves a timer from a previous hosted run armed. */
+    const struct itimerval stopped = {0};
+    if (setitimer(ITIMER_REAL, &stopped, NULL) != 0) return -1;
+    memset(&g_tick_timer, 0, sizeof(g_tick_timer));
+
+    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) return 0;
+    if (tick_hz == 0u) return -1;
+
+    const uint64_t period_us = 1000000ULL / (uint64_t)tick_hz;
+    if (period_us == 0u) return -1;
 
     struct sigaction sa = {0};
     sa.sa_handler = _tick_sighandler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
-    sigaction(SIGALRM, &sa, NULL);
+    if (sigaction(SIGALRM, &sa, NULL) != 0) return -1;
 
-    struct itimerval it = {0};
-    const long usec = tick_hz ? (1000000L / (long)tick_hz) : 1000L;
-    it.it_value.tv_sec = 0;
-    it.it_value.tv_usec = usec;
-    it.it_interval = it.it_value;
-    setitimer(ITIMER_REAL, &it, NULL);
+    g_tick_timer.it_value.tv_sec = (time_t)(period_us / 1000000ULL);
+    g_tick_timer.it_value.tv_usec = (suseconds_t)(period_us % 1000000ULL);
+    g_tick_timer.it_interval = g_tick_timer.it_value;
+    return 0;
 }
 
 void hrt_port_idle_wait(void) {
@@ -146,6 +154,9 @@ void hrt_port_yield_to_scheduler(void) {
 }
 
 void hrt_port_enter_scheduler(void) {
+    int tick_armed = (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL);
+    g_switch_pending = 1;
+
     for (;;) {
 #ifdef HARDRT_TEST_HOOKS
         if (g_test_stop) {
@@ -171,6 +182,16 @@ void hrt_port_enter_scheduler(void) {
         }
 
         hrt__set_current(next);
+        if (!tick_armed) {
+            /* Arm the hosted periodic tick only after a valid current task has
+             * been selected. SIGALRM is blocked in scheduler context here, so
+             * no tick can observe g_current == -1 during startup. */
+            if (setitimer(ITIMER_REAL, &g_tick_timer, NULL) != 0) {
+                unblock_sigalrm(&old);
+                return;
+            }
+            tick_armed = 1;
+        }
         swapcontext(&g_sched_ctx, &g_ctxs[next].ctx);
         hrt__on_scheduler_entry();
         unblock_sigalrm(&old);

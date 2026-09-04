@@ -64,6 +64,7 @@ volatile uint32_t dbg_basperi;
 #endif
 
 static uint32_t g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned(8)));
+static uint32_t g_systick_ctrl = 0u;
 
 void hrt_port_sp_valid(const uintptr_t sp) {
 #if HARDRT_DEBUG == 1
@@ -228,29 +229,30 @@ void hrt_port_yield_to_scheduler(void) {
      */
 }
 
-void hrt_port_start_systick(uint32_t tick_hz) {
-    if (!tick_hz) return;
+int hrt_port_configure_tick(const uint32_t tick_hz) {
+    g_systick_ctrl = 0u;
 
-    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) {
-        SCB->SHPR[10] = 0xF0;
-        __asm volatile ("cpsie i");
-        return;
-    }
+    /* PendSV is part of the scheduler mechanism in both tick modes. Merely
+       configure its priority here; hrt_init() must not enable interrupts. */
+    SCB->SHPR[10] = 0xF0;
+
+    if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) return 0;
+    if (tick_hz == 0u) return -1;
 
     const uint32_t core_hz = hrt_port_get_core_hz();
-    if (!core_hz) return;
+    if (core_hz == 0u) return -1;
 
-    uint32_t reload = core_hz / tick_hz;
-    if (reload == 0u) reload = 1u;
-    if (reload > 0xFFFFFFu) reload = 0xFFFFFFu;
-    reload -= 1u;
+    const uint32_t counts = core_hz / tick_hz;
+    if (counts == 0u || counts > 0x01000000u) return -1;
 
-    SysTick->LOAD = reload;
-    SysTick->VAL = 0;
-    SCB->SHPR[10] = 0xF0;
+    /* Configure but deliberately leave SysTick disabled until hrt_start(). */
+    SysTick->CTRL = 0u;
+    SysTick->LOAD = counts - 1u;
+    SysTick->VAL = 0u;
     SCB->SHPR[11] = 0xE0;
-    SysTick->CTRL = SYSTICK_CLKSOURCE_CPU | SYSTICK_TICKINT | SYSTICK_ENABLE;
-    __asm volatile ("cpsie i");
+    g_systick_ctrl = SYSTICK_CLKSOURCE_CPU | SYSTICK_TICKINT | SYSTICK_ENABLE;
+    _hrt_port_barrier();
+    return 0;
 }
 
 int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
@@ -286,14 +288,25 @@ int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 }
 
 void hrt_port_enter_scheduler(void) {
+    /* Scheduler startup is one ordered boundary: no task or tick can run until
+       FP context support is configured, the first PendSV is pending, and the
+       selected periodic tick is armed. */
+    __asm volatile ("cpsid i");
 #if HARDRT_CORTEXM_HAS_FPU
     _configure_fpu_context();
 #endif
-    __asm volatile ("cpsie i");
 #if HARDRT_DEBUG == 1
     dbg_pend_from_cortexm++;
 #endif
     hrt__pend_context_switch();
+
+    if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
+        SysTick->VAL = 0u;
+        SysTick->CTRL = g_systick_ctrl;
+        _hrt_port_barrier();
+    }
+
+    __asm volatile ("cpsie i");
     for (;;) hrt_port_idle_wait();
 }
 
