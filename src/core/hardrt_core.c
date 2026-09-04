@@ -354,6 +354,25 @@ static void sleepq_insert(const int id, const uint32_t ticks) {
     }
 }
 
+static int stack_bounds(const uint32_t *base, const size_t words,
+                        uintptr_t *lo, uintptr_t *hi) {
+    if (base == NULL || lo == NULL || hi == NULL) return 0;
+    if (words > (size_t)(UINTPTR_MAX / sizeof(uint32_t))) return 0;
+
+    const uintptr_t start = (uintptr_t)base;
+    const uintptr_t bytes = (uintptr_t)(words * sizeof(uint32_t));
+    if (start > UINTPTR_MAX - bytes) return 0;
+
+    *lo = start;
+    *hi = start + bytes;
+    return 1;
+}
+
+static int stack_overlaps(const uintptr_t a_lo, const uintptr_t a_hi,
+                          const uintptr_t b_lo, const uintptr_t b_hi) {
+    return a_lo < b_hi && b_lo < a_hi;
+}
+
 /* Helper to fetch/store SP for a given task id. */
 uint32_t *_get_sp(const int id) {
     return hrt__tcb(id)->sp;
@@ -370,7 +389,9 @@ int hrt_init(const hrt_config_t *cfg) {
     readyq_reset_storage();
     memset(g_sleep_next, HRT_SLEEP_NONE, sizeof(g_sleep_next));
     memset(g_sleep_delta, 0, sizeof(g_sleep_delta));
-    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) g_tcbs[i].state = HRT_UNUSED;
+    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
+        g_tcbs[i].slot_state = HRT_SLOT_UNUSED;
+    }
 
     g_tick = 0;
     g_current = -1;
@@ -393,6 +414,7 @@ int hrt_init(const hrt_config_t *cfg) {
 
     /* Finish all kernel-owned state before a port is allowed to touch its tick
        mechanism. Tick configuration itself remains inactive until hrt_start(). */
+    g_tcbs[HRT_IDLE_ID].slot_state = HRT_SLOT_USED;
     hrt__init_idle_task();
     if (hrt_port_configure_tick(g_tick_hz) != 0) return -1;
     return 0;
@@ -403,6 +425,13 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
                     const hrt_task_attr_t *attr) {
     if (!fn || !stack_words || n_words < 64u) {
         hrt_error(ERR_INVALID_TASK);
+        return -1;
+    }
+
+    uintptr_t new_stack_lo = 0u;
+    uintptr_t new_stack_hi = 0u;
+    if (!stack_bounds(stack_words, n_words, &new_stack_lo, &new_stack_hi)) {
+        hrt_error(ERR_STACK_RANGE);
         return -1;
     }
 
@@ -417,16 +446,55 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     }
     const uint16_t timeslice = (uint16_t)(attr ? attr->timeslice : g_default_slice);
 
-    int id = -1;
-    /* Application allocation never examines the private idle TCB slot. */
+    int same_stack_exited = -1;
+    int any_exited = -1;
+
+    /*
+     * A stack is execution storage, not task identity. Reusing any part of a
+     * live task's stack would corrupt both contexts, so reject overlap at the
+     * kernel boundary. EXITED tasks no longer execute and are therefore safe
+     * to reclaim; prefer reclaiming the exited owner of the same exact stack.
+     */
     for (int i = 0; i < HARDRT_APP_MAX_TASKS; ++i) {
-        if (g_tcbs[i].state == HRT_UNUSED) {
-            id = i;
-            break;
+        const _hrt_tcb_t *existing = &g_tcbs[i];
+        if (existing->slot_state != HRT_SLOT_USED) continue;
+
+        if (existing->state == HRT_EXITED) {
+            if (any_exited < 0) any_exited = i;
+            if (existing->stack_base == stack_words &&
+                existing->stack_words == n_words) {
+                same_stack_exited = i;
+            }
+            continue;
+        }
+
+        uintptr_t existing_lo = 0u;
+        uintptr_t existing_hi = 0u;
+        if (!stack_bounds(existing->stack_base, existing->stack_words,
+                          &existing_lo, &existing_hi)) {
+            hrt_error(ERR_STACK_RANGE);
+            return -1;
+        }
+        if (stack_overlaps(new_stack_lo, new_stack_hi, existing_lo, existing_hi)) {
+            hrt_error(ERR_STACK_IN_USE);
+            return -1;
         }
     }
+
+    int id = same_stack_exited;
     if (id < 0) {
-        hrt_error(ERR_INVALID_ID);
+        /* Prefer a genuinely free slot; EXITED tasks continue to occupy their
+         * slots until capacity requires reclamation. */
+        for (int i = 0; i < HARDRT_APP_MAX_TASKS; ++i) {
+            if (g_tcbs[i].slot_state == HRT_SLOT_UNUSED) {
+                id = i;
+                break;
+            }
+        }
+    }
+    if (id < 0) id = any_exited;
+    if (id < 0) {
+        hrt_error(ERR_NO_TASKS);
         return -1;
     }
 
@@ -438,7 +506,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 
     /* Keep the slot non-runnable until every fallible creation step succeeds. */
     memset(t, 0, sizeof(*t));
-    t->state = HRT_UNUSED;
+    t->slot_state = HRT_SLOT_UNUSED;
     t->entry = fn;
     t->arg = arg;
     t->prio = (uint8_t)priority;
@@ -449,7 +517,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     if (hrt_port_prepare_task_stack(id, hrt__task_trampoline,
                                     stack_words, n_words) != 0) {
         memset(t, 0, sizeof(*t));
-        t->state = HRT_UNUSED;
+        t->slot_state = HRT_SLOT_UNUSED;
         return -1;
     }
 #if HARDRT_DEBUG == 1
@@ -457,11 +525,12 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     dbg_ct_sp = (uintptr_t)t->sp;
 #endif
 
+    t->slot_state = HRT_SLOT_USED;
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
     if (!ready_push_tail(id)) {
         memset(t, 0, sizeof(*t));
-        t->state = HRT_UNUSED;
+        t->slot_state = HRT_SLOT_UNUSED;
         return -1;
     }
     return id;
@@ -531,7 +600,7 @@ void hrt_yield(void) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) g_explicit_yield = 1u;
+    if (t->state == HRT_RUNNING) g_explicit_yield = 1u;
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
@@ -545,7 +614,7 @@ void hrt_task_delete(void) {
 
     hrt_port_crit_enter();
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t) t->state = HRT_UNUSED;
+    if (t != NULL && t->slot_state == HRT_SLOT_USED) t->state = HRT_EXITED;
     hrt_port_crit_exit();
 
     hrt__pend_context_switch();
@@ -586,7 +655,7 @@ void hrt_set_policy(const hrt_policy_t p) {
     const int cur = g_current;
     if (cur >= 0 && cur < HARDRT_MAX_TASKS && cur != HRT_IDLE_ID) {
         _hrt_tcb_t *t = hrt__tcb(cur);
-        if (t != NULL && t->state == HRT_READY) {
+        if (t != NULL && t->slot_state == HRT_SLOT_USED && t->state == HRT_RUNNING) {
             t->slice_left = t->timeslice_cfg;
             /* A policy change is a scheduling point. The current task joins
              * the target policy at the tail when scheduler entry occurs. */
@@ -609,7 +678,7 @@ void hrt__make_ready(const int id) {
         return;
     }
     _hrt_tcb_t *t = &g_tcbs[id];
-    if (t->state == HRT_READY || ready_is_queued(id)) {
+    if (t->state == HRT_READY || t->state == HRT_RUNNING || ready_is_queued(id)) {
         hrt_error(ERR_DUP_READY);
         return;
     }
@@ -680,7 +749,7 @@ void hrt__requeue_front_noreset(const int id) {
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
  * State + explicit-yield + slice exhaustion encode the current reschedule cause:
- * - blocked/sleeping/deleted: do not requeue;
+ * - blocked/sleeping/exited: do not requeue;
  * - already requeued by a racing wake: do not enqueue again;
  * - explicit yield: rotate to tail and refresh quantum;
  * - RR quantum expiry: rotate to tail and refresh quantum;
@@ -694,11 +763,13 @@ void hrt__prepare_current_for_reschedule(void) {
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t == NULL || t->state != HRT_READY || ready_is_queued(cur)) {
+    if (t == NULL || t->slot_state != HRT_SLOT_USED ||
+        t->state != HRT_RUNNING || ready_is_queued(cur)) {
         g_explicit_yield = 0u;
         return;
     }
 
+    t->state = HRT_READY;
     const int rr_policy = (g_policy == HRT_SCHED_RR || g_policy == HRT_SCHED_PRIORITY_RR);
     if (g_explicit_yield != 0u) {
         t->slice_left = t->timeslice_cfg;
@@ -725,7 +796,7 @@ int hrt__should_preempt_after_wake(const int woken_id) {
     const _hrt_tcb_t *woken = hrt__tcb(woken_id);
     const _hrt_tcb_t *current = hrt__tcb(cur);
     if (woken == NULL || current == NULL) return 0;
-    if (current->state != HRT_READY) return 1;
+    if (current->slot_state != HRT_SLOT_USED || current->state != HRT_RUNNING) return 1;
 
     if (g_policy == HRT_SCHED_PRIORITY || g_policy == HRT_SCHED_PRIORITY_RR) {
         return woken->prio < current->prio;
@@ -796,6 +867,28 @@ void hrt__set_current(const int id) {
         return;
     }
 #endif
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return;
+
+    const int previous = g_current;
+    if (previous == HRT_IDLE_ID && previous != id) {
+        _hrt_tcb_t *idle = hrt__tcb(HRT_IDLE_ID);
+        if (idle != NULL && idle->slot_state == HRT_SLOT_USED &&
+            idle->state == HRT_RUNNING) {
+            idle->state = HRT_READY;
+        }
+    }
+
+    _hrt_tcb_t *next = hrt__tcb(id);
+    if (next == NULL || next->slot_state != HRT_SLOT_USED) {
+        hrt_error(ERR_INVALID_TASK);
+        return;
+    }
+    if (next->state != HRT_READY && next->state != HRT_RUNNING) {
+        hrt_error(ERR_INVALID_TASK);
+        return;
+    }
+
+    next->state = HRT_RUNNING;
     g_current = id;
 }
 
@@ -879,6 +972,17 @@ int hrt__test_task_ready_queued(int id) {
 }
 
 uint32_t hrt__test_ready_prio_mask(void) { return g_ready_prio_mask; }
+
+int hrt__test_task_state(int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return -1;
+    if (g_tcbs[id].slot_state != HRT_SLOT_USED) return -1;
+    return (int)g_tcbs[id].state;
+}
+
+int hrt__test_slot_state(int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return -1;
+    return (int)g_tcbs[id].slot_state;
+}
 #endif
 
 uintptr_t hrt__schedule(const uintptr_t old_sp) {
