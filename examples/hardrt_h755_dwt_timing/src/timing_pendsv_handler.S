@@ -65,7 +65,8 @@ PendSV_Handler:
 
     ldr     r1, =g_pendsv_measure_armed
     ldr     r2, [r1]
-    cbz     r2, unmeasured_schedule
+    cmp     r2, #0
+    beq.w   unmeasured_schedule
 
     /* Save segment: handler entry through outgoing context store, including
        the production BASEPRI prologue and MSP bookkeeping. */
@@ -89,7 +90,8 @@ PendSV_Handler:
     ldr     r1, =g_pendsv_scheduler_cycles
     str     r2, [r1]
 
-    cbz     r0, measured_resume
+    cmp     r0, #0
+    beq.w   measured_resume
 
     /* Restore segment starts after scheduler bookkeeping. */
     mov     r12, r10
@@ -140,7 +142,8 @@ PendSV_Handler:
 
 unmeasured_schedule:
     bl      hrt__schedule
-    cbz     r0, resume
+    cmp     r0, #0
+    beq.w   resume
 
 #if defined(__ARM_FP) && (__ARM_FP != 0)
     ldmia   r0!, {r4-r11, lr}
@@ -163,7 +166,8 @@ unmeasured_schedule:
 first_switch:
     movs    r0, #0
     bl      hrt__schedule
-    cbz     r0, resume
+    cmp     r0, #0
+    beq.w   resume
 
 #if defined(__ARM_FP) && (__ARM_FP != 0)
     ldmia   r0!, {r4-r11, lr}
