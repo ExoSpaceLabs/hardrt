@@ -199,7 +199,12 @@ void hrt_port_enter_scheduler(void) {
 }
 
 void hrt_port_crit_enter(void) {
-    if (g_crit_depth++ == 0) sigprocmask(SIG_BLOCK, &g_sigalrm_set, NULL);
+    if (g_crit_depth++ == 0) {
+        /* Preserve the caller's exact outer signal mask. SIGALRM is added for
+         * the protected region without discarding any stricter pre-existing
+         * masking chosen by application/test code. */
+        sigprocmask(SIG_BLOCK, &g_sigalrm_set, &g_saved_mask);
+    }
 }
 
 void hrt_port_crit_exit(void) {
@@ -207,7 +212,9 @@ void hrt_port_crit_exit(void) {
         g_crit_depth = 0;
         return;
     }
-    if (--g_crit_depth == 0) sigprocmask(SIG_UNBLOCK, &g_sigalrm_set, NULL);
+    if (--g_crit_depth == 0) {
+        sigprocmask(SIG_SETMASK, &g_saved_mask, NULL);
+    }
 }
 
 void hrt_port_sp_valid(const uintptr_t sp) {
