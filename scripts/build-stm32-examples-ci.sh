@@ -30,7 +30,8 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-fpu-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-global-rr.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" \
-  "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-basepri-validation.sh"
 
 configure_library() {
   local build_dir="$1" install_dir="$2"; shift 2
@@ -93,6 +94,7 @@ build_app hardrt_h755_ipc_semaphore "$ROOT_DIR/examples/hardrt_h755_ipc_validati
 build_app hardrt_h755_ipc_queue "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=queue
 build_app hardrt_h755_ipc_mutex "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=mutex
 build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
+build_app hardrt_h755_basepri_validation "$ROOT_DIR/examples/hardrt_h755_basepri_validation" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
 
