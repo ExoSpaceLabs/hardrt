@@ -10,11 +10,15 @@
 extern "C" {
 #endif
 
-/* Kernel-private task states. They are not part of the application API. */
+/* Kernel-private task states. They are not part of the application API.
+ * *_PENDING states exist only between a running task publishing a block/sleep
+ * transition and the scheduler consuming the outgoing context. */
 typedef enum {
     HRT_READY = 0,
     HRT_SLEEP,
     HRT_BLOCKED,
+    HRT_SLEEP_PENDING,
+    HRT_BLOCKED_PENDING,
     HRT_UNUSED
 } hrt_state_t;
 

@@ -16,10 +16,6 @@
 #define HARDRT_DEBUG 0
 #endif
 
-#define HRT_RESCHED_NONE          0u
-#define HRT_RESCHED_YIELD         1u
-#define HRT_RESCHED_BLOCK_PENDING 2u
-
 /* Globals */
 static _hrt_tcb_t g_tcbs[HARDRT_MAX_TASKS];
 static int g_current = -1;
@@ -29,7 +25,7 @@ static hrt_policy_t g_policy = HRT_SCHED_PRIORITY_RR;
 static uint16_t g_default_slice = 5;
 static uint32_t g_core_hz = 0;
 static hrt_tick_source_t g_tick_src = HRT_TICK_SYSTICK;
-static uint8_t g_resched_reason = HRT_RESCHED_NONE;
+static uint8_t g_explicit_yield = 0u;
 static uint32_t g_ready_prio_mask = 0u;
 volatile hrt_err g_error = NONE;
 
@@ -374,7 +370,7 @@ int hrt_init(const hrt_config_t *cfg) {
 
     g_tick = 0;
     g_current = -1;
-    g_resched_reason = HRT_RESCHED_NONE;
+    g_explicit_yield = 0u;
     g_sleep_head = HRT_SLEEP_NONE;
 
     if (cfg) {
@@ -504,7 +500,7 @@ void hrt_yield(void) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) g_resched_reason = HRT_RESCHED_YIELD;
+    if (t->state == HRT_READY) g_explicit_yield = 1u;
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
 #endif
@@ -563,7 +559,7 @@ void hrt_set_policy(const hrt_policy_t p) {
             t->slice_left = t->timeslice_cfg;
             /* A policy change is a scheduling point. The current task joins
              * the target policy at the tail when scheduler entry occurs. */
-            g_resched_reason = HRT_RESCHED_YIELD;
+            g_explicit_yield = 1u;
             yield_current = 1;
             hrt__pend_context_switch();
         }
@@ -587,11 +583,10 @@ void hrt__block_current(const hrt_state_t state) {
         return;
     }
 #endif
-    /* Arm provenance before publishing the blocking state. If an IRQ wakes
-       this still-running task before scheduler entry, READY + BLOCK_PENDING
-       proves it has already been inserted into READY storage exactly once. */
-    g_resched_reason = HRT_RESCHED_BLOCK_PENDING;
-    g_tcbs[g_current].state = (uint8_t)state;
+    /* Pending states encode the only interval in which this task is logically
+       blocked/sleeping but still physically owns the outgoing context. */
+    g_tcbs[g_current].state = (uint8_t)(state == HRT_SLEEP ? HRT_SLEEP_PENDING
+                                                           : HRT_BLOCKED_PENDING);
 }
 
 void hrt__make_ready(const int id) {
@@ -600,8 +595,23 @@ void hrt__make_ready(const int id) {
         return;
     }
     _hrt_tcb_t *t = &g_tcbs[id];
-    if (t->state == HRT_READY || ready_is_queued(id)) {
+    const uint8_t old_state = t->state;
+    if (old_state == HRT_READY || ready_is_queued(id)) {
         hrt_error(ERR_DUP_READY);
+        return;
+    }
+
+#if HARDRT_DEBUG == 1
+    dbg_make_ready_id = (uint32_t)id;
+    dbg_make_ready_state = old_state;
+#endif
+
+    /* A wake before scheduler entry does not enqueue. The task is still the
+       outgoing physical context, so restoring READY is sufficient; normal
+       scheduler preparation will insert it exactly once. */
+    if (old_state == HRT_BLOCKED_PENDING || old_state == HRT_SLEEP_PENDING) {
+        t->state = HRT_READY;
+        t->slice_left = t->timeslice_cfg;
         return;
     }
 
@@ -617,11 +627,6 @@ void hrt__make_ready(const int id) {
         hrt_error(ERR_RQ_OVERFLOW);
         return;
     }
-
-#if HARDRT_DEBUG == 1
-    dbg_make_ready_id = (uint32_t)id;
-    dbg_make_ready_state = t->state;
-#endif
 
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
@@ -670,38 +675,36 @@ void hrt__requeue_front_noreset(const int id) {
 }
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
- * State + one task-context reschedule reason encode the scheduling cause:
- * - blocked/sleeping/deleted: consume transient provenance and do not requeue;
- * - READY + BLOCK_PENDING: a wake raced ahead of scheduler entry and already
- *   inserted the current task, so consume provenance and do not enqueue again;
- * - explicit yield: rotate to tail and refresh quantum;
- * - RR quantum expiry: rotate to tail and refresh quantum;
- * - otherwise: retain precedence at the front with remaining quantum untouched.
- *
- * BLOCK_PENDING is armed only by the running task when it publishes BLOCKED or
- * SLEEP. Normal wake and dispatch paths therefore carry no race-specific cost.
+ * Pending block/sleep states are normalized only after the scheduler boundary.
+ * If a wake races before this point, hrt__make_ready() restores READY without
+ * queue insertion and this ordinary READY path inserts the task exactly once.
  */
 void hrt__prepare_current_for_reschedule(void) {
     const int cur = g_current;
     if (cur < 0 || cur >= HARDRT_MAX_TASKS || cur == HRT_IDLE_ID) {
-        g_resched_reason = HRT_RESCHED_NONE;
+        g_explicit_yield = 0u;
         return;
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t == NULL || t->state != HRT_READY) {
-        g_resched_reason = HRT_RESCHED_NONE;
+    if (t == NULL) {
+        g_explicit_yield = 0u;
         return;
     }
 
-    const uint8_t resched_reason = g_resched_reason;
-    if (resched_reason == HRT_RESCHED_BLOCK_PENDING) {
-        g_resched_reason = HRT_RESCHED_NONE;
+    const uint8_t state = t->state;
+    if (state != HRT_READY) {
+        if (state == HRT_BLOCKED_PENDING) {
+            t->state = HRT_BLOCKED;
+        } else if (state == HRT_SLEEP_PENDING) {
+            t->state = HRT_SLEEP;
+        }
+        g_explicit_yield = 0u;
         return;
     }
 
     const int rr_policy = (g_policy == HRT_SCHED_RR || g_policy == HRT_SCHED_PRIORITY_RR);
-    if (resched_reason == HRT_RESCHED_YIELD) {
+    if (g_explicit_yield != 0u) {
         t->slice_left = t->timeslice_cfg;
         ready_push_tail_known_unqueued(cur);
     } else if (rr_policy && t->timeslice_cfg > 0u && t->slice_left == 0u) {
@@ -711,7 +714,7 @@ void hrt__prepare_current_for_reschedule(void) {
         ready_push_front_known_unqueued(cur);
     }
 
-    g_resched_reason = HRT_RESCHED_NONE;
+    g_explicit_yield = 0u;
 }
 
 int hrt__should_preempt_after_wake(const int woken_id) {
@@ -754,7 +757,7 @@ int hrt__sleep_tick(void) {
             hrt_error(ERR_TCB_NULL);
             continue;
         }
-        if (t->state != HRT_SLEEP) {
+        if (t->state != HRT_SLEEP && t->state != HRT_SLEEP_PENDING) {
             hrt_error(ERR_INVALID_TASK);
             continue;
         }

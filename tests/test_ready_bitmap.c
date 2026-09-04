@@ -129,25 +129,25 @@ static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blo
     _hrt_tcb_t *const t = hrt__tcb(id);
     T_ASSERT_TRUE(t != NULL, "wake-race TCB exists");
     if (t != NULL) {
-        /* Simulate the exact vulnerable window: the still-running task has
-         * published SLEEP/BLOCKED, an IRQ wakes it, then PendSV finally enters
-         * scheduler-side outgoing-task preparation. */
+        /* Simulate the exact vulnerable window: the still-running task publishes
+         * a transient pending block/sleep state, an IRQ wakes it, then PendSV
+         * finally consumes the outgoing context. */
         hrt__block_current(blocked_state);
         hrt__make_ready(id);
 
         T_ASSERT_EQ_INT(HRT_READY, t->state,
                         "IRQ wake restores logical READY state");
-        T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
-                        "IRQ wake enqueues current task exactly once");
-        T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
-                        "IRQ wake records READY membership");
+        T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
+                        "racing wake leaves still-running task out of READY storage");
+        T_ASSERT_EQ_INT(0, hrt__test_task_ready_queued(id),
+                        "racing wake does not pre-enqueue current task");
 
         hrt__prepare_current_for_reschedule();
 
         T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
-                        "scheduler preparation does not duplicate raced wake");
+                        "scheduler preparation enqueues raced task exactly once");
         T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
-                        "membership marker remains authoritative after scheduler entry");
+                        "scheduler establishes authoritative READY membership");
 
         T_ASSERT_EQ_INT(id, hrt__pick_next_ready(),
                         "raced task remains dispatchable exactly once");
@@ -201,18 +201,18 @@ static void test_completed_block_does_not_suppress_later_requeue(void) {
     _hrt_tcb_t *const t = hrt__tcb(id);
     T_ASSERT_TRUE(t != NULL, "late-wake TCB exists");
     if (t != NULL) {
-        /* Complete scheduler entry while still blocked. This must consume the
-         * transient BLOCK_PENDING reason before a later, ordinary wake occurs. */
+        /* Scheduler entry closes the vulnerable window by normalizing the
+         * transient pending state into the stable blocked state. */
         hrt__block_current(HRT_BLOCKED);
+        T_ASSERT_EQ_INT(HRT_BLOCKED_PENDING, t->state,
+                        "block publication uses transient pending state");
         hrt__prepare_current_for_reschedule();
         T_ASSERT_EQ_INT(HRT_BLOCKED, t->state,
-                        "completed block remains blocked at scheduler boundary");
+                        "scheduler boundary normalizes completed block");
         T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
                         "completed block has no READY membership");
 
-        /* Wake after the vulnerable boundary has already closed. g_current may
-         * still contain the old task ID, but that must not create stale race
-         * provenance or suppress a future legitimate requeue. */
+        /* A later ordinary wake must enqueue immediately. */
         hrt__make_ready(id);
         T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
                         "late wake creates exactly one READY entry");
