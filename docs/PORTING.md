@@ -123,7 +123,7 @@ With `HRT_TICK_SYSTICK`, `hrt_init()` configures but does not activate the port 
 
 ### Application-owned external tick
 
-With `HRT_TICK_EXTERNAL`, HardRT never starts a timer. The application timer ISR calls public `hrt_tick_from_isr()`, which reaches the same core tick path. Calling it in internal-tick mode is currently ignored; #27 tracks tightening that misuse contract.
+With `HRT_TICK_EXTERNAL`, HardRT never starts a timer. The application timer ISR calls public `hrt_tick_from_isr()`, which reaches the same core tick path. Calling that public API while `HRT_TICK_SYSTICK` is selected does not advance time and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
 
 Because the external timer is application-owned, applications are responsible for not invoking its HardRT tick path before `hrt_init()` has completed. HardRT itself no longer enables global interrupts as a side effect of `hrt_init()`.
 
@@ -148,6 +148,7 @@ Before adding a port, verify at least:
 - [ ] idle/core state is complete before tick configuration;
 - [ ] scheduler entry activates the internal tick and performs the first dispatch in a defined order;
 - [ ] internal and external tick modes advance time exactly once per tick;
+- [ ] wrong-source use of `hrt_tick_from_isr()` is observable and cannot double-count a port-owned tick;
 - [ ] no task context switch occurs directly in a hardware tick handler;
 - [ ] task-context yield reaches the scheduler safely and rotates exactly once;
 - [ ] higher-priority preemption does not rotate the interrupted task behind equal-priority peers;

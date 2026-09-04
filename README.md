@@ -136,8 +136,10 @@ See [SCHEDULING.md](docs/SCHEDULING.md) for the complete policy and READY-transi
 
 ## Tick sources
 
-- `HRT_TICK_SYSTICK`: the selected port owns the periodic tick and calls the private core tick handler.
-- `HRT_TICK_EXTERNAL`: the application owns the timer and calls `hrt_tick_from_isr()` from that timer ISR.
+- `HRT_TICK_SYSTICK`: the selected port owns the periodic tick and calls the private core tick handler. `hrt_init()` configures this source only after core and idle state are complete; the periodic source remains inactive until `hrt_start()` enters the scheduler.
+- `HRT_TICK_EXTERNAL`: the application owns the timer and calls `hrt_tick_from_isr()` from that timer ISR. HardRT does not start a periodic timer in this mode.
+
+Calling `hrt_tick_from_isr()` while `HRT_TICK_SYSTICK` is selected does not advance time and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
 
 Tick processing increments the tick counter, wakes expired sleepers, updates the running task's slice, and requests rescheduling only when a wake-up or slice expiry requires it. It never performs a task-context switch directly.
 

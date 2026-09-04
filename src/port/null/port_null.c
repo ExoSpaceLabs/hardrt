@@ -3,10 +3,11 @@
 #include "hardrt_time.h"
 #include "hardrt_port_contract.h"
 
-/* Null port: provides stub hooks so the library links.
-   - No tick source is activated.
-   - No context switching happens.
-   - Useful only to compile and link the core on bare toolchains.
+/* Null port: compile/link contract fixture with no execution backend.
+   - hrt_port_configure_tick() records no active periodic source.
+   - hrt_port_enter_scheduler() activates nothing and returns immediately.
+   - No context switching or global interrupt manipulation happens.
+   - Useful for validating the portable core on bare toolchains.
 */
 
 void hrt__init_idle_task(void) {

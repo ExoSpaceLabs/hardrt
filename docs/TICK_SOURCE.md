@@ -1,20 +1,32 @@
 # Tick Sources
 
-HardRT v0.4.0 supports a port-owned periodic tick and an application-owned external tick. Both modes use the same core tick-accounting function, but they enter it through different interfaces.
+HardRT supports two tick-ownership modes. Both ultimately use the same private core tick-accounting path, but ownership and entry points are deliberately different so one hardware event cannot be counted twice.
+
+## Lifecycle rule
+
+`hrt_init()` initializes scheduler storage and the private idle task first, then calls the port's `hrt_port_configure_tick()` hook. Configuration must remain inactive: it must not start a periodic interrupt, dispatch a task, or globally enable interrupts.
+
+`hrt_start()` crosses the scheduler-start boundary through `hrt_port_enter_scheduler()`. Only there may a port activate its configured internal periodic tick and allow task execution to begin.
+
+This ordering prevents a timer IRQ or the first context switch from observing partially initialized kernel state.
 
 ## Port-owned tick
 
 `HRT_TICK_SYSTICK` is the default.
 
-The selected port starts its timer from `hrt_port_start_systick()` and calls the private core handler from the timer interrupt or hosted tick callback:
+The selected port configures its periodic source during `hrt_init()` but leaves it disabled. Scheduler entry activates that source. Once active, the port-owned timer handler calls the private core hook:
 
 ```c
 hrt__tick_isr();
 ```
 
-This is the path used by the current Cortex-M SysTick handler and POSIX `SIGALRM` handler.
+This is the path used by the Cortex-M `SysTick_Handler` and the POSIX `SIGALRM` handler.
 
-Application code must not call `hrt_tick_from_isr()` in this mode. The current implementation ignores such a call and does not advance the tick counter.
+Application code must not call `hrt_tick_from_isr()` in this mode. If it does, HardRT leaves tick accounting unchanged and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
+
+On Cortex-M, scheduler entry briefly masks interrupts while architecture startup state is finalized, the initial PendSV is requested, and SysTick is armed. Interrupts are enabled only after that ordered sequence is complete.
+
+On POSIX, the interval timer remains disarmed until the hosted scheduler has selected a valid current task.
 
 ## Application-owned external tick
 
@@ -32,12 +44,14 @@ int main(void) {
         .tick_src = HRT_TICK_EXTERNAL
     };
 
-    hrt_init(&cfg);
+    if (hrt_init(&cfg) != 0) {
+        return 1;
+    }
     hrt_start();
 }
 ```
 
-The application timer ISR calls the public API once per configured kernel tick:
+HardRT does not start a periodic timer in external mode. The application-owned timer ISR calls the public API exactly once per configured kernel tick:
 
 ```c
 #include "hardrt_time.h"
@@ -48,27 +62,29 @@ void MyTimer_IRQHandler(void) {
 }
 ```
 
-In external mode, `hrt_port_start_systick()` must not start its own periodic source. The current Cortex-M port still configures PendSV and enables interrupts; the POSIX port returns without installing `SIGALRM`.
+The application owns the external timer lifecycle and therefore must not route that timer into HardRT before `hrt_init()` has completed.
 
 ## What tick processing does
 
 Each accepted tick:
 
 1. increments the 32-bit tick counter;
-2. wakes sleeping tasks whose deadlines have expired;
+2. advances the intrusive delta sleep queue and wakes every task whose relative deadline expires;
 3. decrements the current task's non-zero slice under `HRT_SCHED_RR` or `HRT_SCHED_PRIORITY_RR`;
-4. requests a context switch when a task was awakened or a slice reached zero.
+4. requests a context switch when a wake or slice expiry requires scheduling.
 
-Tick processing does not switch task contexts directly. Cortex-M performs the eventual transfer through PendSV. POSIX performs it only after a task returns to the scheduler through a HardRT scheduling point.
+Tick processing does not directly execute another application task. Cortex-M performs the eventual transfer through PendSV. POSIX records a pending scheduling request and transfers only when control returns to the hosted scheduler.
 
-The timer ISR does not need to call a separate `yield_from_isr` function. No such public API exists in v0.4.0.
+The timer ISR does not call a separate `yield_from_isr` function. No such public API is required by the current contract.
 
-## Tick frequency and millisecond conversion
+## Tick frequency
 
 `tick_hz` defines the conversion between milliseconds and ticks. `hrt_sleep()` uses ceiling division, so a positive duration shorter than one tick sleeps for one tick.
 
-In the current implementation, `hrt_sleep(0)` also sleeps for one tick. Use `hrt_yield()` for an immediate voluntary scheduling point.
+An internal tick configuration is rejected when the selected port cannot represent the requested period. For example, the Cortex-M SysTick implementation rejects reload counts outside its 24-bit range instead of silently clamping them.
+
+In the current implementation, `hrt_sleep(0)` sleeps for one tick. Use `hrt_yield()` for an immediate voluntary scheduling point.
 
 ## Wraparound
 
-The tick counter is a `uint32_t` and wraps naturally. Sleeping-task deadlines are compared using signed subtraction, which supports intervals shorter than half of the 32-bit tick range.
+The public tick counter is a `uint32_t` and wraps naturally. Sleeping tasks are stored in an intrusive delta queue using relative intervals rather than absolute-deadline comparisons. The queue therefore continues to count down correctly across public tick-counter wrap, provided an individual requested sleep interval fits the supported `uint32_t` tick duration.
