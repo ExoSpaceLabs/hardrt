@@ -27,6 +27,7 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-tick-benchmark.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-preemption.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-fpu-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-global-rr.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh"
@@ -86,6 +87,7 @@ build_app hardrt_h755_blinky_cpp "$ROOT_DIR/examples/hardrt_h755_blinky_cpp" "$B
 build_app hardrt_h755_demo "$ROOT_DIR/examples/hardrt_h755_demo" "$BASE_INSTALL"
 build_app hardrt_h755_preemption_priority "$ROOT_DIR/examples/hardrt_h755_preemption" "$BASE_INSTALL" -DHARDRT_PREEMPT_CASE=priority
 build_app hardrt_h755_preemption_priority_rr "$ROOT_DIR/examples/hardrt_h755_preemption" "$BASE_INSTALL" -DHARDRT_PREEMPT_CASE=priority_rr
+build_app hardrt_h755_fpu_validation "$ROOT_DIR/examples/hardrt_h755_fpu_validation" "$BASE_INSTALL"
 build_app hardrt_h755_global_rr "$ROOT_DIR/examples/hardrt_h755_global_rr" "$BASE_INSTALL"
 build_app hardrt_h755_ipc_semaphore "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=semaphore
 build_app hardrt_h755_ipc_queue "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=queue

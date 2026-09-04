@@ -1,0 +1,33 @@
+set confirm off
+set pagination off
+set mem inaccessible-by-default off
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset run
+shell sleep 3
+monitor halt
+
+set $pass=(unsigned)g_fp_validation_pass
+set $err=(unsigned)g_fp_validation_error
+set $a=(unsigned)g_fp_a_iterations
+set $b=(unsigned)g_fp_b_iterations
+set $bad=(unsigned)g_fp_last_bad_reg
+set $expected=(unsigned)g_fp_expected
+set $actual=(unsigned)g_fp_actual
+set $expected_fpscr=(unsigned)g_fp_expected_fpscr
+set $actual_fpscr=(unsigned)g_fp_actual_fpscr
+
+printf "pass=%u error=%u\n",$pass,$err
+printf "iterations: A=%u B=%u\n",$a,$b
+printf "last_bad_reg=%u expected=0x%08x actual=0x%08x\n",$bad,$expected,$actual
+printf "fpscr: expected=0x%08x actual=0x%08x\n",$expected_fpscr,$actual_fpscr
+
+if $pass==1 && $err==0 && $a>=1000 && $b>=1000
+  printf "RESULT: PASS\n"
+else
+  printf "RESULT: FAIL\n"
+end
+
+monitor resume
+detach
+quit

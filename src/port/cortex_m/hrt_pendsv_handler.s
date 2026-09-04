@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 
 .extern hrt__schedule
 
@@ -7,62 +8,75 @@
 .type   PendSV_Handler, %function
 
 /*
- * PendSV_Handler - Cortex-M context switch handler for HeartOS
+ * PendSV_Handler - Cortex-M context switch handler for HardRT
  *
- * Contract with C side:
- *   - uint32_t hrt__schedule(uint32_t old_sp):
- *       Saves the updated PSP (after pushing r4-r11) into the current TCB ,returns next sp.
+ * Basic task context:
+ *   software: r4-r11
+ *   hardware: r0-r3, r12, lr, pc, xPSR
  *
- * Stack layout expected when switching OUT of a running task:
- *   [high addr]
- *       r4
- *       r5
- *       r6
- *       r7
- *       r8
- *       r9
- *       r10
- *       r11        <-- value stored in TCB->sp
- *       r0         \
- *       r1          \
- *       r2           \
- *       r3            \
- *       r12            > hardware-saved frame
- *       lr            /
- *       pc           /
- *       xpsr        /
- *   [low addr]
+ * Hardware-FP task context:
+ *   software: r4-r11, EXC_RETURN, and s16-s31 when EXC_RETURN[4] == 0
+ *   hardware: s0-s15, FPSCR, reserved, r0-r3, r12, lr, pc, xPSR
+ *
+ * EXC_RETURN is saved only on hardware-FP builds because bit 4 selects the
+ * basic versus extended exception frame. The FP high bank is therefore paid
+ * only by tasks that actually own an FP context.
  */
 
 PendSV_Handler:
     cpsid   i
 
-    mrs     r0, psp          @ r0 = old PSP, or 0 on first switch?
-    cbz     r0, first_switch @ if PSP == 0, we haven't started any task yet
+    mrs     r0, psp
+    cbz     r0, first_switch
 
 normal_switch:
-    stmdb   r0!, {r4-r11}    @ save callee-saved regs on current stack
-    bl      hrt__schedule    @ r0 = old_sp, returns new_sp (or 0)
-    cbz     r0, resume       @ no runnable task -> don't change context
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    /* If Thread mode owns FP state, force/materialize lazy low-FP stacking as
+       needed and preserve the callee-saved high FP bank below that frame. */
+    tst     lr, #0x10
+    it      eq
+    vstmdbeq r0!, {s16-s31}
+    stmdb   r0!, {r4-r11, lr}
+#else
+    stmdb   r0!, {r4-r11}
+#endif
 
+    bl      hrt__schedule
+    cbz     r0, resume
+
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    ldmia   r0!, {r4-r11, lr}
+    tst     lr, #0x10
+    it      eq
+    vldmiaeq r0!, {s16-s31}
+#else
     ldmia   r0!, {r4-r11}
+    ldr     r1, =0xFFFFFFFD
+    mov     lr, r1
+#endif
     msr     psp, r0
 
-    ldr     r1, =0xFFFFFFFD  @ return to Thread mode, use PSP
-    mov     lr, r1
     cpsie   i
     bx      lr
 
 first_switch:
-    movs    r0, #0           @ old_sp = 0 for first entry
-    bl      hrt__schedule    @ just pick first task, no save
+    movs    r0, #0
+    bl      hrt__schedule
     cbz     r0, resume
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    /* New tasks start with a basic PSP frame and saved EXC_RETURN=FFFFFFFD. */
+    ldmia   r0!, {r4-r11, lr}
+    tst     lr, #0x10
+    it      eq
+    vldmiaeq r0!, {s16-s31}
+#else
     ldmia   r0!, {r4-r11}
-    msr     psp, r0
-
     ldr     r1, =0xFFFFFFFD
     mov     lr, r1
+#endif
+    msr     psp, r0
+
     cpsie   i
     bx      lr
 

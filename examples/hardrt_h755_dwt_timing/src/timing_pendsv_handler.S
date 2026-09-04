@@ -21,14 +21,8 @@
  * for the one switch armed by the TIM2 ISR. The production HardRT handler is
  * not linked into this image because this definition satisfies the vector.
  *
- * Measured software segments:
- *   entry -> outgoing r4-r11 saved
- *   direct hrt__schedule() call
- *   scheduler return -> incoming r4-r11 + PSP restored
- *   entry -> incoming context restored
- *
- * The awakened task separately records entry -> task continuation after the
- * blocked semaphore API returns.
+ * On hardware-FP builds this mirror also preserves task EXC_RETURN and saves
+ * s16-s31 only for an extended FP context, matching production semantics.
  */
 PendSV_Handler:
     cpsid   i
@@ -44,7 +38,14 @@ PendSV_Handler:
     mrs     r0, psp
     cbz     r0, first_switch
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    tst     lr, #0x10
+    it      eq
+    vstmdbeq r0!, {s16-s31}
+    stmdb   r0!, {r4-r11, lr}
+#else
     stmdb   r0!, {r4-r11}
+#endif
 
     ldr     r1, =g_pendsv_measure_armed
     ldr     r2, [r1]
@@ -73,12 +74,21 @@ PendSV_Handler:
 
     cbz     r0, measured_resume
 
-    /* Restore segment starts after scheduler bookkeeping and before ldmia. */
+    /* Restore segment starts after scheduler bookkeeping. */
     mov     r12, r10
     ldr     r3, =0xE0001004
     ldr     r1, [r3]
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    ldmia   r0!, {r4-r11, lr}
+    tst     lr, #0x10
+    it      eq
+    vldmiaeq r0!, {s16-s31}
+#else
     ldmia   r0!, {r4-r11}
+    ldr     r2, =0xFFFFFFFD
+    mov     lr, r2
+#endif
     msr     psp, r0
 
     ldr     r2, [r3]
@@ -102,8 +112,6 @@ PendSV_Handler:
     ldr     r3, =g_pendsv_measure_armed
     str     r2, [r3]
 
-    ldr     r1, =0xFFFFFFFD
-    mov     lr, r1
     cpsie   i
     bx      lr
 
@@ -111,11 +119,18 @@ unmeasured_schedule:
     bl      hrt__schedule
     cbz     r0, resume
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    ldmia   r0!, {r4-r11, lr}
+    tst     lr, #0x10
+    it      eq
+    vldmiaeq r0!, {s16-s31}
+#else
     ldmia   r0!, {r4-r11}
-    msr     psp, r0
-
     ldr     r1, =0xFFFFFFFD
     mov     lr, r1
+#endif
+    msr     psp, r0
+
     cpsie   i
     bx      lr
 
@@ -124,11 +139,18 @@ first_switch:
     bl      hrt__schedule
     cbz     r0, resume
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+    ldmia   r0!, {r4-r11, lr}
+    tst     lr, #0x10
+    it      eq
+    vldmiaeq r0!, {s16-s31}
+#else
     ldmia   r0!, {r4-r11}
-    msr     psp, r0
-
     ldr     r1, =0xFFFFFFFD
     mov     lr, r1
+#endif
+    msr     psp, r0
+
     cpsie   i
     bx      lr
 

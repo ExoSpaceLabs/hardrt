@@ -9,6 +9,12 @@
 #define HARDRT_DEBUG 0
 #endif
 
+#if defined(__ARM_FP) && (__ARM_FP != 0)
+#define HARDRT_CORTEXM_HAS_FPU 1
+#else
+#define HARDRT_CORTEXM_HAS_FPU 0
+#endif
+
 typedef struct {
     volatile uint32_t CTRL;
     volatile uint32_t LOAD;
@@ -42,6 +48,14 @@ extern uint8_t __RAM_END__;
 #define SYSTICK_TICKINT (1UL << 1)
 #define SYSTICK_ENABLE (1UL << 0)
 
+#if HARDRT_CORTEXM_HAS_FPU
+#define SCB_CPACR (*(volatile uint32_t *)0xE000ED88UL)
+#define FPU_FPCCR (*(volatile uint32_t *)0xE000EF34UL)
+#define SCB_CPACR_CP10_CP11_FULL (0xFUL << 20)
+#define FPU_FPCCR_ASPEN_Msk (1UL << 31)
+#define FPU_FPCCR_LSPEN_Msk (1UL << 30)
+#endif
+
 #if HARDRT_DEBUG == 1
 volatile uint32_t dbg_curr_sp;
 volatile uint32_t dbg_pend_calls;
@@ -64,7 +78,14 @@ void hrt_port_sp_valid(const uintptr_t sp) {
     if (sp == 0u) hrt_error(ERR_SP_NULL);
     if (ram_hi - ram_lo < 2u * frame_bytes) hrt_error(ERR_INVALID_RAM_RANGE);
     if (sp < ram_lo + frame_bytes || sp > ram_hi - frame_bytes) hrt_error(ERR_STACK_RANGE);
+#if HARDRT_CORTEXM_HAS_FPU
+    /* Saving EXC_RETURN adds one word to the software frame. The stored TCB SP
+       can therefore be 4-byte aligned even though exception return restores
+       the architectural PSP to the original 8-byte-aligned frame boundary. */
+    if (sp & 0x3u) hrt_error(ERR_STACK_ALIGN);
+#else
     if (sp & 0x7u) hrt_error(ERR_STACK_ALIGN);
+#endif
 }
 
 __attribute__((weak))
@@ -100,6 +121,18 @@ static inline void _hrt_port_barrier(void) {
     __asm volatile ("dsb 0xF" ::: "memory");
     __asm volatile ("isb 0xF" ::: "memory");
 }
+
+#if HARDRT_CORTEXM_HAS_FPU
+static void _configure_fpu_context(void) {
+    /* The qualified hard-float Cortex-M contract owns task FP context.
+       Enable CP10/CP11 and architectural automatic/lazy FP state preservation
+       before the first HardRT task can execute floating-point instructions. */
+    SCB_CPACR |= SCB_CPACR_CP10_CP11_FULL;
+    _hrt_port_barrier();
+    FPU_FPCCR |= FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk;
+    _hrt_port_barrier();
+}
+#endif
 
 static uint32_t g_basepri_prev = 0;
 static volatile uint32_t g_cs_nest = 0;
@@ -150,6 +183,12 @@ void hrt__init_idle_task(void) {
     *(--sp) = 0;
     *(--sp) = 0;
     *(--sp) = 0;
+#if HARDRT_CORTEXM_HAS_FPU
+    /* Software EXC_RETURN accompanies r4-r11 in FP-capable builds. New/idle
+       contexts start basic and become extended only after Thread mode actually
+       activates the FPU. */
+    *(--sp) = 0xFFFFFFFDu;
+#endif
     for (int i = 0; i < 8; ++i) *(--sp) = 0;
 
     g_idle_tcb.sp = sp;
@@ -228,6 +267,9 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
     *(--stk) = 0;
     *(--stk) = 0;
     *(--stk) = 0;
+#if HARDRT_CORTEXM_HAS_FPU
+    *(--stk) = 0xFFFFFFFDu;
+#endif
     for (int i = 0; i < 8; ++i) *(--stk) = 0;
 
     if (stk < stack_base) {
@@ -238,6 +280,9 @@ void hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 }
 
 void hrt_port_enter_scheduler(void) {
+#if HARDRT_CORTEXM_HAS_FPU
+    _configure_fpu_context();
+#endif
     __asm volatile ("cpsie i");
 #if HARDRT_DEBUG == 1
     dbg_pend_from_cortexm++;
