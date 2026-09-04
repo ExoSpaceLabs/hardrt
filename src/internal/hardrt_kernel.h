@@ -38,16 +38,6 @@ typedef struct {
 #define HRT_IDLE_ID (HARDRT_MAX_TASKS - 1)
 #define HARDRT_IDLE_STACK_WORDS 64u
 
-/* The qualified STM32H755 Cortex-M7 uses 32-byte L1 instruction-cache lines.
- * Align the two scheduler hot functions so small unrelated code-size changes do
- * not move their entries across cache-line boundaries. This is a placement
- * constraint only; scheduler semantics remain unchanged. */
-#if defined(__GNUC__) || defined(__clang__)
-#define HRT_INTERNAL_HOT_ALIGN __attribute__((aligned(32)))
-#else
-#define HRT_INTERNAL_HOT_ALIGN
-#endif
-
 _hrt_tcb_t *hrt__tcb(int id);
 uint32_t *_get_sp(int id);
 void _set_sp(int id, uint32_t *sp);
@@ -57,7 +47,7 @@ void hrt__set_current(int id);
 void hrt__make_ready(int id);
 void hrt__requeue_noreset(int id);
 void hrt__requeue_front_noreset(int id);
-HRT_INTERNAL_HOT_ALIGN void hrt__prepare_current_for_reschedule(void);
+void hrt__prepare_current_for_reschedule(void);
 int hrt__should_preempt_after_wake(int woken_id);
 int hrt__sleep_tick(void);
 int hrt__pick_next_ready(void);
@@ -72,7 +62,7 @@ void hrt__tick_isr(void);
 
 void hrt__save_current_sp(uintptr_t sp);
 uintptr_t hrt__load_next_sp_and_set_current(int next_id);
-HRT_INTERNAL_HOT_ALIGN uintptr_t hrt__schedule(uintptr_t old_sp);
+uintptr_t hrt__schedule(uintptr_t old_sp);
 
 #ifdef HARDRT_TEST_HOOKS
 void hrt__test_set_tick(uint32_t v);
