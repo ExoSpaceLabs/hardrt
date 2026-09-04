@@ -37,6 +37,7 @@ if(HARDRT_PORT STREQUAL "posix")
   )
 
   target_link_libraries(hardrt_tests PRIVATE ${LIB_NAME} Threads::Threads)
+  target_include_directories(hardrt_tests PRIVATE ${SOURCE_INTERNAL_DIR})
   target_compile_features(hardrt_tests PRIVATE c_std_11)
   target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
   if(HARDRT_SANITIZE)

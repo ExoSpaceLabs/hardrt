@@ -50,9 +50,10 @@ volatile uint32_t dbg_pend_from_core;
  * - PRIORITY / PRIORITY_RR: one FIFO per priority plus a non-empty bitmap;
  * - RR: one global FIFO that ignores task priority entirely.
  *
- * Only the active representation owns READY membership. Policy changes rebuild
- * the queues under the scheduler critical section, so a task is never present
- * in both representations at once.
+ * Only the active representation owns READY membership. The physically running
+ * task remains logically HRT_READY but has ready_queued == 0. A task present in
+ * either READY representation has ready_queued == 1. Policy changes rebuild the
+ * queues under the scheduler critical section and rebuild that membership state.
  */
 #define HRT_RQ_NONE UINT8_MAX
 
@@ -102,27 +103,10 @@ static void readyq_reset_storage(void) {
         g_rq[p].head = HRT_RQ_NONE;
         g_rq[p].tail = HRT_RQ_NONE;
     }
-}
-
-#if HARDRT_DEBUG == 1
-static int readyq_contains(const ready_q_t *q, const int id) {
-    uint8_t current = q->head;
-    for (uint8_t n = 0u; n < q->count; ++n) {
-        if (current == HRT_RQ_NONE || current >= HARDRT_MAX_TASKS) return 0;
-        if ((int)current == id) return 1;
-        current = g_rq_next[current];
+    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
+        g_tcbs[i].ready_queued = 0u;
     }
-    return 0;
 }
-
-static int ready_contains(const int id) {
-    if (g_policy == HRT_SCHED_RR) return readyq_contains(&g_rrq, id);
-    if (id < 0 || id >= HARDRT_MAX_TASKS) return 0;
-    const _hrt_tcb_t *t = hrt__tcb(id);
-    if (t == NULL || t->prio >= HARDRT_MAX_PRIO) return 0;
-    return readyq_contains(&g_rq[t->prio], id);
-}
-#endif
 
 static uint8_t rq_first_ready_priority(const uint32_t mask) {
 #if defined(__GNUC__) || defined(__clang__)
@@ -140,19 +124,20 @@ static uint8_t rq_first_ready_priority(const uint32_t mask) {
 }
 
 static int ready_validate_push(const ready_q_t *q, const int id) {
-    (void)id;
-#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = (uint32_t)id;
+#endif
         hrt_error(ERR_INVALID_ID);
         return 0;
     }
-    if (ready_contains(id)) {
+    if (g_tcbs[id].ready_queued != 0u) {
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = (uint32_t)id;
+#endif
         hrt_error(ERR_DUP_READY);
         return 0;
     }
-#endif
     if (q->count >= HARDRT_MAX_TASKS) {
 #if HARDRT_DEBUG == 1
         dbg_tsk_q = q->count;
@@ -163,8 +148,8 @@ static int ready_validate_push(const ready_q_t *q, const int id) {
     return 1;
 }
 
-static void readyq_push_tail(ready_q_t *q, const int id) {
-    if (!ready_validate_push(q, id)) return;
+static int readyq_push_tail(ready_q_t *q, const int id) {
+    if (!ready_validate_push(q, id)) return 0;
     const uint8_t task_id = (uint8_t)id;
 
     g_rq_next[task_id] = HRT_RQ_NONE;
@@ -175,35 +160,39 @@ static void readyq_push_tail(ready_q_t *q, const int id) {
     }
     q->tail = task_id;
     q->count++;
+    g_tcbs[task_id].ready_queued = 1u;
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
+    return 1;
 }
 
-static void readyq_push_front(ready_q_t *q, const int id) {
-    if (!ready_validate_push(q, id)) return;
+static int readyq_push_front(ready_q_t *q, const int id) {
+    if (!ready_validate_push(q, id)) return 0;
     const uint8_t task_id = (uint8_t)id;
 
     g_rq_next[task_id] = q->head;
     q->head = task_id;
     if (q->count == 0u) q->tail = task_id;
     q->count++;
+    g_tcbs[task_id].ready_queued = 1u;
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
+    return 1;
 }
 
 static int readyq_pop(ready_q_t *q) {
     if (q->count == 0u) return -1;
 
     const uint8_t task_id = q->head;
-#if HARDRT_DEBUG == 1
     if (task_id == HRT_RQ_NONE || task_id >= HARDRT_MAX_TASKS) {
+#if HARDRT_DEBUG == 1
         dbg_tsk_q = (uint32_t)-2000;
+#endif
         hrt_error(ERR_INVALID_ID_FROM_RQ);
         return -1;
     }
-#endif
 
     q->head = g_rq_next[task_id];
     g_rq_next[task_id] = HRT_RQ_NONE;
@@ -212,44 +201,51 @@ static int readyq_pop(ready_q_t *q) {
         q->head = HRT_RQ_NONE;
         q->tail = HRT_RQ_NONE;
     }
+    g_tcbs[task_id].ready_queued = 0u;
 #if HARDRT_DEBUG == 1
     dbg_tsk_q = q->count;
 #endif
     return (int)task_id;
 }
 
-static void ready_push_tail(const int id) {
-    const _hrt_tcb_t *t = hrt__tcb(id);
-    if (t == NULL) return;
+static int ready_push_tail(const int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return 0;
+    }
+    const _hrt_tcb_t *t = &g_tcbs[id];
 
     if (g_policy == HRT_SCHED_RR) {
-        readyq_push_tail(&g_rrq, id);
-        return;
+        return readyq_push_tail(&g_rrq, id);
     }
 
     if (t->prio >= HARDRT_MAX_PRIO) {
         hrt_error(ERR_INVALID_PRIO);
-        return;
+        return 0;
     }
-    readyq_push_tail(&g_rq[t->prio], id);
+    if (!readyq_push_tail(&g_rq[t->prio], id)) return 0;
     g_ready_prio_mask |= (uint32_t)(1u << t->prio);
+    return 1;
 }
 
-static void ready_push_front(const int id) {
-    const _hrt_tcb_t *t = hrt__tcb(id);
-    if (t == NULL) return;
+static int ready_push_front(const int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return 0;
+    }
+    const _hrt_tcb_t *t = &g_tcbs[id];
 
     if (g_policy == HRT_SCHED_RR) {
-        readyq_push_front(&g_rrq, id);
-        return;
+        return readyq_push_front(&g_rrq, id);
     }
 
     if (t->prio >= HARDRT_MAX_PRIO) {
         hrt_error(ERR_INVALID_PRIO);
-        return;
+        return 0;
     }
-    readyq_push_front(&g_rq[t->prio], id);
+    if (!readyq_push_front(&g_rq[t->prio], id)) return 0;
     g_ready_prio_mask |= (uint32_t)(1u << t->prio);
+    return 1;
 }
 
 static int ready_pop(void) {
@@ -542,29 +538,28 @@ void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 
 /* ------------- Internal helpers used by scheduler/time/IPC ------------- */
 void hrt__make_ready(const int id) {
-#if HARDRT_DEBUG == 1
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return;
     }
-#endif
-    _hrt_tcb_t *t = hrt__tcb(id);
-#if HARDRT_DEBUG == 1
-    if (t == NULL) {
-        hrt_error(ERR_TCB_NULL);
-        return;
-    }
+    _hrt_tcb_t *t = &g_tcbs[id];
     if (t->state == HRT_READY) {
         hrt_error(ERR_DUP_READY);
         return;
     }
+#if HARDRT_DEBUG == 1
     dbg_make_ready_id = (uint32_t)id;
     dbg_make_ready_state = t->state;
 #endif
 
+    const uint8_t old_state = t->state;
+    const uint16_t old_slice = t->slice_left;
     t->state = HRT_READY;
     t->slice_left = t->timeslice_cfg;
-    ready_push_tail(id);
+    if (!ready_push_tail(id)) {
+        t->state = old_state;
+        t->slice_left = old_slice;
+    }
 }
 
 void hrt__requeue_noreset(const int id) {
@@ -581,7 +576,7 @@ void hrt__requeue_noreset(const int id) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) ready_push_tail(id);
+    if (t->state == HRT_READY && t->ready_queued == 0u) ready_push_tail(id);
 }
 
 void hrt__requeue_front_noreset(const int id) {
@@ -598,12 +593,13 @@ void hrt__requeue_front_noreset(const int id) {
         return;
     }
 #endif
-    if (t->state == HRT_READY) ready_push_front(id);
+    if (t->state == HRT_READY && t->ready_queued == 0u) ready_push_front(id);
 }
 
 /* Prepare the outgoing running task exactly once before choosing its successor.
  * State + explicit-yield + slice exhaustion encode the current reschedule cause:
  * - blocked/sleeping/deleted: do not requeue;
+ * - already requeued by a racing wake: do not enqueue again;
  * - explicit yield: rotate to tail and refresh quantum;
  * - RR quantum expiry: rotate to tail and refresh quantum;
  * - otherwise: retain precedence at the front with remaining quantum untouched.
@@ -616,7 +612,7 @@ void hrt__prepare_current_for_reschedule(void) {
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t == NULL || t->state != HRT_READY) {
+    if (t == NULL || t->state != HRT_READY || t->ready_queued != 0u) {
         g_explicit_yield = 0u;
         return;
     }
@@ -783,6 +779,11 @@ int hrt__test_ready_occurrences(int id) {
         }
     }
     return count;
+}
+
+int hrt__test_task_ready_queued(int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return 0;
+    return g_tcbs[id].ready_queued != 0u;
 }
 
 uint32_t hrt__test_ready_prio_mask(void) { return g_ready_prio_mask; }

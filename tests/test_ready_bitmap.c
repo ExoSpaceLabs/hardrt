@@ -1,8 +1,5 @@
 #include "test_common.h"
-
-#ifdef HARDRT_TEST_HOOKS
-uint32_t hrt__test_ready_prio_mask(void);
-#endif
+#include "hardrt_kernel.h"
 
 static volatile uint32_t g_masks[4];
 static volatile uint32_t g_sequence[4];
@@ -93,8 +90,99 @@ static void test_ready_priority_mask_tracks_fifo_occupancy(void) {
                      "mask is empty when final queued task becomes current");
 }
 
+static void wake_race_dummy_task(void *arg) {
+    (void)arg;
+}
+
+static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blocked_state) {
+    hrt__test_reset_scheduler_state();
+    const hrt_config_t cfg = {
+        .tick_hz = 1000,
+        .policy = policy,
+        .default_slice = 1,
+        .tick_src = HRT_TICK_SYSTICK
+    };
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "wake-race init");
+
+    /* Keep the hosted tick from perturbing this white-box scheduler boundary.
+       The Cortex-M race being modeled is an IRQ wake after the task published a
+       blocking state but before PendSV consumed the outgoing context. */
+    hrt__test_block_sigalrm();
+
+    static uint32_t stack[128];
+    const hrt_task_attr_t attr = {.priority = HRT_PRIO0, .timeslice = 1};
+    const int id = hrt_create_task(wake_race_dummy_task, NULL, stack, 128, &attr);
+    T_ASSERT_TRUE(id >= 0, "wake-race task created");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                    "new task has exactly one READY entry");
+    T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
+                    "new task membership flag is set");
+
+    const int selected = hrt__pick_next_ready();
+    T_ASSERT_EQ_INT(id, selected, "wake-race task selected as current");
+    hrt__set_current(id);
+    T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
+                    "running task is absent from READY storage");
+    T_ASSERT_EQ_INT(0, hrt__test_task_ready_queued(id),
+                    "running task membership flag is clear");
+
+    _hrt_tcb_t *const t = hrt__tcb(id);
+    T_ASSERT_TRUE(t != NULL, "wake-race TCB exists");
+    if (t != NULL) {
+        /* Simulate the exact vulnerable window: the still-running task has
+         * published SLEEP/BLOCKED, an IRQ wakes it, then PendSV finally enters
+         * scheduler-side outgoing-task preparation. */
+        t->state = (uint8_t)blocked_state;
+        hrt__make_ready(id);
+
+        T_ASSERT_EQ_INT(HRT_READY, t->state,
+                        "IRQ wake restores logical READY state");
+        T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                        "IRQ wake enqueues current task exactly once");
+        T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
+                        "IRQ wake records READY membership");
+
+        hrt__prepare_current_for_reschedule();
+
+        T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                        "scheduler preparation does not duplicate raced wake");
+        T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
+                        "membership remains authoritative after scheduler entry");
+
+        T_ASSERT_EQ_INT(id, hrt__pick_next_ready(),
+                        "raced task remains dispatchable exactly once");
+        T_ASSERT_EQ_INT(0, hrt__test_task_ready_queued(id),
+                        "dispatch clears READY membership");
+        T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
+                        "no duplicate READY entry remains after dispatch");
+    }
+
+    hrt__test_unblock_sigalrm();
+}
+
+static void test_wake_before_reschedule_keeps_single_ready_membership(void) {
+    const hrt_policy_t policies[] = {
+        HRT_SCHED_PRIORITY,
+        HRT_SCHED_RR,
+        HRT_SCHED_PRIORITY_RR
+    };
+    const hrt_state_t blocked_states[] = {
+        HRT_BLOCKED,
+        HRT_SLEEP
+    };
+
+    for (size_t p = 0u; p < sizeof(policies) / sizeof(policies[0]); ++p) {
+        for (size_t s = 0u; s < sizeof(blocked_states) / sizeof(blocked_states[0]); ++s) {
+            printf("[wake-race] policy=%d outgoing_state=%d\n",
+                   (int)policies[p], (int)blocked_states[s]);
+            exercise_wake_before_reschedule(policies[p], blocked_states[s]);
+        }
+    }
+}
+
 static const test_case_t CASES[] = {
     {"Ready priority bitmap tracks scheduler FIFO occupancy", test_ready_priority_mask_tracks_fifo_occupancy},
+    {"Wake before reschedule preserves single READY membership", test_wake_before_reschedule_keeps_single_ready_membership},
 };
 
 const test_case_t *get_tests_ready_bitmap(int *out_count) {
