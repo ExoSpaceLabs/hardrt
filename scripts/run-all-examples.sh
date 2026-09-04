@@ -82,6 +82,13 @@ cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -G Ninja \
 cmake --build "$BUILD_DIR" --parallel
 mkdir -p "$LOG_DIR"
 
+CXX_COMPILER="$(awk -F= '/^CMAKE_CXX_COMPILER:FILEPATH=/{print $2; exit}' "$BUILD_DIR/CMakeCache.txt")"
+[[ -n "$CXX_COMPILER" ]] || fail "could not resolve CMAKE_CXX_COMPILER from $BUILD_DIR/CMakeCache.txt"
+
+echo
+echo "=== Validating C++ compile-time contracts ==="
+bash "$ROOT_DIR/tests/cpp_contracts/check.sh" "$CXX_COMPILER" "$ROOT_DIR"
+
 echo
 echo "=== Executing POSIX examples with progress checks ==="
 run_example two_tasks \

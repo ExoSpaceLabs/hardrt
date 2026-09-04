@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <type_traits>
 
 namespace hardrt {
@@ -236,12 +237,15 @@ namespace hardrt {
      * - QueueRef<T>: binds to externally provided storage.
      * - StaticQueue<T, Capacity>: owns storage sized at compile time.
      *
-     * The C implementation copies T with memcpy. Use types that are safe to
-     * copy byte-for-byte. The v0.4.0 wrapper does not enforce trivial copyability.
+     * The C implementation copies T with memcpy. Queue wrappers therefore
+     * require trivially-copyable payload types, and StaticQueue additionally
+     * enforces the C API's uint16_t capacity range at compile time.
      */
     template <typename T>
     class QueueRef {
         static_assert(!std::is_void<T>::value, "QueueRef<T>: T cannot be void");
+        static_assert(std::is_trivially_copyable<T>::value,
+                      "QueueRef<T>: T must be trivially copyable because HardRT queues use memcpy");
 
     public:
         QueueRef() = default;
@@ -287,7 +291,11 @@ namespace hardrt {
 
     template <typename T, size_t Capacity>
     class StaticQueue {
+        static_assert(std::is_trivially_copyable<T>::value,
+                      "StaticQueue<T, Capacity>: T must be trivially copyable because HardRT queues use memcpy");
         static_assert(Capacity > 0, "StaticQueue<T, Capacity>: Capacity must be > 0");
+        static_assert(Capacity <= static_cast<size_t>(std::numeric_limits<uint16_t>::max()),
+                      "StaticQueue<T, Capacity>: Capacity exceeds the uint16_t C queue capacity contract");
 
     public:
         StaticQueue() {
