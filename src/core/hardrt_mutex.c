@@ -62,7 +62,13 @@ int hrt_mutex_lock(hrt_mutex_t *m) {
     }
 
     _waitq_push(m, (uint8_t)me);
-    hrt__block_current(HRT_BLOCKED);
+    _hrt_tcb_t *t = hrt__tcb(me);
+    if (!t) {
+        hrt_port_crit_exit();
+        hrt_error(ERR_TCB_NULL);
+        return -1;
+    }
+    t->state = HRT_BLOCKED;
     hrt_port_crit_exit();
 
     hrt__pend_context_switch();

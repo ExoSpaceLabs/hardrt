@@ -115,7 +115,8 @@ int hrt_queue_send(hrt_queue_t *q, const void *item) {
         }
 
         _wq_push(q->tx_q, &q->tx_tail, &q->tx_wait, (uint8_t)me);
-        hrt__block_current(HRT_BLOCKED);
+        _hrt_tcb_t *t = hrt__tcb(me);
+        if (t) t->state = HRT_BLOCKED;
         hrt_port_crit_exit();
 
         hrt__pend_context_switch();
@@ -179,7 +180,8 @@ int hrt_queue_recv(hrt_queue_t *q, void *out) {
         }
 
         _wq_push(q->rx_q, &q->rx_tail, &q->rx_wait, (uint8_t)me);
-        hrt__block_current(HRT_BLOCKED);
+        _hrt_tcb_t *t = hrt__tcb(me);
+        if (t) t->state = HRT_BLOCKED;
         hrt_port_crit_exit();
 
         hrt__pend_context_switch();

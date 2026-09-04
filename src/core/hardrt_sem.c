@@ -78,7 +78,11 @@ int hrt_sem_take(hrt_sem_t *s) {
 #if HRT_SEM_DEBUG
     printf("[sem] take: task %d queued, waiters=%u\n", me, (unsigned)s->count_wait);
 #endif
-    hrt__block_current(HRT_BLOCKED);
+    _hrt_tcb_t *t = hrt__tcb(me);
+#if HARDRT_DEBUG == 1
+    if (!t) hrt_error(ERR_TCB_NULL);
+#endif
+    t->state = HRT_BLOCKED;
 
     hrt_port_crit_exit();
     hrt__pend_context_switch();
