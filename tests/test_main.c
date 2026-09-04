@@ -6,62 +6,62 @@ const test_case_t *get_tests_preemption_contract(int *out_count);
 /* Global failure counter used by assertion macros */
 int g_failures = 0;
 
-static void append_group(const test_case_t *group, int n, const test_case_t **out_arr, int *inout_count) {
-    for (int i = 0; i < n; ++i) { out_arr[(*inout_count)++] = &group[i]; }
+#define TEST_REGISTRY_CAPACITY 128
+
+static int append_group(const test_case_t *group, int n,
+                        const test_case_t **out_arr, int *inout_count,
+                        int capacity) {
+    if (group == NULL || n < 0 || inout_count == NULL || *inout_count < 0 ||
+        n > capacity - *inout_count) {
+        return -1;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        out_arr[(*inout_count)++] = &group[i];
+    }
+    return 0;
 }
 
+#define APPEND_GROUP(getter) do { \
+    g = getter(&n); \
+    if (append_group(g, n, registry, &total, TEST_REGISTRY_CAPACITY) != 0) { \
+        fprintf(stderr, "HardRT test registry capacity exceeded while adding %s\n", #getter); \
+        return 2; \
+    } \
+} while (0)
+
 int main(void) {
-    /* Collect all test groups in desired order */
-    const test_case_t *registry[64];
+    /* Collect all test groups in desired order. Keep this bounded and checked:
+     * silently overrunning the registry corrupts main()'s stack and can make a
+     * later, unrelated test appear to be the failure site. */
+    const test_case_t *registry[TEST_REGISTRY_CAPACITY];
     int total = 0;
 
     int n = 0;
     const test_case_t *g = NULL;
 
-    g = get_tests_identity(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_sleep_stop(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_rr_yield(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_rr_sleep(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_sleep_queue(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_priority(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_preemption_contract(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_ready_bitmap(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_coop_vs_rr(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_tick_rate(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_create_limits(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_runtime_tuning(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_fifo_order(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_wraparound(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_sleep_zero(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_task_return(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_semaphore(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_queue(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_external_tick(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_mutex(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_now_ms(&n);
-    append_group(g, n, registry, &total);
-    g = get_tests_idle_behavior(&n);
-    append_group(g, n, registry, &total);
+    APPEND_GROUP(get_tests_identity);
+    APPEND_GROUP(get_tests_sleep_stop);
+    APPEND_GROUP(get_tests_rr_yield);
+    APPEND_GROUP(get_tests_rr_sleep);
+    APPEND_GROUP(get_tests_sleep_queue);
+    APPEND_GROUP(get_tests_priority);
+    APPEND_GROUP(get_tests_preemption_contract);
+    APPEND_GROUP(get_tests_ready_bitmap);
+    APPEND_GROUP(get_tests_coop_vs_rr);
+    APPEND_GROUP(get_tests_tick_rate);
+    APPEND_GROUP(get_tests_create_limits);
+    APPEND_GROUP(get_tests_runtime_tuning);
+    APPEND_GROUP(get_tests_fifo_order);
+    APPEND_GROUP(get_tests_wraparound);
+    APPEND_GROUP(get_tests_sleep_zero);
+    APPEND_GROUP(get_tests_task_return);
+    APPEND_GROUP(get_tests_semaphore);
+    APPEND_GROUP(get_tests_queue);
+    APPEND_GROUP(get_tests_external_tick);
+    APPEND_GROUP(get_tests_mutex);
+    APPEND_GROUP(get_tests_now_ms);
+    APPEND_GROUP(get_tests_idle_behavior);
 
     int tests_failed = 0;
     int tests_passed = 0;
