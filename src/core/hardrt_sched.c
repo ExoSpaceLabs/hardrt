@@ -41,6 +41,9 @@ void hrt__tick_isr(void) {
 }
 
 void hrt_tick_from_isr(void) {
-    if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) return;
+    if (hrt__cfg_tick_src() != HRT_TICK_EXTERNAL) {
+        hrt_error(ERR_TICK_SOURCE_MISMATCH);
+        return;
+    }
     hrt__tick_isr();
 }

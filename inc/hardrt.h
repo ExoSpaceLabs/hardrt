@@ -81,7 +81,8 @@ typedef enum {
     ERR_DUP_READY = 15,
     ERR_MUTEX_OWNER = 16,
     ERR_MUTEX_RECURSIVE = 17,
-    ERR_MUTEX_BAD_CTX = 18
+    ERR_MUTEX_BAD_CTX = 18,
+    ERR_TICK_SOURCE_MISMATCH = 19
 } hrt_err;
 
 /**

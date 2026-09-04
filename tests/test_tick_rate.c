@@ -4,6 +4,8 @@
 
 #include <time.h>
 
+extern volatile hrt_err g_error;
+
 static volatile int g_200hz_wakes = 0;
 static int g_200hz_target = 10;
 static uint32_t g_200hz_start = 0;
@@ -44,6 +46,24 @@ static void test_unrepresentable_host_tick_rejected(void) {
                   "POSIX rejects an internal tick period below timer resolution");
 }
 
+static void test_internal_mode_diagnoses_external_tick_api(void) {
+    hrt__test_reset_scheduler_state();
+    hrt_config_t cfg = {.tick_hz = 1000,
+                        .policy = HRT_SCHED_PRIORITY_RR,
+                        .default_slice = 5,
+                        .tick_src = HRT_TICK_SYSTICK};
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init should configure internal tick for mismatch test");
+
+    g_error = NONE;
+    const uint32_t before = hrt_tick_now();
+    hrt_tick_from_isr();
+
+    T_ASSERT_EQ_UINT(before, hrt_tick_now(),
+                     "external tick API must not advance time in internal mode");
+    T_ASSERT_EQ_INT(ERR_TICK_SOURCE_MISMATCH, g_error,
+                    "external tick API misuse records tick-source mismatch");
+}
+
 static void test_tick_rate_200hz_sleep_accuracy(void) {
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = {.tick_hz = 200, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5};
@@ -69,6 +89,7 @@ static void test_tick_rate_200hz_sleep_accuracy(void) {
 static const test_case_t CASES[] = {
     {"Internal tick remains dormant until scheduler start", test_internal_tick_dormant_until_start},
     {"Internal tick rejects unrepresentable host period", test_unrepresentable_host_tick_rejected},
+    {"Internal mode diagnoses external tick API misuse", test_internal_mode_diagnoses_external_tick_api},
     {"Tick rate configurability (200 Hz)", test_tick_rate_200hz_sleep_accuracy},
 };
 

@@ -15,9 +15,9 @@ extern "C" {
  * tasks, updates round-robin slice accounting, and requests rescheduling when
  * required.
  *
- * When the selected tick source is HRT_TICK_SYSTICK, the current implementation
- * ignores this call. Port-owned tick handlers call the private hrt__tick_isr()
- * function instead.
+ * When the selected tick source is HRT_TICK_SYSTICK, the call does not advance
+ * time and records ERR_TICK_SOURCE_MISMATCH through the kernel diagnostic path.
+ * Port-owned tick handlers call the private hrt__tick_isr() function instead.
  *
  * This function never performs a task-context switch directly. A caller does
  * not need to invoke a second yield-from-ISR function.
