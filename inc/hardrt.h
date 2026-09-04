@@ -9,13 +9,39 @@ extern "C" {
 #include <stdint.h>
 
 /**
- * @brief Total number of task-control slots used by the current kernel build.
- * @note CMake currently defines this as HARDRT_CFG_MAX_TASKS + 1 because one
- *       internal slot is reserved for the idle context. The public/application
- *       task-capacity contract is tracked separately for v0.5.0.
+ * @brief Maximum number of concurrent application tasks.
+ *
+ * CMake defines this from HARDRT_CFG_MAX_TASKS. One additional private task
+ * control slot is reserved by the kernel for idle and is not part of this
+ * application capacity.
+ *
+ * For compatibility with direct/non-CMake builds that define only the legacy
+ * HARDRT_MAX_TASKS total-slot macro, the application capacity is inferred as
+ * HARDRT_MAX_TASKS - 1.
+ */
+#ifndef HARDRT_APP_MAX_TASKS
+# ifdef HARDRT_MAX_TASKS
+#  if HARDRT_MAX_TASKS < 2
+#   error "HARDRT_MAX_TASKS must leave at least one application slot plus idle"
+#  endif
+#  define HARDRT_APP_MAX_TASKS (HARDRT_MAX_TASKS - 1)
+# else
+#  define HARDRT_APP_MAX_TASKS 8
+# endif
+#endif
+
+/**
+ * @brief Total number of task-control slots, including the private idle slot.
+ *
+ * This legacy macro is retained for source compatibility. Application code
+ * that needs the number of creatable tasks should use HARDRT_APP_MAX_TASKS.
  */
 #ifndef HARDRT_MAX_TASKS
-#define HARDRT_MAX_TASKS 8
+#define HARDRT_MAX_TASKS (HARDRT_APP_MAX_TASKS + 1)
+#endif
+
+#if HARDRT_MAX_TASKS != (HARDRT_APP_MAX_TASKS + 1)
+#error "HARDRT_MAX_TASKS must equal HARDRT_APP_MAX_TASKS + 1 private idle slot"
 #endif
 
 /**

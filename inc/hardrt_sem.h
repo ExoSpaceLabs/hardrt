@@ -16,7 +16,7 @@ extern "C" {
 typedef struct {
     volatile uint8_t count;      /**< Current token count (0..max_count). */
     uint8_t max_count;           /**< Maximum token count (1 => binary semantics). */
-    uint8_t q[HARDRT_MAX_TASKS]; /**< Wait queue (task ids) */
+    uint8_t q[HARDRT_APP_MAX_TASKS]; /**< Wait queue (application task ids) */
     uint8_t head, tail, count_wait; /**< Queue indices and length */
 } hrt_sem_t;
 

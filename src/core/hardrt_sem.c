@@ -18,11 +18,11 @@
 
 static void _waitq_push(hrt_sem_t *s, const uint8_t id) {
 #if HARDRT_DEBUG == 1
-    if (id >= HARDRT_MAX_TASKS) hrt_error(ERR_INVALID_ID);
+    if (id >= HARDRT_APP_MAX_TASKS) hrt_error(ERR_INVALID_ID);
 #endif
-    if (s->count_wait >= HARDRT_MAX_TASKS) return;
+    if (s->count_wait >= HARDRT_APP_MAX_TASKS) return;
     s->q[s->tail] = id;
-    s->tail = (uint8_t)((s->tail + 1u) % HARDRT_MAX_TASKS);
+    s->tail = (uint8_t)((s->tail + 1u) % HARDRT_APP_MAX_TASKS);
     s->count_wait++;
 }
 
@@ -30,9 +30,9 @@ static int _waitq_pop(hrt_sem_t *s) {
     if (!s->count_wait) return -1;
     const int id = s->q[s->head];
 #if HARDRT_DEBUG == 1
-    if (id < 0 || id >= HARDRT_MAX_TASKS) hrt_error(ERR_INVALID_ID);
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS) hrt_error(ERR_INVALID_ID);
 #endif
-    s->head = (uint8_t)((s->head + 1u) % HARDRT_MAX_TASKS);
+    s->head = (uint8_t)((s->head + 1u) % HARDRT_APP_MAX_TASKS);
     s->count_wait--;
     return id;
 }
@@ -61,7 +61,7 @@ int hrt_sem_take(hrt_sem_t *s) {
 
     const int me = hrt__get_current();
 #if HARDRT_DEBUG == 1
-    if (me < 0 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_APP_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
         return -1;
     }

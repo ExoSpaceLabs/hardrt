@@ -34,11 +34,11 @@ typedef struct {
     volatile uint16_t count;
 
     /* Receiver wait queue (FIFO) */
-    uint8_t rx_q[HARDRT_MAX_TASKS];
+    uint8_t rx_q[HARDRT_APP_MAX_TASKS];
     uint8_t rx_head, rx_tail, rx_wait;
 
     /* Sender wait queue (FIFO) */
-    uint8_t tx_q[HARDRT_MAX_TASKS];
+    uint8_t tx_q[HARDRT_APP_MAX_TASKS];
     uint8_t tx_head, tx_tail, tx_wait;
 } hrt_queue_t;
 

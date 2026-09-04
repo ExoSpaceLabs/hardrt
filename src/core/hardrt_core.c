@@ -401,7 +401,8 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     }
 
     int id = -1;
-    for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
+    /* Application allocation never examines the private idle TCB slot. */
+    for (int i = 0; i < HARDRT_APP_MAX_TASKS; ++i) {
         if (g_tcbs[i].state == HRT_UNUSED) {
             id = i;
             break;

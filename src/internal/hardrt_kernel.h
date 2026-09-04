@@ -33,10 +33,16 @@ typedef struct {
     uint8_t state;
 } _hrt_tcb_t;
 
-/* The current implementation reserves the final task-control slot for the
- * Cortex-M idle context. The user-visible capacity model is tracked in #32. */
-#define HRT_IDLE_ID (HARDRT_MAX_TASKS - 1)
+/* HARDRT_APP_MAX_TASKS is the number of creatable application tasks.
+ * HARDRT_TOTAL_TASKS adds exactly one private idle slot. HARDRT_MAX_TASKS is
+ * retained publicly as the legacy total-slot compatibility macro. */
+#define HARDRT_TOTAL_TASKS HARDRT_MAX_TASKS
+#define HRT_IDLE_ID HARDRT_APP_MAX_TASKS
 #define HARDRT_IDLE_STACK_WORDS 64u
+
+#if HARDRT_TOTAL_TASKS != (HARDRT_APP_MAX_TASKS + 1)
+#error "HardRT internal task capacity must be application tasks + one idle slot"
+#endif
 
 _hrt_tcb_t *hrt__tcb(int id);
 uint32_t *_get_sp(int id);

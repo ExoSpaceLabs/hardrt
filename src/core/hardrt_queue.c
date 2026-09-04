@@ -6,16 +6,16 @@
 #include <string.h>
 
 static void _wq_push(uint8_t *qbuf, uint8_t *tail, uint8_t *count, const uint8_t id) {
-    if (*count >= HARDRT_MAX_TASKS) return;
+    if (*count >= HARDRT_APP_MAX_TASKS) return;
     qbuf[*tail] = id;
-    *tail = (uint8_t)((*tail + 1u) % HARDRT_MAX_TASKS);
+    *tail = (uint8_t)((*tail + 1u) % HARDRT_APP_MAX_TASKS);
     (*count)++;
 }
 
 static int _wq_pop(uint8_t *qbuf, uint8_t *head, uint8_t *count) {
     if (!*count) return -1;
     const int id = qbuf[*head];
-    *head = (uint8_t)((*head + 1u) % HARDRT_MAX_TASKS);
+    *head = (uint8_t)((*head + 1u) % HARDRT_APP_MAX_TASKS);
     (*count)--;
     return id;
 }

@@ -62,7 +62,7 @@ See [TESTS_POSIX.md](TESTS_POSIX.md).
 | `HARDRT_SANITIZE` | `OFF` | Enables UndefinedBehaviorSanitizer for the POSIX test configuration. AddressSanitizer is deliberately not enabled because of `ucontext`. |
 | `HARDRT_STALL_ON_ERROR` | `OFF` | Publishes `HARDRT_STALL_ON_ERROR` as a compile definition. Keep this OFF for POSIX. The current POSIX warning path assigns a differently named CMake variable and does not reliably override an ON value. |
 | `HARDRT_DEBUG` | `OFF` | Publishes `HARDRT_DEBUG=0` or `1` and enables debug variables/checks in guarded code. |
-| `HARDRT_CFG_MAX_TASKS` | `8` | Number of application task slots requested through CMake. The build defines `HARDRT_MAX_TASKS` as this value plus one private idle slot. |
+| `HARDRT_CFG_MAX_TASKS` | `8` | Number of application task slots. The kernel allocates one additional private idle slot. Public waiter storage is sized only for application tasks. |
 | `HARDRT_CFG_MAX_PRIO` | `4` | Number of priority queues, with priority zero highest. Valid range is 1 through 12. |
 
 ## Configuration validation
@@ -71,16 +71,19 @@ CMake currently rejects configurations where:
 
 - `HARDRT_CFG_MAX_PRIO` is outside `[1, 12]`;
 - `HARDRT_CFG_MAX_TASKS < 1`;
+- `HARDRT_CFG_MAX_TASKS > 254`;
 - `HARDRT_CFG_MAX_TASKS < HARDRT_CFG_MAX_PRIO`.
 
 For a CMake build with the defaults:
 
 ```text
 HARDRT_CFG_MAX_TASKS = 8 application slots
-HARDRT_MAX_TASKS     = 9 total TCB/queue slots, including idle
+HARDRT_APP_MAX_TASKS = 8 creatable application tasks
+HARDRT_MAX_TASKS     = 9 total TCB slots, including one private idle slot
+HRT_IDLE_ID          = 8 (private/internal)
 ```
 
-This differs from compiling headers directly without the CMake-provided definition, where the fallback `HARDRT_MAX_TASKS` value is `8` total slots.
+`HARDRT_MAX_TASKS` remains the legacy total-slot compatibility macro. Application code that needs the number of creatable tasks should use `HARDRT_APP_MAX_TASKS`. Direct/non-CMake builds that define only the legacy `HARDRT_MAX_TASKS` value infer application capacity as `HARDRT_MAX_TASKS - 1`; with neither macro supplied, the fallback is 8 application tasks plus one idle slot.
 
 ## Strict warnings and sanitizers
 

@@ -3,23 +3,23 @@
 #include "hardrt_port_int.h"
 
 static void _waitq_push(hrt_mutex_t *m, uint8_t id) {
-    if (m->count_wait >= HARDRT_MAX_TASKS) return;
+    if (m->count_wait >= HARDRT_APP_MAX_TASKS) return;
     m->q[m->tail] = id;
-    m->tail = (uint8_t)((m->tail + 1u) % HARDRT_MAX_TASKS);
+    m->tail = (uint8_t)((m->tail + 1u) % HARDRT_APP_MAX_TASKS);
     m->count_wait++;
 }
 
 static int _waitq_pop(hrt_mutex_t *m) {
     if (!m->count_wait) return -1;
     const int id = m->q[m->head];
-    m->head = (uint8_t)((m->head + 1u) % HARDRT_MAX_TASKS);
+    m->head = (uint8_t)((m->head + 1u) % HARDRT_APP_MAX_TASKS);
     m->count_wait--;
     return id;
 }
 
 int hrt_mutex_try_lock(hrt_mutex_t *m) {
     const int me = hrt__get_current();
-    if (me < 0 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_APP_MAX_TASKS) {
         hrt_error(ERR_MUTEX_BAD_CTX);
         return -1;
     }
@@ -42,7 +42,7 @@ int hrt_mutex_try_lock(hrt_mutex_t *m) {
 
 int hrt_mutex_lock(hrt_mutex_t *m) {
     const int me = hrt__get_current();
-    if (me < 0 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_APP_MAX_TASKS) {
         hrt_error(ERR_MUTEX_BAD_CTX);
         return -1;
     }
@@ -78,7 +78,7 @@ int hrt_mutex_lock(hrt_mutex_t *m) {
 
 int hrt_mutex_unlock(hrt_mutex_t *m) {
     const int me = hrt__get_current();
-    if (me < 0 || me >= HARDRT_MAX_TASKS) {
+    if (me < 0 || me >= HARDRT_APP_MAX_TASKS) {
         hrt_error(ERR_MUTEX_BAD_CTX);
         return -1;
     }

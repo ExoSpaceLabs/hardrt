@@ -10,6 +10,15 @@
 */
 
 void hrt__init_idle_task(void) {
+    _hrt_tcb_t *idle = hrt__tcb(HRT_IDLE_ID);
+    if (idle == NULL) {
+        hrt_error(ERR_TCB_NULL);
+        return;
+    }
+    idle->state = HRT_READY;
+    idle->prio = 0u;
+    idle->timeslice_cfg = 0u;
+    idle->slice_left = 0u;
 }
 
 void hrt_port_enter_scheduler(void) {

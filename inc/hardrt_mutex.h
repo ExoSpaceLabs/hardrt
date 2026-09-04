@@ -14,7 +14,7 @@ extern "C" {
     volatile uint8_t locked;        /* 0 = unlocked, 1 = locked */
     int16_t owner;                  /* task id of owner (uint8), HRT_MUTEX_NO_OWNER if unlocked */
 
-    uint8_t q[HARDRT_MAX_TASKS];    /* FIFO waiters */
+    uint8_t q[HARDRT_APP_MAX_TASKS]; /* FIFO application-task waiters */
     uint8_t head;
     uint8_t tail;
     uint8_t count_wait;

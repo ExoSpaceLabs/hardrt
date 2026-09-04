@@ -40,8 +40,12 @@ else()
   message(FATAL_ERROR "Unknown HARDRT_TIMING_PROFILE=${HARDRT_TIMING_PROFILE}; supported values are none|ipc")
 endif()
 
-set(HARDRT_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent tasks")
+set(HARDRT_CFG_MAX_TASKS 8 CACHE STRING "Maximum number of concurrent application tasks")
 set(HARDRT_CFG_MAX_PRIO 4 CACHE STRING "Number of priority classes (0..N-1; 0 is highest)")
+
+math(EXPR _HRT_CFG_PRIO "${HARDRT_CFG_MAX_PRIO}")
+math(EXPR _HRT_CFG_TASKS "${HARDRT_CFG_MAX_TASKS}")
+math(EXPR HARDRT_TOTAL_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 
 message("-- Definitions --")
 message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
@@ -53,17 +57,18 @@ message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
 message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
 message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
 message("-- HARDRT_TIMING_PROFILE        : ${HARDRT_TIMING_PROFILE}")
-message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} + 1 for IDLE task")
+message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} application tasks")
+message("-- HARDRT_TOTAL_TASKS           : ${HARDRT_TOTAL_TASKS_VALUE} including private idle")
 message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
-
-math(EXPR _HRT_CFG_PRIO "${HARDRT_CFG_MAX_PRIO}")
-math(EXPR _HRT_CFG_TASKS "${HARDRT_CFG_MAX_TASKS}")
 
 if(_HRT_CFG_PRIO LESS 1 OR _HRT_CFG_PRIO GREATER 12)
   message(FATAL_ERROR "HARDRT_CFG_MAX_PRIO must be between 1 and 12 (inclusive). Got ${HARDRT_CFG_MAX_PRIO}.")
 endif()
 if(_HRT_CFG_TASKS LESS 1)
   message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be >= 1. Got ${HARDRT_CFG_MAX_TASKS}.")
+endif()
+if(_HRT_CFG_TASKS GREATER 254)
+  message(FATAL_ERROR "HARDRT_CFG_MAX_TASKS must be <= 254 because task IDs and the private idle slot use uint8_t IDs. Got ${HARDRT_CFG_MAX_TASKS}.")
 endif()
 if(_HRT_CFG_TASKS LESS _HRT_CFG_PRIO)
   message(FATAL_ERROR "Invalid configuration: HARDRT_CFG_MAX_TASKS (${HARDRT_CFG_MAX_TASKS}) must be >= HARDRT_CFG_MAX_PRIO (${HARDRT_CFG_MAX_PRIO}).")
@@ -129,10 +134,10 @@ set(LIBRARY_SOURCES
 
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
 
-math(EXPR HARDRT_MAX_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 target_compile_definitions(${LIB_NAME}
   PUBLIC
-  HARDRT_MAX_TASKS=${HARDRT_MAX_TASKS_VALUE}
+  HARDRT_APP_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
+  HARDRT_MAX_TASKS=${HARDRT_TOTAL_TASKS_VALUE}
   HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
   HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
   HARDRT_DEBUG=${HARDRT_DEBUG}

@@ -63,7 +63,6 @@ volatile uint32_t dbg_pend_from_cortexm = 0;
 volatile uint32_t dbg_basperi;
 #endif
 
-static _hrt_tcb_t g_idle_tcb;
 static uint32_t g_idle_stack[HARDRT_IDLE_STACK_WORDS] __attribute__((aligned(8)));
 
 void hrt_port_sp_valid(const uintptr_t sp) {
@@ -166,13 +165,20 @@ static void hrt_idle_task(void *arg) {
 }
 
 void hrt__init_idle_task(void) {
-    g_idle_tcb = (_hrt_tcb_t){0};
-    g_idle_tcb.state = HRT_READY;
-    g_idle_tcb.prio = 0;
-    g_idle_tcb.timeslice_cfg = 0;
-    g_idle_tcb.slice_left = 0;
-    g_idle_tcb.entry = hrt_idle_task;
-    g_idle_tcb.arg = NULL;
+    _hrt_tcb_t *idle = hrt__tcb(HRT_IDLE_ID);
+    if (idle == NULL) {
+        hrt_error(ERR_TCB_NULL);
+        return;
+    }
+
+    idle->state = HRT_READY;
+    idle->prio = 0u;
+    idle->timeslice_cfg = 0u;
+    idle->slice_left = 0u;
+    idle->entry = hrt_idle_task;
+    idle->arg = NULL;
+    idle->stack_base = g_idle_stack;
+    idle->stack_words = HARDRT_IDLE_STACK_WORDS;
 
     uint32_t *sp = &g_idle_stack[HARDRT_IDLE_STACK_WORDS];
     *(--sp) = 0x01000000u;
@@ -191,7 +197,6 @@ void hrt__init_idle_task(void) {
 #endif
     for (int i = 0; i < 8; ++i) *(--sp) = 0;
 
-    g_idle_tcb.sp = sp;
     _set_sp(HRT_IDLE_ID, sp);
 }
 
