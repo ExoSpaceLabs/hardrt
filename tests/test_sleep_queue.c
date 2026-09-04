@@ -13,6 +13,11 @@ static volatile int g_repeat_count;
 static volatile int g_driver_limit;
 static volatile int g_driver_ticks;
 
+#ifdef HARDRT_TEST_HOOKS
+void hrt__test_reset_wake_preempt_decisions(void);
+uint32_t hrt__test_wake_preempt_decisions(void);
+#endif
+
 static void reset_fixture(void) {
     memset((void *)g_delays, 0, sizeof(g_delays));
     memset((void *)g_wake_order, -1, sizeof(g_wake_order));
@@ -21,6 +26,9 @@ static void reset_fixture(void) {
     g_repeat_count = 0;
     g_driver_limit = 100;
     g_driver_ticks = 0;
+#ifdef HARDRT_TEST_HOOKS
+    hrt__test_reset_wake_preempt_decisions();
+#endif
 }
 
 static hrt_config_t external_cfg(void) {
@@ -105,6 +113,32 @@ static void test_equal_deadline_sleepers_keep_fifo_order(void) {
     T_ASSERT_EQ_INT(1, g_wake_order[1], "equal deadline FIFO wake 1");
     T_ASSERT_EQ_INT(2, g_wake_order[2], "equal deadline FIFO wake 2");
     T_ASSERT_EQ_INT(5, g_driver_ticks, "equal-deadline wake occurred on tick 5");
+#ifdef HARDRT_TEST_HOOKS
+    T_ASSERT_EQ_UINT(1u, hrt__test_wake_preempt_decisions(),
+                     "simultaneous priority wake freezes preemption after first true decision");
+#endif
+}
+
+static void test_equal_deadline_sleepers_keep_global_rr_fifo(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+    hrt_config_t cfg = external_cfg();
+    cfg.policy = HRT_SCHED_RR;
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "init global-RR equal-deadline sleeper test");
+
+    g_delays[0] = 5;
+    g_delays[1] = 5;
+    g_delays[2] = 5;
+    create_ordered_workers(WORKERS);
+    create_driver(WORKERS);
+
+    hrt_start();
+
+    T_ASSERT_EQ_INT(WORKERS, g_wake_count, "all global-RR equal-deadline sleepers woke");
+    T_ASSERT_EQ_INT(0, g_wake_order[0], "global RR preserves equal-deadline FIFO wake 0");
+    T_ASSERT_EQ_INT(1, g_wake_order[1], "global RR preserves equal-deadline FIFO wake 1");
+    T_ASSERT_EQ_INT(2, g_wake_order[2], "global RR preserves equal-deadline FIFO wake 2");
+    T_ASSERT_EQ_INT(5, g_driver_ticks, "global-RR equal-deadline wake occurred on tick 5");
 }
 
 static void test_staggered_sleepers_wake_by_deadline(void) {
@@ -180,6 +214,7 @@ static void test_sleep_order_survives_tick_wrap(void) {
 
 static const test_case_t CASES[] = {
     {"Sleep queue: equal deadlines preserve FIFO order", test_equal_deadline_sleepers_keep_fifo_order},
+    {"Sleep queue: equal deadlines preserve global RR FIFO", test_equal_deadline_sleepers_keep_global_rr_fifo},
     {"Sleep queue: staggered deadlines wake in order", test_staggered_sleepers_wake_by_deadline},
     {"Sleep queue: repeated sleep/wake cycles", test_repeated_sleep_wake_cycles},
     {"Sleep queue: ordering survives 32-bit tick wrap", test_sleep_order_survives_tick_wrap},

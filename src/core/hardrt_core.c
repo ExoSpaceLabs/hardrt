@@ -29,6 +29,10 @@ static uint8_t g_explicit_yield = 0u;
 static uint32_t g_ready_prio_mask = 0u;
 volatile hrt_err g_error = NONE;
 
+#ifdef HARDRT_TEST_HOOKS
+static uint32_t g_test_wake_preempt_decisions = 0u;
+#endif
+
 #if HARDRT_DEBUG == 1
 volatile int dbg_pick;
 volatile int dbg_id_save;
@@ -710,6 +714,9 @@ void hrt__prepare_current_for_reschedule(void) {
 }
 
 int hrt__should_preempt_after_wake(const int woken_id) {
+#ifdef HARDRT_TEST_HOOKS
+    g_test_wake_preempt_decisions++;
+#endif
     if (woken_id < 0 || woken_id >= HARDRT_MAX_TASKS) return 0;
 
     const int cur = g_current;
@@ -755,9 +762,14 @@ int hrt__sleep_tick(void) {
         }
 #endif
 
-        /* Decide before changing the task state. This matters when the sleeper
-         * is still recorded as current while the scheduler is idle. */
-        const int should_switch = hrt__should_preempt_after_wake(id);
+        /* Once one wake in this expiry batch has established that PendSV is
+         * required, later wakes cannot revoke that decision. Keep their O(K)
+         * READY insertion, but avoid repeating scheduler-policy work. Decide
+         * before changing state for the first/preempt-relevant wake so the
+         * wake-before-PendSV current-task edge remains correct. */
+        const int should_switch = (trigger_pendsv == 0u)
+                                      ? hrt__should_preempt_after_wake(id)
+                                      : 0;
         hrt__make_ready(id);
         if (should_switch) trigger_pendsv = 1u;
     }
@@ -827,6 +839,8 @@ void hrt_error(const hrt_err code) {
 #ifdef HARDRT_TEST_HOOKS
 void hrt__test_set_tick(uint32_t v) { g_tick = v; }
 uint32_t hrt__test_get_tick(void) { return g_tick; }
+void hrt__test_reset_wake_preempt_decisions(void) { g_test_wake_preempt_decisions = 0u; }
+uint32_t hrt__test_wake_preempt_decisions(void) { return g_test_wake_preempt_decisions; }
 
 uint16_t hrt__test_task_slice_left(int id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) return 0u;
