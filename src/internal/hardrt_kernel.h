@@ -31,10 +31,6 @@ typedef struct {
     uint16_t slice_left;
     uint8_t prio;
     uint8_t state;
-    /* READY state includes the physically running task, which is intentionally
-     * absent from READY storage. Track actual queue membership separately so a
-     * wake racing with a pending reschedule cannot enqueue the same task twice. */
-    uint8_t ready_queued;
 } _hrt_tcb_t;
 
 /* The current implementation reserves the final task-control slot for the

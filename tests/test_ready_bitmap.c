@@ -116,7 +116,7 @@ static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blo
     T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
                     "new task has exactly one READY entry");
     T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
-                    "new task membership flag is set");
+                    "new task READY membership marker is set");
 
     const int selected = hrt__pick_next_ready();
     T_ASSERT_EQ_INT(id, selected, "wake-race task selected as current");
@@ -124,7 +124,7 @@ static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blo
     T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
                     "running task is absent from READY storage");
     T_ASSERT_EQ_INT(0, hrt__test_task_ready_queued(id),
-                    "running task membership flag is clear");
+                    "running task READY membership marker is clear");
 
     _hrt_tcb_t *const t = hrt__tcb(id);
     T_ASSERT_TRUE(t != NULL, "wake-race TCB exists");
@@ -147,12 +147,12 @@ static void exercise_wake_before_reschedule(hrt_policy_t policy, hrt_state_t blo
         T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
                         "scheduler preparation does not duplicate raced wake");
         T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
-                        "membership remains authoritative after scheduler entry");
+                        "membership marker remains authoritative after scheduler entry");
 
         T_ASSERT_EQ_INT(id, hrt__pick_next_ready(),
                         "raced task remains dispatchable exactly once");
         T_ASSERT_EQ_INT(0, hrt__test_task_ready_queued(id),
-                        "dispatch clears READY membership");
+                        "dispatch clears READY membership marker");
         T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(id),
                         "no duplicate READY entry remains after dispatch");
     }
