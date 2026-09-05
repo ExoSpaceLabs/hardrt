@@ -146,6 +146,8 @@ set(LIBRARY_SOURCES
   "${SOURCE_CORE_DIR}/hardrt_sem.c"
   "${SOURCE_CORE_DIR}/hardrt_queue.c"
   "${SOURCE_CORE_DIR}/hardrt_mutex.c"
+  "${SOURCE_CORE_DIR}/hardrt_event.c"
+  "${SOURCE_CORE_DIR}/hardrt_notify.c"
 )
 
 # Keep the existing scheduler implementation private while a small lifecycle
