@@ -2,8 +2,7 @@
 
 This example collects DWT cycle-counter timing statistics from the STM32H755 CM7.
 Each timing case is built as a separate image so instrumentation for one metric
-does not silently contaminate another metric, because benchmarks apparently also
-need protection from accidental benchmark-shaped fiction.
+does not affect another metric.
 
 ## Build and run
 
@@ -77,8 +76,14 @@ scripts/build-lib-stm32h7xx-dwt-timing.sh \
 ```
 
 The event-scan firmware also verifies the number of woken waiters for every
-sample. This prevents a suspiciously fast result caused by accidentally timing
-a scenario that did not perform the requested work.
+sample. This prevents an invalid low timing result caused by a scenario that did
+not perform the requested wake work.
+
+For the complete 16-case v0.5 signal profiling matrix, use:
+
+```bash
+scripts/stm32_signal_profile.sh /path/to/STM32CubeH7
+```
 
 For toolchain and STM32 cross-compilation setup, see
 [CROSSCOMPILE.md](../../docs/CROSSCOMPILE.md).
