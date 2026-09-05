@@ -161,6 +161,14 @@ namespace hardrt {
         }
 
         /**
+         * @brief Convenience alias for version_string().
+         * @return Version string returned by hrt_version_string().
+         */
+        static const char* version() {
+            return version_string();
+        }
+
+        /**
          * @brief Get the RTOS version as a packed integer.
          * @return Packed version (0xMMmmPP).
          */
@@ -248,6 +256,7 @@ namespace hardrt {
      *
      * - QueueRef<T>: binds to externally provided storage.
      * - StaticQueue<T, Capacity>: owns storage sized at compile time.
+     * - Queue<T, Capacity>: convenience alias for StaticQueue<T, Capacity>.
      *
      * The C implementation copies T with memcpy. Queue wrappers therefore
      * require trivially-copyable payload types, and StaticQueue additionally
@@ -345,6 +354,10 @@ namespace hardrt {
         alignas(T) std::array<std::byte, Capacity * sizeof(T)> _storage{};
         hrt_queue_t _q{};
     };
+
+    /** Convenience alias for the wrapper-owned fixed-capacity queue. */
+    template <typename T, size_t Capacity>
+    using Queue = StaticQueue<T, Capacity>;
 
     /**
      * @brief C++ wrapper for the current owner-tracked, non-recursive mutex.
