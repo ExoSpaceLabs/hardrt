@@ -249,25 +249,25 @@ static uint32_t g_sim_controller_stack[SIGNAL_STACK_WORDS];
 
 static void signal_sim_event_waiter(void *arg) {
     (void)arg;
-    hrt_sem_give(&g_sim_armed);
+    (void)hrt_sem_give(&g_sim_armed);
     hrt_event_bits_t matched = 0u;
     if (hrt_event_wait(&g_sim_event, 0x1u, HRT_EVENT_CLEAR_ON_EXIT,
                        &matched) == 0 && matched == 0x1u) {
         const int slot = g_sim_sequence_count++;
         if (slot < 2) g_sim_sequence[slot] = 1;
     }
-    hrt_sem_give(&g_sim_done);
+    (void)hrt_sem_give(&g_sim_done);
 }
 
 static void signal_sim_notify_waiter(void *arg) {
     (void)arg;
-    hrt_sem_give(&g_sim_armed);
+    (void)hrt_sem_give(&g_sim_armed);
     uint32_t value = 0u;
     if (hrt_task_notify_wait(0u, UINT32_MAX, &value) == 0 && value == 0x20u) {
         const int slot = g_sim_sequence_count++;
         if (slot < 2) g_sim_sequence[slot] = 2;
     }
-    hrt_sem_give(&g_sim_done);
+    (void)hrt_sem_give(&g_sim_done);
 }
 
 static void signal_sim_controller(void *arg) {
@@ -301,8 +301,8 @@ static void signal_sim_controller(void *arg) {
 static void test_simultaneous_event_notification_wake(void) {
     hrt__test_reset_scheduler_state();
     hrt_event_init(&g_sim_event);
-    hrt_sem_init(&g_sim_armed, 0u);
-    hrt_sem_init(&g_sim_done, 0u);
+    hrt_sem_init_counting(&g_sim_armed, 0u, 2u);
+    hrt_sem_init_counting(&g_sim_done, 0u, 2u);
     g_sim_event_id = -1;
     g_sim_notify_id = -1;
     g_sim_event_need = 0;
@@ -354,6 +354,7 @@ static int g_stress_worker_id = -1;
 static hrt_policy_t g_stress_policy = HRT_SCHED_PRIORITY_RR;
 static volatile unsigned g_stress_completed = 0u;
 static volatile int g_stress_error = 0;
+static volatile unsigned g_stress_fail_iteration = UINT_MAX;
 static volatile uint32_t g_stress_ticks = 0u;
 static uint32_t g_stress_worker_stack[SIGNAL_STACK_WORDS];
 static uint32_t g_stress_controller_stack[SIGNAL_STACK_WORDS];
@@ -388,11 +389,25 @@ static uint32_t stress_notify_value(const uint32_t r) {
     return ((r >> 8u) & 0x7FFFu) | 1u;
 }
 
+static void stress_set_failure(const int code, const unsigned iteration) {
+    if (g_stress_error == 0) {
+        g_stress_error = code;
+        g_stress_fail_iteration = iteration;
+    }
+}
+
+static void stress_worker_failure(const int code, const unsigned iteration) {
+    stress_set_failure(code, iteration);
+    /* Always release the controller. A detected failure must become evidence,
+       not a deadlocked test that merely occupies a CI runner until timeout. */
+    (void)hrt_sem_give(&g_stress_done);
+}
+
 static void signal_stress_worker(void *arg) {
     (void)arg;
     for (unsigned i = 0u; i < SIGNAL_STRESS_ITERS; ++i) {
         const uint32_t r = g_stress_pattern[i];
-        hrt_sem_give(&g_stress_armed);
+        (void)hrt_sem_give(&g_stress_armed);
 
         if ((r & 1u) == 0u) {
             int wait_all = 0;
@@ -404,19 +419,18 @@ static void signal_stress_worker(void *arg) {
             hrt_event_bits_t matched = 0u;
             if (hrt_event_wait(&g_stress_event, mask, options, &matched) != 0 ||
                 matched != mask) {
-                g_stress_error = 1000 + (int)i;
+                stress_worker_failure(1000, i);
                 return;
             }
-            if ((options & (unsigned)HRT_EVENT_CLEAR_ON_EXIT) == 0u) {
-                if (hrt_event_clear(&g_stress_event, mask) != 0) {
-                    g_stress_error = 2000 + (int)i;
-                    return;
-                }
+            if ((options & (unsigned)HRT_EVENT_CLEAR_ON_EXIT) == 0u &&
+                hrt_event_clear(&g_stress_event, mask) != 0) {
+                stress_worker_failure(2000, i);
+                return;
             }
         } else {
             uint32_t value = 0u;
             if (hrt_task_notify_wait(0u, UINT32_MAX, &value) != 0) {
-                g_stress_error = 3000 + (int)i;
+                stress_worker_failure(3000, i);
                 return;
             }
             const hrt_notify_action_t action = stress_notify_action(r);
@@ -424,13 +438,13 @@ static void signal_stress_worker(void *arg) {
                                           ? 1u
                                           : stress_notify_value(r);
             if (value != expected) {
-                g_stress_error = 4000 + (int)i;
+                stress_worker_failure(4000, i);
                 return;
             }
         }
 
         g_stress_completed = i + 1u;
-        hrt_sem_give(&g_stress_done);
+        (void)hrt_sem_give(&g_stress_done);
     }
 }
 
@@ -440,13 +454,13 @@ static void signal_stress_controller(void *arg) {
 
     for (unsigned i = 0u; i < SIGNAL_STRESS_ITERS; ++i) {
         if (hrt_sem_take(&g_stress_armed) != 0) {
-            g_stress_error = 5000 + (int)i;
+            stress_set_failure(5000, i);
             break;
         }
 #ifdef HARDRT_TEST_HOOKS
         if (hrt__test_task_state(g_stress_worker_id) != HRT_BLOCKED ||
             !signal_invariants_ok(&g_stress_event)) {
-            g_stress_error = 6000 + (int)i;
+            stress_set_failure(6000, i);
             break;
         }
 #endif
@@ -466,13 +480,13 @@ static void signal_stress_controller(void *arg) {
                 int first_need = -1;
                 rc = hrt_event_set_from_isr(&g_stress_event, first, &first_need);
                 if (rc != 0 || first_need != 0) {
-                    g_stress_error = 7000 + (int)i;
+                    stress_set_failure(7000, i);
                     break;
                 }
 #ifdef HARDRT_TEST_HOOKS
                 if (hrt__test_task_state(g_stress_worker_id) != HRT_BLOCKED ||
                     !signal_invariants_ok(&g_stress_event)) {
-                    g_stress_error = 8000 + (int)i;
+                    stress_set_failure(8000, i);
                     break;
                 }
 #endif
@@ -489,26 +503,30 @@ static void signal_stress_controller(void *arg) {
         }
 
         if (rc != 0 || need != expect_need) {
-            g_stress_error = 9000 + (int)i;
+            stress_set_failure(9000, i);
             break;
         }
 #ifdef HARDRT_TEST_HOOKS
         if (hrt__test_ready_occurrences(g_stress_worker_id) != 1 ||
             !signal_invariants_ok(&g_stress_event)) {
-            g_stress_error = 10000 + (int)i;
+            stress_set_failure(10000, i);
             break;
         }
 #endif
 
         hrt_yield();
-        if (hrt_sem_take(&g_stress_done) != 0 ||
-            g_stress_completed != i + 1u) {
-            g_stress_error = 11000 + (int)i;
+        if (hrt_sem_take(&g_stress_done) != 0) {
+            stress_set_failure(11000, i);
+            break;
+        }
+        if (g_stress_error != 0) break;
+        if (g_stress_completed != i + 1u) {
+            stress_set_failure(12000, i);
             break;
         }
 #ifdef HARDRT_TEST_HOOKS
         if (!signal_invariants_ok(&g_stress_event)) {
-            g_stress_error = 12000 + (int)i;
+            stress_set_failure(13000, i);
             break;
         }
 #endif
@@ -516,6 +534,28 @@ static void signal_stress_controller(void *arg) {
 
     hrt__test_stop_scheduler();
     hrt_yield();
+}
+
+static void print_stress_failure_context(const hrt_policy_t policy) {
+    if (g_stress_error == 0 || g_stress_fail_iteration >= SIGNAL_STRESS_ITERS) return;
+
+    const unsigned i = g_stress_fail_iteration;
+    const uint32_t r = g_stress_pattern[i];
+    if ((r & 1u) == 0u) {
+        int wait_all = 0;
+        const hrt_event_bits_t mask = stress_event_mask(r, &wait_all);
+        printf("SIGNAL_STRESS_FAILURE primitive=event policy=%d task=%d iteration=%u "
+               "pattern=0x%08x mask=0x%08x wait_all=%d clear_on_exit=%u error=%d\n",
+               (int)policy, g_stress_worker_id, i, (unsigned)r, (unsigned)mask,
+               wait_all, (unsigned)((r >> 3u) & 1u), g_stress_error);
+    } else {
+        const hrt_notify_action_t action = stress_notify_action(r);
+        const uint32_t value = stress_notify_value(r);
+        printf("SIGNAL_STRESS_FAILURE primitive=notification policy=%d task=%d iteration=%u "
+               "pattern=0x%08x value=0x%08x action=%d error=%d\n",
+               (int)policy, g_stress_worker_id, i, (unsigned)r, (unsigned)value,
+               (int)action, g_stress_error);
+    }
 }
 
 static void run_signal_stress(const hrt_policy_t policy, const char *label) {
@@ -528,6 +568,7 @@ static void run_signal_stress(const hrt_policy_t policy, const char *label) {
     g_stress_policy = policy;
     g_stress_completed = 0u;
     g_stress_error = 0;
+    g_stress_fail_iteration = UINT_MAX;
     g_stress_ticks = 0u;
 
     const hrt_config_t cfg = signal_cfg(policy);
@@ -546,10 +587,12 @@ static void run_signal_stress(const hrt_policy_t policy, const char *label) {
 
     hrt_start();
 
-    printf("SIGNAL_STRESS policy=%d seed=0x%08x iterations=%u ticks=%u error=%d\n",
+    printf("SIGNAL_STRESS policy=%d seed=0x%08x iterations=%u completed=%u ticks=%u error=%d\n",
            (int)policy, (unsigned)SIGNAL_STRESS_SEED,
-           (unsigned)SIGNAL_STRESS_ITERS, (unsigned)g_stress_ticks,
-           g_stress_error);
+           (unsigned)SIGNAL_STRESS_ITERS, (unsigned)g_stress_completed,
+           (unsigned)g_stress_ticks, g_stress_error);
+    print_stress_failure_context(policy);
+
     T_ASSERT_EQ_INT(0, g_stress_error,
                     "signal stress completes without state/invariant failure");
     T_ASSERT_EQ_UINT(SIGNAL_STRESS_ITERS, g_stress_completed,
