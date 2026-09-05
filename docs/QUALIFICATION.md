@@ -20,19 +20,23 @@ Modes:
 
 The board/OpenOCD probe always runs first. Only the default unfiltered mode is a complete release-candidate hardware run.
 
-Development evidence is written to:
+## Evidence handling
+
+Development evidence is generated under:
 
 ```text
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-Timestamped development runs are gitignored. A selected release package is retained under:
+A selected release package may be retained locally under:
 
 ```text
 validation/stm32/releases/vX.Y.Z/
 ```
 
-The repository should contain exactly one selected STM32 evidence package per release.
+These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `vX.Y.Z` tag instead.
+
+The source tree tagged for release must therefore be the same source tree that generated the passing report.
 
 ## Current v0.5 matrix
 
@@ -43,7 +47,7 @@ The consolidated v0.5 runner contains:
 38 hardware benchmark images
 ```
 
-The board probe is a prerequisite and is reported separately.
+The board probe is reported separately.
 
 ### Functional contracts: 13
 
@@ -83,7 +87,7 @@ Eighteen tick/sleeper images exercise capacities 8/16/32 across:
 - `simultaneous`;
 - `staggered`.
 
-The intrusive delta sleeper queue gives bounded O(N) insertion in task context, O(1) no-expiry tick work, and O(K) processing for K expiries, plus READY publication cost.
+The intrusive delta sleeper queue gives bounded O(N) insertion in task context, O(1) no-expiry tick work, and O(K) processing for K expiries plus READY publication cost.
 
 ### Event/notification timing benchmarks: 16
 
@@ -95,45 +99,15 @@ The intrusive delta sleeper queue gives bounded O(N) insertion in task context, 
 - `notify_isr_no_wake`;
 - `notify_isr_wake`.
 
-Signal timing uses application-side DWT timestamps with ordinary event/notification code uninstrumented. Event scan firmware also validates expected cumulative wake count so timing cannot pass with an incomplete fan-out workload.
+Signal timing uses application-side DWT timestamps with ordinary event/notification code uninstrumented. Event scan firmware validates expected cumulative wake count so timing cannot pass with an incomplete fan-out workload.
 
 These measurements characterize bounded implementation behavior. They are not formal WCET proofs.
 
 ## Development evidence
 
-The first complete event/notification functional H755 run was:
+The first complete event/notification functional H755 development run passed 13/13 functional contracts and 22/22 historical benchmarks. Later development evidence at `aa39e9bb5f12f8ada229441a13e83d91c0dbeae6` likewise passed the 13 functional contracts and historical benchmark baseline. These runs predate the consolidated 16-image signal timing matrix and are not final release evidence.
 
-```text
-Run ID:       20260905T152422Z_6f4ef62a
-HardRT SHA:   6f4ef62a8a0d13a0632537c6e65a50cbd315d656
-Tracked tree: clean
-STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
-Board/core:   NUCLEO-H755ZI-Q / CM7
-ARM GCC:      10.3.1
-Samples:      10000 per benchmark image
-```
-
-Result:
-
-```text
-Board probe:           PASS
-Functional contracts:  13 / 13 PASS
-Historical benchmarks: 22 / 22 PASS
-Overall:                PASS
-```
-
-The new event and notification hardware contracts passed. This run predates the later consolidated 16-image signal timing matrix and is therefore development evidence rather than final release evidence.
-
-Representative latency values from that development run:
-
-| Metric | Min cycles | Avg cycles | Max cycles |
-|---|---:|---:|---:|
-| `event_to_task` (legacy semaphore composite) | 1427 | 1470 | 2024 |
-| `sem_isr_ready` | 355 | 355 | 356 |
-| `ready_to_task` | 948 | 996 | 1590 |
-| `scheduler_decision` | 356 | 363 | 394 |
-
-At the recorded 64 MHz clock these are configuration-specific measurements only.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Final v0.5.0 signal-profile numbers belong to the selected release evidence artifact produced from the frozen SHA.
 
 ## What belongs on hardware
 
@@ -170,7 +144,7 @@ The final STM32 package must then be generated from that exact SHA and record at
 - tick/sleeper scaling metadata;
 - raw build/OpenOCD/GDB logs.
 
-After that run passes, do not modify the qualified source tree. Promote the same commit/tree through `develop` and `main`, tag `v0.5.0` on `main`, and publish release artifacts from the tag.
+After that run passes, do not modify the qualified source tree. Promote the same source commit through `develop` and `main`, tag `v0.5.0` on `main`, and publish the qualification package and release binaries from that tag.
 
 ## Human observation
 
@@ -178,4 +152,4 @@ The two blinky cases retain a qualitative human check: both LEDs must visibly to
 
 ## Relationship to broader hard-real-time qualification
 
-Passing the v0.5 matrix demonstrates the tested H755 configuration satisfies the current behavioral contracts and provides measured timing evidence for the benchmark workloads. It does not by itself establish universal WCET bounds. Analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, richer interference analysis, and complete machine-readable timing evidence remain 1.0-quality work.
+Passing the v0.5 matrix demonstrates the tested H755 configuration satisfies the current behavioral contracts and provides measured timing evidence for the benchmark workloads. It does not establish universal WCET bounds. Analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, richer interference analysis, and complete machine-readable timing evidence remain 1.0-quality work.
