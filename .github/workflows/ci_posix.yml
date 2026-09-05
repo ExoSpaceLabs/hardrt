@@ -143,9 +143,17 @@ jobs:
 
       - name: Install ARM bare-metal toolchain (22.04 only)
         if: matrix.os == 'ubuntu-22.04'
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi
+          sudo apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install -y \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            gcc-arm-none-eabi
 
       - name: Prepare STM32CubeH7 headers (22.04 only)
         if: matrix.os == 'ubuntu-22.04'
