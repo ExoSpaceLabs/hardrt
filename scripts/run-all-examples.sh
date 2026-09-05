@@ -111,6 +111,10 @@ run_example sem_counting \
     '^\[P\] burst give x3' 2 'producer token bursts' \
     '^\[C\] took token' 2 'consumer token takes'
 
+run_example event_notify \
+    '^\[event\] matched=' 2 'event waiter wakes' \
+    '^\[notify\] value=' 2 'task notifications received'
+
 run_example two_tasks_external \
     '^\[A\] External tick' 2 'external-tick task A iterations' \
     '^\[B\] External tock' 2 'external-tick task B iterations'
@@ -134,6 +138,10 @@ run_example mutex_basic_cpp \
 run_example sem_counting_cpp \
     '^\[P\] burst give x3' 2 'C++ producer token bursts' \
     '^\[C\] took token' 2 'C++ consumer token takes'
+
+run_example event_notify_cpp \
+    '^\[event-cpp\] matched=' 2 'C++ event waiter wakes' \
+    '^\[notify-cpp\] value=' 2 'C++ task notifications received'
 
 echo
 echo "=== All POSIX examples compiled and demonstrated required task progress ==="
