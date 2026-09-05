@@ -70,6 +70,7 @@ int main(void) {
     APPEND_GROUP(get_tests_mutex);
     APPEND_GROUP(get_tests_event);
     APPEND_GROUP(get_tests_notify);
+    APPEND_GROUP(get_tests_signal_contract);
     APPEND_GROUP(get_tests_signal_stress);
     APPEND_GROUP(get_tests_now_ms);
     APPEND_GROUP(get_tests_idle_behavior);
