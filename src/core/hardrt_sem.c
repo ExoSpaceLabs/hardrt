@@ -12,7 +12,7 @@
 #define HARDRT_DEBUG 0
 #endif
 
-#if HRT_SEM_DEBUG || defined(HARDRT_TEST_HOOKS)
+#if HRT_SEM_DEBUG
 #include <stdio.h>
 #endif
 
@@ -114,12 +114,12 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
         hrt__make_ready(waiter);
         if (is_isr) HRT_TIMING_ISR_WAITER_READY(waiter);
         should_switch = hrt__should_preempt_after_wake(waiter);
-#ifdef HARDRT_TEST_HOOKS
+#if HRT_SEM_DEBUG
         printf("[sem] give: woke waiter %d\n", waiter);
 #endif
     } else {
         if (s->count < s->max_count) s->count++;
-#ifdef HARDRT_TEST_HOOKS
+#if HRT_SEM_DEBUG
         printf("[sem] give: no waiters, count=%u (max=%u)\n", (unsigned)s->count, (unsigned)s->max_count);
 #endif
     }
