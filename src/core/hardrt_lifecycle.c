@@ -33,19 +33,6 @@ static int valid_tick_hz(const uint32_t tick_hz) {
     return tick_hz >= HRT_TICK_HZ_MIN && tick_hz <= HRT_TICK_HZ_MAX;
 }
 
-static int valid_core_clock_config(const hrt_config_t *cfg) {
-#if defined(HARDRT_PORT_CORTEX_M)
-    /* core_hz is only meaningful when the Cortex-M port owns SysTick. A zero
-     * value delegates clock discovery to hrt_port_get_core_hz(). */
-    if (cfg->tick_src == HRT_TICK_EXTERNAL) return cfg->core_hz == 0u;
-    return 1;
-#else
-    /* Hosted/null ports do not consume a CPU core clock. Reject a non-zero
-     * value rather than silently accepting configuration that has no effect. */
-    return cfg->core_hz == 0u;
-#endif
-}
-
 hrt_status_t hrt_init(const hrt_config_t *cfg) {
     if (g_kernel_state != HRT_KERNEL_UNINITIALIZED) {
         hrt_error(ERR_INVALID_STATE);
@@ -63,8 +50,7 @@ hrt_status_t hrt_init(const hrt_config_t *cfg) {
     if (cfg != NULL) {
         if (!valid_tick_hz(cfg->tick_hz) ||
             !valid_policy(cfg->policy) ||
-            !valid_tick_source(cfg->tick_src) ||
-            !valid_core_clock_config(cfg)) {
+            !valid_tick_source(cfg->tick_src)) {
             hrt_error(ERR_INVALID_CONFIG);
             return HRT_ERR_INVALID_CONFIG;
         }

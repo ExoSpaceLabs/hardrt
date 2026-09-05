@@ -299,39 +299,39 @@ monitor arm semihosting disable
 monitor reset run
 shell sleep 2
 monitor halt
-set $a1=(unsigned)dbg_counterA
-set $b1=(unsigned)dbg_counterB
-set $e1=(unsigned)g_example_error
+set $counter_a_before=(unsigned)dbg_counterA
+set $counter_b_before=(unsigned)dbg_counterB
+set $error_before=(unsigned)g_example_error
 GDB
   if [[ "$exits" == yes ]]; then cat >> "$cmd" <<'GDB'
-set $xa1=(unsigned)dbg_exit_counterA
-set $xb1=(unsigned)dbg_exit_counterB
+set $exit_a_before=(unsigned)dbg_exit_counterA
+set $exit_b_before=(unsigned)dbg_exit_counterB
 GDB
   fi
   cat >> "$cmd" <<'GDB'
 monitor resume
 shell sleep 3
 monitor halt
-set $a2=(unsigned)dbg_counterA
-set $b2=(unsigned)dbg_counterB
-set $e2=(unsigned)g_example_error
-printf "counterA: %u -> %u\n",$a1,$a2
-printf "counterB: %u -> %u\n",$b1,$b2
-printf "g_example_error: %u -> %u\n",$e1,$e2
+set $counter_a_after=(unsigned)dbg_counterA
+set $counter_b_after=(unsigned)dbg_counterB
+set $error_after=(unsigned)g_example_error
+printf "counterA: %u -> %u\n",$counter_a_before,$counter_a_after
+printf "counterB: %u -> %u\n",$counter_b_before,$counter_b_after
+printf "g_example_error: %u -> %u\n",$error_before,$error_after
 GDB
   if [[ "$exits" == yes ]]; then cat >> "$cmd" <<'GDB'
-set $xa2=(unsigned)dbg_exit_counterA
-set $xb2=(unsigned)dbg_exit_counterB
-printf "exit_counterA: %u -> %u\n",$xa1,$xa2
-printf "exit_counterB: %u -> %u\n",$xb1,$xb2
-if $e2==0 && $a2>$a1 && $b2>$b1 && $xa2>$xa1 && $xb2>$xb1
+set $exit_a_after=(unsigned)dbg_exit_counterA
+set $exit_b_after=(unsigned)dbg_exit_counterB
+printf "exit_counterA: %u -> %u\n",$exit_a_before,$exit_a_after
+printf "exit_counterB: %u -> %u\n",$exit_b_before,$exit_b_after
+if $error_after==0 && $counter_a_after>$counter_a_before && $counter_b_after>$counter_b_before && $exit_a_after>$exit_a_before && $exit_b_after>$exit_b_before
   printf "RESULT: PASS\n"
 else
   printf "RESULT: FAIL\n"
 end
 GDB
   else cat >> "$cmd" <<'GDB'
-if $e2==0 && $a2>$a1 && $b2>$b1
+if $error_after==0 && $counter_a_after>$counter_a_before && $counter_b_after>$counter_b_before
   printf "RESULT: PASS\n"
 else
   printf "RESULT: FAIL\n"

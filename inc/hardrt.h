@@ -149,11 +149,12 @@ typedef enum {
  * narrower representable range and `hrt_init()` reports `HRT_ERR_PORT_INIT`
  * when the requested frequency cannot be represented.
  *
- * `core_hz` is only meaningful for Cortex-M with `HRT_TICK_SYSTICK`. Zero asks
- * the Cortex-M port to obtain the clock through `hrt_port_get_core_hz()`; a
+ * `core_hz` is consumed by the Cortex-M port only with `HRT_TICK_SYSTICK`.
+ * Zero asks that port to obtain the clock through `hrt_port_get_core_hz()`; a
  * non-zero value explicitly overrides that clock for SysTick reload
- * calculation. `core_hz` must be zero with `HRT_TICK_EXTERNAL` and on ports
- * that do not consume a CPU core clock.
+ * calculation. Ports/tick modes that do not need a CPU core clock ignore this
+ * field, so callers may preserve board clock metadata when selecting an
+ * external tick source.
  */
 typedef struct {
     uint32_t tick_hz;

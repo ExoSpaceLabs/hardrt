@@ -99,9 +99,9 @@ With an explicit configuration:
 - policy must be one of the declared `HRT_SCHED_*` values;
 - tick source must be `HRT_TICK_SYSTICK` or `HRT_TICK_EXTERNAL`;
 - `default_slice == 0` is preserved and means cooperative scheduling for subsequently default-created tasks;
-- `core_hz` is only valid for the Cortex-M port with `HRT_TICK_SYSTICK`;
+- `core_hz` is consumed only by Cortex-M with `HRT_TICK_SYSTICK`;
 - on Cortex-M/SysTick, `core_hz == 0` delegates clock discovery to `hrt_port_get_core_hz()`, while a non-zero value explicitly overrides that clock for SysTick reload calculation;
-- `core_hz` must be zero with `HRT_TICK_EXTERNAL` and on ports that do not consume a CPU core clock.
+- ports and tick modes that do not need a CPU core clock ignore `core_hz`, allowing board clock metadata to remain populated when switching to an external tick source.
 
 For a port-owned tick source, the port may impose a narrower representable frequency range. For example, Cortex-M requires a SysTick reload that fits the 24-bit counter and POSIX requires a non-zero microsecond timer period. An otherwise valid request that the selected port cannot represent returns `HRT_ERR_PORT_INIT`. Initialization failure leaves the lifecycle `UNINITIALIZED`, so the caller may retry with a corrected configuration.
 
@@ -111,7 +111,7 @@ Public return values are:
 
 - `HRT_OK` on success;
 - `HRT_ERR_ALREADY_INITIALIZED` on a second `hrt_init()`;
-- `HRT_ERR_INVALID_CONFIG` for invalid policy/source/frequency or contradictory unsupported configuration;
+- `HRT_ERR_INVALID_CONFIG` for invalid policy, tick source, or zero tick frequency;
 - `HRT_ERR_PORT_INIT` when the selected port cannot configure the requested tick.
 
 These application-facing statuses are separate from `hrt_err`, which remains the lower-level diagnostic channel for kernel/API diagnostics.
