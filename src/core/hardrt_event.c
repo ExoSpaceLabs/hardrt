@@ -188,3 +188,17 @@ int hrt_event_wait(hrt_event_t *event,
     if (matched != NULL) *matched = result;
     return 0;
 }
+
+#ifdef HARDRT_TEST_HOOKS
+int hrt__test_event_register_waiter(hrt_event_t *event,
+                                    const int task_id,
+                                    const hrt_event_bits_t mask,
+                                    const unsigned options) {
+    if (event == NULL || mask == 0u || !event_options_valid(options)) return -1;
+
+    hrt_port_crit_enter();
+    const int rc = register_waiter_locked(event, task_id, mask, options);
+    hrt_port_crit_exit();
+    return rc;
+}
+#endif
