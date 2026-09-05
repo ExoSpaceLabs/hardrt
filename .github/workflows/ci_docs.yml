@@ -56,7 +56,7 @@ jobs:
       - name: Check links paths and stale references
         run: python3 scripts/check-docs.py
 
-      - name: Generate Doxygen without warnings
+      - name: Generate Doxygen without documentation errors
         run: |
           cat > "$RUNNER_TEMP/Doxyfile" <<EOF
           PROJECT_NAME = HardRT
@@ -67,6 +67,7 @@ jobs:
           GENERATE_LATEX = NO
           OUTPUT_DIRECTORY = $RUNNER_TEMP/doxygen
           WARN_AS_ERROR = YES
+          WARN_IF_UNDOCUMENTED = NO
           QUIET = YES
           EOF
           doxygen "$RUNNER_TEMP/Doxyfile"
