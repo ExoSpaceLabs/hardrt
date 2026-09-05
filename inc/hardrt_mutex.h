@@ -10,6 +10,13 @@ extern "C" {
 
 #define HRT_MUTEX_NO_OWNER (-1)
 
+  /**
+   * @brief Statically allocated owner-tracked, non-recursive mutex.
+   *
+   * Waiters are stored in a bounded FIFO sized by HARDRT_APP_MAX_TASKS.
+   * The scheduler policy decides whether a released waiter preempts the
+   * current task after ownership is transferred.
+   */
   typedef struct {
     volatile uint8_t locked;        /* 0 = unlocked, 1 = locked */
     int16_t owner;                  /* task id of owner (uint8), HRT_MUTEX_NO_OWNER if unlocked */
