@@ -25,50 +25,24 @@ void hrt__test_reset_scheduler_state(void);
 
 /* Optional extra hooks (only available when HARDRT_TEST_HOOKS) */
 #ifdef HARDRT_TEST_HOOKS
-/**
- * @brief Reset the idle loop counter.
- */
 void hrt__test_idle_counter_reset(void);
-
-/**
- * @brief Read the idle loop counter value.
- */
 unsigned long long hrt__test_idle_counter_value(void);
-
-/**
- * @brief Advance the system tick by a delta (no real time passes).
- */
 void hrt__test_fast_forward_ticks(uint32_t delta);
-
-/**
- * @brief Set the tick counter to an exact value.
- */
 void hrt__test_set_tick(uint32_t v);
-
-/**
- * @brief Get the current tick counter.
- */
 uint32_t hrt__test_get_tick(void);
-
-/** @brief Read a used task's private execution state, or -1 for no task. */
 int hrt__test_task_state(int id);
-
-/** @brief Read the private TCB-slot ownership state, or -1 for invalid ID. */
 int hrt__test_slot_state(int id);
 #endif
 #ifdef __cplusplus
 }
 #endif
 
-/* Color helpers */
 #define ANSI_GRN "\x1b[32m"
 #define ANSI_RED "\x1b[31m"
 #define ANSI_RST "\x1b[0m"
 
-/* Global failure counter owned by test_main.c */
 extern int g_failures;
 
-/* Tiny assertion macros printing to stdout (keeps CTest output single-stream) */
 #define T_ASSERT_TRUE(cond, msg) do { \
     if (!(cond)) { \
         ++g_failures; \
@@ -111,69 +85,38 @@ void hrt__inc_tick(void);
     } \
 } while(0)
 
-/**
- * @brief Test case function signature.
- */
 typedef void (*test_fn_t)(void);
 
-/**
- * @brief Named test case descriptor.
- */
 typedef struct {
     const char *name;
     test_fn_t fn;
 } test_case_t;
 
-/**
- * @brief Each group exposes a getter returning a static array and its count.
- */
 const test_case_t *get_tests_identity(int *out_count);
-
 const test_case_t *get_tests_sleep_stop(int *out_count);
-
+const test_case_t *get_tests_lifecycle(int *out_count);
 const test_case_t *get_tests_rr_yield(int *out_count);
-
 const test_case_t *get_tests_rr_sleep(int *out_count);
-
 const test_case_t *get_tests_sleep_queue(int *out_count);
-
 const test_case_t *get_tests_priority(int *out_count);
-
 const test_case_t *get_tests_preemption_contract(int *out_count);
-
 const test_case_t *get_tests_ready_bitmap(int *out_count);
-
 const test_case_t *get_tests_coop_vs_rr(int *out_count);
-
 const test_case_t *get_tests_tick_rate(int *out_count);
-
 const test_case_t *get_tests_create_limits(int *out_count);
-
 const test_case_t *get_tests_runtime_tuning(int *out_count);
-
 const test_case_t *get_tests_fifo_order(int *out_count);
-
 const test_case_t *get_tests_wraparound(int *out_count);
-
 const test_case_t *get_tests_sleep_zero(int *out_count);
-
 const test_case_t *get_tests_task_return(int *out_count);
-
 const test_case_t *get_tests_idle_behavior(int *out_count);
-
 const test_case_t *get_tests_semaphore(int *out_count);
-
 const test_case_t *get_tests_queue(int *out_count);
-
 const test_case_t *get_tests_mutex(int *out_count);
-
 const test_case_t *get_tests_now_ms(int *out_count);
-
-/* External tick tests */
 const test_case_t *get_tests_external_tick(int *out_count);
 
 #ifdef HARDRT_TEST_HOOKS
-/* POSIX-only test hooks to block/unblock SIGALRM for deterministic checks */
 void hrt__test_block_sigalrm(void);
 void hrt__test_unblock_sigalrm(void);
 #endif
