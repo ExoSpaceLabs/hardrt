@@ -93,6 +93,8 @@ build_app hardrt_h755_global_rr "$ROOT_DIR/examples/hardrt_h755_global_rr" "$BAS
 build_app hardrt_h755_ipc_semaphore "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=semaphore
 build_app hardrt_h755_ipc_queue "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=queue
 build_app hardrt_h755_ipc_mutex "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=mutex
+build_app hardrt_h755_ipc_event "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=event
+build_app hardrt_h755_ipc_notification "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=notification
 build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
 build_app hardrt_h755_basepri_validation "$ROOT_DIR/examples/hardrt_h755_basepri_validation" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8

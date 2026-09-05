@@ -58,9 +58,9 @@ validation/stm32/releases/vX.Y.Z/
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 11 contracts
+## Functional validation: 13 contracts
 
-The board probe is a prerequisite, not a functional feature. Functional mode runs **11 behavior contracts**:
+The board probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -71,8 +71,10 @@ The board probe is a prerequisite, not a functional feature. Functional mode run
 7. **Semaphore hardware contract**: counting/saturation behavior plus real ISR wake and scheduler-aware `need_switch`.
 8. **Queue hardware contract**: FIFO/full/empty plus ISR send/receive wake paths, payload preservation and priority handoff.
 9. **Mutex hardware contract**: ownership, blocking, direct handoff and immediate execution of a newly eligible higher-priority owner.
-10. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep duration/tick accounting are correct and awakened higher-priority work preempts.
-11. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+10. **Event flags hardware contract**: wait-all is completed incrementally by task and real TIM2 ISR producers; clear-on-exit removes matched bits; wait-any retained bits remain set until explicitly cleared; ISR wake reports scheduler-aware `need_switch` and preempts when required.
+11. **Task notification hardware contract**: pending data survives unrelated semaphore blocking; overwrite/no-overwrite/set-bits semantics are checked; a real TIM2 ISR notification wakes and preempts correctly; increment plus counting-take preserves and consumes the count correctly.
+12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep duration/tick accounting are correct and awakened higher-priority work preempts.
+13. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
@@ -136,7 +138,7 @@ hrt_tick_from_isr();
 
 Current `develop` uses a static intrusive delta sleeper queue with bounded O(N) task-context insertion, O(1) no-expiry tick work and O(K) work for K expiries.
 
-## Accepted current development run
+## Accepted scheduler/lifecycle development baseline
 
 The scheduler/lifecycle hardening baseline was accepted on:
 
@@ -157,7 +159,9 @@ Hardware benchmarks:   22 / 22 PASS
 Overall:                PASS
 ```
 
-Current latency/switch values:
+That run predates the event-flags and task-notification hardware contracts. It remains valid evidence for the scheduler/lifecycle baseline, but it is **not** evidence for functional contracts 10 and 11 in the current 13-contract matrix.
+
+Current latency/switch values from that baseline:
 
 | Metric | Min cycles | Avg cycles | Max cycles |
 |---|---:|---:|---:|
@@ -166,7 +170,7 @@ Current latency/switch values:
 | `ready_to_task` | 922 | 1001 | 1597 |
 | `scheduler_decision` | 365 | 380 | 411 |
 
-Current tick/sleeper averages:
+Current tick/sleeper averages from that baseline:
 
 | app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -176,7 +180,7 @@ Current tick/sleeper averages:
 
 The no-expiry cases no longer scale materially with configured task capacity. Actual expiry work remains proportional to the number of workers that wake.
 
-This is accepted **development evidence**. It is not the final v0.5.0 release qualification because later release-facing changes will move the exact SHA.
+This is accepted **development evidence**. It is not the final v0.5.0 release qualification because later release-facing changes move the exact SHA and the new signal contracts still require a physical-board run on the final candidate.
 
 ## Human LED acceptance
 
@@ -189,7 +193,7 @@ The runner records:
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
-- functional `N/11 PASS`, failure and not-run counts
+- functional `N/13 PASS`, failure and not-run counts
 - benchmark `N/22 PASS`, failure and not-run counts
 - timing min/avg/max
 - scheduler/PendSV breakdown

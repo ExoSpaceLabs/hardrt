@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=11
+FUNCTIONAL_TOTAL=13
 BENCHMARK_TOTAL=22
 
 NAMES=()
@@ -469,6 +469,8 @@ ipc_case() {
     semaphore) criterion="Counting/saturation checks pass; real TIM2 ISR wakes a blocked higher-priority waiter with correct need_switch." ;;
     queue) criterion="FIFO/full/empty checks pass; ISR send->blocked receiver and ISR receive->blocked sender preserve payload and priority handoff." ;;
     mutex) criterion="Ownership, blocking, direct handoff and immediate higher-priority execution after unlock are correct." ;;
+    event) criterion="Wait-all completes from incremental task/ISR sets; clear-on-exit and retained wait-any behavior are correct; the real TIM2 ISR reports scheduler-aware need_switch and preempts when required." ;;
+    notification) criterion="Pending notifications survive unrelated IPC blocking; overwrite/no-overwrite/set-bits, real TIM2 ISR wake/need_switch, increment and counting-take semantics are correct." ;;
   esac
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
@@ -537,6 +539,8 @@ run_functional_matrix() {
   ipc_case semaphore "Semaphore hardware contract"
   ipc_case queue "Queue hardware contract"
   ipc_case mutex "Mutex hardware contract"
+  ipc_case event "Event flags hardware contract"
+  ipc_case notification "Task notification hardware contract"
   external_tick_case
   basepri_case
 }
