@@ -37,6 +37,8 @@ if(HARDRT_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_external_tick.c
           ${CMAKE_SOURCE_DIR}/tests/test_idle_behavior.c
           ${CMAKE_SOURCE_DIR}/tests/test_mutex.c
+          ${CMAKE_SOURCE_DIR}/tests/test_event.c
+          ${CMAKE_SOURCE_DIR}/tests/test_notify.c
           ${CMAKE_SOURCE_DIR}/tests/test_now_ms.c
   )
 
