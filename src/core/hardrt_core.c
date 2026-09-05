@@ -543,10 +543,7 @@ void hrt_start(void) {
 }
 
 static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_hz) {
-    if (ms == 0u || tick_hz == 0u) {
-        /* Current v0.4 behavior: sleep(0) sleeps for one tick. #30 changes this in v0.5. */
-        return 1u;
-    }
+    if (tick_hz == 0u) return 1u;
     uint64_t t = (uint64_t)ms * (uint64_t)tick_hz + 999ULL;
     t /= 1000ULL;
     if (t == 0u) t = 1u;
@@ -555,6 +552,13 @@ static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_h
 }
 
 void hrt_sleep(const uint32_t ms) {
+    /* v0.5 contract: zero is a pure scheduling point. It must not publish
+     * SLEEP state, enter the delta queue, or wait for a tick. */
+    if (ms == 0u) {
+        hrt_yield();
+        return;
+    }
+
 #if HARDRT_DEBUG == 1
     if (g_current < 0) {
         hrt_error(ERR_INVALID_ID);
