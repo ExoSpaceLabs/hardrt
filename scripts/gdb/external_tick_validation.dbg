@@ -8,6 +8,16 @@ target extended-remote :3333
 monitor arm semihosting disable
 monitor reset halt
 
+break *hrt_error
+commands
+  silent
+  set $error_code = (unsigned int)$r0
+  printf "hrt_error=%u\n", $error_code
+  printf "RESULT: FAIL (hrt_error=%u)\n", $error_code
+  detach
+  quit
+end
+
 break *external_tick_validation_emit
 commands
   silent

@@ -117,6 +117,10 @@ static void high_task(void *arg)
         validation_fail(401u, 0u, 0u);
     }
 
+    /* External ticks are only meaningful once the scheduler has selected a
+       valid current task. Starting TIM2 here removes the pre-start IRQ race. */
+    tim2_start_external_tick();
+
     for (uint32_t i = 0u; i < WAKE_SAMPLES; ++i) {
         const uint32_t before = hrt_tick_now();
         hrt_sleep(SLEEP_TICKS);
@@ -159,8 +163,6 @@ int main(void)
         .tick_src = HRT_TICK_EXTERNAL
     };
     if (hrt_init(&cfg) != 0) validation_stop(1u, 0u, 0u, 0u);
-
-    tim2_start_external_tick();
 
     const hrt_task_attr_t high_attr = {.priority = HRT_PRIO0, .timeslice = 0u};
     const hrt_task_attr_t low_attr = {.priority = HRT_PRIO1, .timeslice = 0u};

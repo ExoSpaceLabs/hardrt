@@ -44,7 +44,7 @@ int main(void) {
         .tick_src = HRT_TICK_EXTERNAL
     };
 
-    if (hrt_init(&cfg) != 0) {
+    if (hrt_init(&cfg) != HRT_OK) {
         return 1;
     }
     hrt_start();
@@ -62,7 +62,7 @@ void MyTimer_IRQHandler(void) {
 }
 ```
 
-The application owns the external timer lifecycle and therefore must not route that timer into HardRT before `hrt_init()` has completed.
+The application owns the external timer lifecycle. It may configure the peripheral before `hrt_start()`, but it must not enable or route periodic tick interrupts into HardRT until the scheduler is RUNNING and has selected a valid current task. On Cortex-M, a robust pattern is to enable the external timer from the first application task that runs.
 
 ## What tick processing does
 
@@ -83,7 +83,7 @@ The timer ISR does not call a separate `yield_from_isr` function. No such public
 
 An internal tick configuration is rejected when the selected port cannot represent the requested period. For example, the Cortex-M SysTick implementation rejects reload counts outside its 24-bit range instead of silently clamping them.
 
-In the current implementation, `hrt_sleep(0)` sleeps for one tick. Use `hrt_yield()` for an immediate voluntary scheduling point.
+`hrt_sleep(0)` is an immediate scheduling point equivalent to `hrt_yield()` and does not consume a tick.
 
 ## Wraparound
 
