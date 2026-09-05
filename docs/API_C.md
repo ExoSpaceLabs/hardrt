@@ -8,6 +8,14 @@ This page summarizes the public C surface used by HardRT. Versioned notes identi
 typedef void (*hrt_task_fn)(void *arg);
 
 typedef enum {
+    HRT_OK = 0,
+    HRT_ERR_ALREADY_INITIALIZED = -1,
+    HRT_ERR_INVALID_CONFIG = -2,
+    HRT_ERR_INVALID_STATE = -3,
+    HRT_ERR_PORT_INIT = -4
+} hrt_status_t;
+
+typedef enum {
     HRT_SCHED_PRIORITY = 0,
     HRT_SCHED_RR,
     HRT_SCHED_PRIORITY_RR
@@ -58,14 +66,22 @@ int         hrt_port_id(void);
 ## Kernel lifecycle
 
 ```c
-int  hrt_init(const hrt_config_t *cfg);
-int  hrt_create_task(hrt_task_fn fn,
-                     void *arg,
-                     uint32_t *stack_words,
-                     size_t n_words,
-                     const hrt_task_attr_t *attr);
-void hrt_start(void);
+hrt_status_t hrt_init(const hrt_config_t *cfg);
+int          hrt_create_task(hrt_task_fn fn,
+                             void *arg,
+                             uint32_t *stack_words,
+                             size_t n_words,
+                             const hrt_task_attr_t *attr);
+hrt_status_t hrt_start(void);
 ```
+
+The public lifecycle is explicit:
+
+```text
+UNINITIALIZED -> INITIALIZED -> RUNNING
+```
+
+`hrt_init()` is the only public transition from `UNINITIALIZED` to `INITIALIZED`. `hrt_start()` is the only public transition from `INITIALIZED` to `RUNNING`. A second initialization or scheduler start is rejected instead of silently resetting kernel state. Test-only lifecycle reset is compiled only with `HARDRT_TEST_HOOKS`.
 
 ### `hrt_init`
 
@@ -74,15 +90,35 @@ void hrt_start(void);
 - tick frequency: `1000 Hz`;
 - policy: `HRT_SCHED_PRIORITY_RR`;
 - default slice: `5` ticks;
+- `core_hz = 0`;
 - tick source: `HRT_TICK_SYSTICK`.
 
-With an explicit configuration, an explicit `default_slice == 0` is preserved and means cooperative scheduling for subsequently default-created tasks. Tick configuration is prepared during initialization, but the configured periodic tick is not activated until scheduler start.
+With an explicit configuration:
 
-Full public lifecycle/configuration validation remains tracked separately by issue #33.
+- `tick_hz` must be in the public non-zero `uint32_t` range `[HRT_TICK_HZ_MIN, HRT_TICK_HZ_MAX]`, currently `1 .. UINT32_MAX`;
+- policy must be one of the declared `HRT_SCHED_*` values;
+- tick source must be `HRT_TICK_SYSTICK` or `HRT_TICK_EXTERNAL`;
+- `default_slice == 0` is preserved and means cooperative scheduling for subsequently default-created tasks;
+- `core_hz` is only valid for the Cortex-M port with `HRT_TICK_SYSTICK`;
+- on Cortex-M/SysTick, `core_hz == 0` delegates clock discovery to `hrt_port_get_core_hz()`, while a non-zero value explicitly overrides that clock for SysTick reload calculation;
+- `core_hz` must be zero with `HRT_TICK_EXTERNAL` and on ports that do not consume a CPU core clock.
+
+For a port-owned tick source, the port may impose a narrower representable frequency range. For example, Cortex-M requires a SysTick reload that fits the 24-bit counter and POSIX requires a non-zero microsecond timer period. An otherwise valid request that the selected port cannot represent returns `HRT_ERR_PORT_INIT`. Initialization failure leaves the lifecycle `UNINITIALIZED`, so the caller may retry with a corrected configuration.
+
+Scheduler structures and the private idle task are initialized before tick configuration. Tick configuration is prepared during initialization, but the configured periodic tick is not activated until scheduler start.
+
+Public return values are:
+
+- `HRT_OK` on success;
+- `HRT_ERR_ALREADY_INITIALIZED` on a second `hrt_init()`;
+- `HRT_ERR_INVALID_CONFIG` for invalid policy/source/frequency or contradictory unsupported configuration;
+- `HRT_ERR_PORT_INIT` when the selected port cannot configure the requested tick.
+
+These application-facing statuses are separate from `hrt_err`, which remains the lower-level diagnostic channel for kernel/API diagnostics.
 
 ### `hrt_create_task`
 
-The function returns a non-negative task ID on success and `-1` on checked failure paths.
+The function returns a non-negative task ID on success and `-1` on checked failure paths. Calling it before successful initialization is rejected. Task creation remains supported after `hrt_start()`.
 
 Current requirements include:
 
@@ -97,15 +133,21 @@ If `attr == NULL`, the task uses the configured default slice and a valid defaul
 
 Task creation is transactional. A newly allocated slot is not published as USED/READY until port context preparation succeeds. An EXITED task no longer executes and its slot may later be reclaimed. Reusing the exact stack of an EXITED task preferentially reclaims that task's slot. A live task's stack may never be reused or partially overlapped by another live task.
 
+When creation occurs while the scheduler is RUNNING, allocation/context preparation and READY publication are serialized under the kernel critical section. Successful runtime creation does not itself force immediate preemption; the new READY task participates at the next scheduling point.
+
 The CMake build reserves one additional slot for the idle task by defining total task storage as `HARDRT_APP_MAX_TASKS + 1`.
 
 ### `hrt_start`
 
-The function requests initial scheduling and enters the selected port scheduler.
+`hrt_start()` is valid only from `INITIALIZED`. Calls before initialization or after scheduler start return `HRT_ERR_INVALID_STATE`.
 
-- Cortex-M does not return under normal operation.
-- POSIX returns only through test hooks in the test build.
-- The null port returns without running tasks.
+On a successful start the lifecycle becomes `RUNNING` before control crosses into the port scheduler:
+
+- Cortex-M does not return under normal operation;
+- POSIX returns only through test hooks in the test build;
+- the null port returns without running tasks.
+
+If a successful scheduler entry returns on a hosted/test port, `hrt_start()` returns `HRT_OK`; the lifecycle remains `RUNNING`, so a second start is still invalid.
 
 ## Scheduling policies
 
@@ -279,9 +321,9 @@ int main(void) {
         .timeslice = 5
     };
 
-    hrt_init(&cfg);
-    hrt_create_task(task_a, NULL, stack_a, 2048, &a);
-    hrt_create_task(task_b, NULL, stack_b, 2048, &b);
-    hrt_start();
+    if (hrt_init(&cfg) != HRT_OK) return 1;
+    if (hrt_create_task(task_a, NULL, stack_a, 2048, &a) < 0) return 1;
+    if (hrt_create_task(task_b, NULL, stack_b, 2048, &b) < 0) return 1;
+    return (int)hrt_start();
 }
 ```
