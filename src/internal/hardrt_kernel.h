@@ -13,7 +13,9 @@ extern "C" {
 /*
  * Kernel-private TCB-slot ownership. Slot allocation is deliberately separate
  * from task execution state: an EXITED task may continue to own its slot until
- * the kernel reclaims it for a later creation.
+ * the kernel reclaims it for a later creation. Slot ownership is allocation /
+ * lifetime metadata; normal scheduling, wake, and tick paths rely on task state
+ * and queue membership instead of consulting it.
  */
 typedef enum {
     HRT_SLOT_UNUSED = 0,
