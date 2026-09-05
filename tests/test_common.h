@@ -32,6 +32,8 @@ void hrt__test_set_tick(uint32_t v);
 uint32_t hrt__test_get_tick(void);
 int hrt__test_task_state(int id);
 int hrt__test_slot_state(int id);
+int hrt__test_ready_occurrences(int id);
+int hrt__test_task_ready_queued(int id);
 #endif
 #ifdef __cplusplus
 }
@@ -122,6 +124,7 @@ const test_case_t *get_tests_queue(int *out_count);
 const test_case_t *get_tests_mutex(int *out_count);
 const test_case_t *get_tests_event(int *out_count);
 const test_case_t *get_tests_notify(int *out_count);
+const test_case_t *get_tests_signal_stress(int *out_count);
 const test_case_t *get_tests_now_ms(int *out_count);
 const test_case_t *get_tests_external_tick(int *out_count);
 
