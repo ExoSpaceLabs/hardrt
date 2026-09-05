@@ -11,7 +11,7 @@ usage() {
 Usage: scripts/build-lib-stm32h7xx-ipc-validation.sh [options]
 
 Options:
-  --case semaphore|queue|mutex
+  --case semaphore|queue|mutex|event|notification
   --no-flash
   -h, --help
 USAGE
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "$CASE" in semaphore|queue|mutex) ;; *) echo "Unsupported IPC case: $CASE" >&2; exit 1;; esac
+case "$CASE" in semaphore|queue|mutex|event|notification) ;; *) echo "Unsupported IPC case: $CASE" >&2; exit 1;; esac
 
 "$ROOT_DIR/scripts/build-lib-stm32h7xx.sh" \
   --hardrt "$ROOT_DIR" \

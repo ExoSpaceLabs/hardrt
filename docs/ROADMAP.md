@@ -1,127 +1,113 @@
-# 🧭 HardRT Roadmap
+# HardRT Roadmap
 
-This roadmap outlines the evolution of HardRT toward the planned 1.0.0 release.
+HardRT is evolving toward a small Cortex-M RTOS with explicitly documented hard-real-time properties. The project prefers statically bounded, analyzable behavior over convenience that is difficult to reason about.
 
-> Roadmap items may shift as implementation priorities change.
+## Hard real-time direction
 
-## 🎯 Hard real-time direction
-
-HardRT is intended to evolve into a small Cortex-M RTOS with documented hard real-time properties, not merely a lightweight scheduler with real-time terminology.
-
-The project therefore prefers designs that are statically bounded, analyzable and reproducible over designs that are merely convenient or fast on average.
-
-The hard real-time direction means:
+The long-term qualification model requires:
 
 - no dynamic allocation in kernel runtime paths;
-- bounded kernel data structures and explicitly bounded iteration counts;
-- bounded critical sections with documented interrupt-priority assumptions;
-- deterministic scheduler, wake-up, timeout and ISR semantics;
-- explicit priority-inversion handling for shared resources;
+- bounded kernel structures and iteration counts;
+- bounded critical sections with explicit interrupt-priority assumptions;
+- deterministic scheduler, wake, timeout and ISR semantics;
+- a bounded priority-inversion strategy;
 - defined execution-time and memory costs for kernel primitives;
-- reproducible Cortex-M timing measurements tied to exact builds and hardware configurations;
-- clear separation between measured maxima and proven/configuration-specific upper bounds;
-- no hard-real-time claim for the POSIX port, which remains a functional and scheduler-validation environment.
+- reproducible Cortex-M measurements tied to exact builds/hardware;
+- clear separation between measured maxima and analytical/WCET bounds;
+- no timing claim for the POSIX functional/scheduler port.
 
-Hard real-time qualification is progressive. Public documentation must not turn development measurements into unconditional WCET claims.
+## Completed foundations
 
-## ✅ Completed foundations
+- static task/kernel core;
+- null, POSIX and Cortex-M ports;
+- binary/counting semaphores;
+- owner-tracked mutexes;
+- fixed-capacity message queues;
+- fixed-priority, global RR, and priority-RR scheduling;
+- installed CMake package and optional C++17 wrappers;
+- hosted test suite and installed consumer checks.
 
-- Core scheduler with static tasks
-- Null and POSIX ports
-- Cortex-M port foundation
-- Binary and counting semaphores
-- Owner-tracked mutex primitive
-- Fixed-size message queues
-- Version and port metadata via CMake
-- C and C++ example set for tasks and current IPC primitives
-- POSIX test harness expansion
-- Installed-package C and C++ consumer validation
+## v0.5.0 implementation complete
 
-## ✅ v0.5 scheduler/lifecycle hardening complete
+The v0.5 line now includes:
 
-The v0.5 development line now has an accepted scheduler/lifecycle baseline with:
-
-- authoritative private core/port interface;
-- kernel internals removed from installed public headers;
 - explicit `UNINITIALIZED -> INITIALIZED -> RUNNING` lifecycle;
-- distinct task execution state and TCB-slot ownership;
-- READY, RUNNING, SLEEP, BLOCKED and EXITED task states;
-- intrusive policy-specific READY queues with duplicate-membership protection;
+- separate slot ownership and task execution state;
+- READY/RUNNING/SLEEP/BLOCKED/EXITED task states;
+- intrusive policy-specific READY storage with duplicate protection;
 - true global `HRT_SCHED_RR`;
-- retained-quantum `HRT_SCHED_PRIORITY_RR` behavior;
+- retained-quantum `HRT_SCHED_PRIORITY_RR`;
 - static intrusive delta sleeper queue;
-- scheduler-aware task/ISR wake-preemption decisions;
-- application-task capacity separated from the private idle slot;
+- scheduler-aware task/ISR wake decisions;
+- application-task capacity separated from private idle;
 - Cortex-M hard-float context preservation;
 - BASEPRI-preserving critical sections;
-- external-tick startup contract;
-- transactional and runtime-safe task creation;
-- task-stack overlap/reuse protection.
+- external-tick startup/ownership contract;
+- transactional/runtime-safe task creation and stack overlap protection;
+- 32-bit shared event flags;
+- per-task 32-bit notifications;
+- task/ISR event and notification producers;
+- C/C++ event/notification wrappers/examples;
+- deterministic event/notification stress/invariant coverage;
+- STM32H755 signal timing/profiling fixtures integrated into the single manual runner;
+- explicit pre-1.0 compatibility/versioning policy;
+- documentation-originated C/C++ compile probes, link/path validation, and Doxygen CI;
+- project/release metadata for 0.5.0.
 
-Physical NUCLEO-H755ZI-Q development qualification on exact SHA `80f2042f2c64053a9ea888666474c5dad5f72797` passed:
+Development H755 evidence has already passed the event/notification functional contracts. The final release matrix is **13 functional contracts + 38 benchmark images**.
 
-```text
-11 / 11 functional contracts
-22 / 22 hardware benchmarks
-overall PASS
-```
+## Remaining v0.5.0 release gates
 
-This completes the scheduler/lifecycle hardening phase. The final v0.5.0 RC must still repeat the complete hardware run on the exact frozen release SHA.
+The implementation/release content is now intended to be frozen before physical RC qualification. Remaining release work is procedural:
 
-## 🚧 Remaining v0.5 feature/release work
+1. all hosted Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs pass on one frozen commit;
+2. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
+3. retain the generated qualification package outside the tracked source tree and publish it as a release artifact;
+4. reconcile/close the completed v0.5 milestone issues;
+5. promote the same qualified source commit through `develop` and `main`;
+6. tag `v0.5.0` on `main`, publish release artifacts, and remove temporary branches.
 
-The current v0.5 critical path is intentionally narrow:
+No additional feature work should be inserted between final physical qualification and the tag. Humanity has already invented enough ways to invalidate a test result.
 
-- event flags and per-task notifications (#38–#44);
-- documentation-example/API-drift CI (#35);
-- explicit pre-1.0 compatibility/versioning policy (#36);
-- release metadata, notes, migration guidance and final packaging (#45);
-- one final unfiltered STM32H755 qualification on the frozen v0.5.0 RC SHA (#56).
+## Post-v0.5 synchronization work
 
-The broader hard-real-time qualification backlog below remains important, but is **not a scheduler-hardening blocker for v0.5.0** as long as release documentation avoids unsupported universal latency guarantees.
+- generic IPC timeout variants;
+- priority inheritance/ceiling or another bounded mutex inversion strategy;
+- robust/owner-death mutex semantics if adopted (#66);
+- any later queue fairness/reservation redesign justified by requirements.
 
-## 🧱 Post-v0.5 synchronization hardening
+## Post-v0.5 timing and hard-real-time qualification
 
-- IPC timeout variants (`hrt_sem_take_timeout`, queue timeout variants, mutex timed lock if adopted)
-- Priority inheritance or another bounded priority-inversion mitigation strategy for mutexes
-- Robust/owner-death mutex semantics if adopted (#66)
-- Strict queue reservation/direct-handoff fairness if a later queue redesign requires it
+- analytical/maximum critical-section bounds;
+- queue-copy scaling and explicit item-size/design limits;
+- richer interrupt/task interference matrices;
+- true hardware event-to-ISR-entry measurement where practical;
+- machine-readable timing evidence with complete build/hardware metadata;
+- regression thresholds after run-to-run variance is characterized;
+- absolute periodic timing (`hrt_delay_until()` or equivalent) and release-jitter qualification;
+- tickless idle/high-resolution timers only under an explicit bounded contract.
 
-## 🕒 Post-v0.5 timing and hard-real-time qualification
+These remain tracked primarily by #37, #48, and #49–#54 and are 1.0-quality work rather than hidden v0.5 blockers.
 
-- Maximum observed and structurally bounded critical-section characterization
-- Queue-copy scaling and a decision on maximum item size versus pointer/index-oriented designs
-- More complete interrupt-interference and task-contention matrices
-- True event-to-ISR-entry measurements where hardware permits
-- Machine-readable timing output with complete build/hardware metadata
-- Regression thresholds only after run-to-run variance is understood
-- `hrt_delay_until()` / periodic-task API with bounded release behavior
-- Tickless idle only if timing and wake behavior remain explicitly bounded
-- High-resolution timers only with a defined deterministic contract
+## Broader platform work
 
-These items are tracked primarily by #37 and #48 with #49–#54. They remain open as 1.0-quality work rather than being silently declared solved.
+- CM4↔CM7/AMP communication primitives;
+- shared-memory mailbox facilities;
+- additional Cortex-M targets and production qualification profiles.
 
-## 🧩 Broader platform work
+## Verification toward 1.0
 
-- CM4↔CM7 communication primitives (AMP)
-- Shared-memory mailbox interface
-- More Cortex-M targets and production qualification configurations
+- static analysis and MISRA-oriented cleanup;
+- optional stack canary/high-watermark diagnostics;
+- complete static-memory accounting for supported target profiles;
+- stronger machine-readable qualification/evidence tooling.
 
-## 🧪 Verification work
+## 1.0.0 themes
 
-- Compile documentation examples and validate referenced commands/links
-- Static analysis and MISRA-oriented cleanup
-- Optional stack canary/high-watermark diagnostics
-- Static-memory accounting after events/notifications finalize the v0.5 TCB/object footprint
-- Additional deterministic stress/invariant testing for new synchronization primitives
-
-## 🏁 1.0.0 target themes
-
-- Verified Cortex-M configurations with explicit assumptions
-- Deterministic scheduler with clear behavioral guarantees
-- Bounded kernel operations suitable for worst-case analysis
-- Defined priority-inversion strategy
-- Complete IPC suite: semaphores, mutexes, queues, events
-- Timing primitives suitable for periodic real-time tasks
-- Reproducible evidence for advertised latency bounds
-- Documentation and public API freeze
+- verified Cortex-M configurations with explicit assumptions;
+- deterministic scheduler and synchronization guarantees;
+- bounded kernel operations suitable for worst-case analysis;
+- defined priority-inversion strategy;
+- complete synchronization/time primitives for intended use cases;
+- reproducible evidence for advertised latency bounds;
+- stable documented public API boundary.

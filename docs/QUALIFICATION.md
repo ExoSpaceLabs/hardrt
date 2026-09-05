@@ -1,196 +1,155 @@
 # Hardware qualification policy
 
-HardRT separates **development measurements** from **release qualification evidence**, while using one human-facing STM32 runner for both functional validation and hardware benchmarking.
+HardRT separates development measurements from release qualification evidence while using one human-facing STM32 runner for both functional validation and hardware benchmarking.
 
 ## Single STM32 runner
 
 Use:
 
 ```bash
-./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-Mode rules:
+Modes:
 
 ```text
-(no --only)       = functional validation + all hardware benchmarks
---only functional = functional validation only
---only benchmark  = all hardware benchmarks only
+(no --only)       = every functional contract + every benchmark
+--only functional = functional contracts only
+--only benchmark  = benchmarks only
 ```
 
-The board/OpenOCD probe is a prerequisite and is always run. The default run is the complete release-candidate workflow. `--only` is a development filter, not a different test system.
+The board/OpenOCD probe always runs first. Only the default unfiltered mode is a complete release-candidate hardware run.
 
-Development evidence is written to:
+## Evidence handling
+
+Development evidence is generated under:
 
 ```text
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-Timestamped development runs are gitignored. For a release, run the default full mode from the exact release-candidate SHA, inspect the report, then manually copy or move the selected run to:
+A selected release package may be retained locally under:
 
 ```text
 validation/stm32/releases/vX.Y.Z/
 ```
 
-The repository should contain exactly one committed STM32 evidence package per released version.
+These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `vX.Y.Z` tag instead.
 
-## Current accepted v0.5 development baseline
+The source tree tagged for release must therefore be the same source tree that generated the passing report.
 
-The scheduler/lifecycle hardening phase is accepted on physical NUCLEO-H755ZI-Q hardware at:
+## Current v0.5 matrix
 
-```text
-Run ID:       20260905T134123Z_80f2042f
-HardRT SHA:   80f2042f2c64053a9ea888666474c5dad5f72797
-Branch:       develop
-Tracked tree: clean
-STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
-Core:         CM7
-ARM GCC:      10.3.1
-GDB:          12.1
-OpenOCD:      0.11.0
-Samples:      10000 per benchmark image
-```
-
-Result:
+The consolidated v0.5 runner contains:
 
 ```text
-Board probe:           PASS
-Functional contracts:  11 / 11 PASS
-Hardware benchmarks:   22 / 22 PASS
-Overall:                PASS
+13 functional contracts
+38 hardware benchmark images
 ```
 
-This is accepted **development qualification**, not the final v0.5.0 release package. Any later release-facing code change moves the candidate SHA and requires the final unfiltered run to be repeated.
+The board probe is reported separately.
 
-## Functional hardware contracts
+### Functional contracts: 13
 
-Functional validation contains **11 behavior contracts**, with the board probe reported separately:
-
-1. C blinky task progress and qualitative relative LED rate;
-2. C++ blinky task progress and qualitative relative LED rate;
+1. C blinky task progress/relative LED rate;
+2. C++ blinky task progress/relative LED rate;
 3. scheduler counter/lifecycle progress;
-4. fixed-priority ISR wake/preemption;
-5. global-RR mixed-priority FIFO and ISR-wake behavior;
+4. fixed-priority TIM2 ISR wake/preemption;
+5. global-RR mixed-priority FIFO/ISR-wake behavior;
 6. `PRIORITY_RR` retained-quantum preemption;
 7. semaphore hardware contract;
 8. queue hardware contract;
 9. mutex hardware contract;
-10. external TIM2 tick contract using `hrt_tick_from_isr()`;
-11. Cortex-M `BASEPRI` critical-section preservation.
+10. event-flags hardware contract;
+11. task-notification hardware contract;
+12. external TIM2 tick contract using `hrt_tick_from_isr()`;
+13. Cortex-M BASEPRI critical-section preservation.
 
-Timing measurements are not counted as functional features. This keeps functional qualification stable when benchmarks are added or reorganized.
+Timing measurements are not counted as functional features.
 
-The external tick source is application-owned. It must not begin routing interrupts into HardRT before scheduler execution has started. The H755 fixture starts TIM2 from the first dispatched application task, which prevents an external tick from observing the pre-dispatch `g_current == -1` startup state.
+### Historical scheduler/tick benchmarks: 22
 
-## Hardware benchmarks
-
-The current suite contains **22 hardware benchmark images**.
-
-### Latency and switch benchmarks
-
-Four DWT measurements cover the current wake/switch path:
+Four latency/switch images:
 
 1. `event_to_task`;
 2. `sem_isr_ready`;
 3. `ready_to_task`;
-4. `scheduler_decision`, including the PendSV switch decomposition.
+4. `scheduler_decision` with PendSV decomposition.
 
-Every benchmark is built and flashed as its own firmware image. Timing profiles are compile-time selected and ordinary HardRT builds remain uninstrumented.
+`event_to_task` is a legacy semaphore-backed composite name retained for historical comparison. It is **not** the v0.5 event-flags primitive.
 
-Current accepted values at `80f2042f`, 64 MHz, 10,000 samples:
+Eighteen tick/sleeper images exercise capacities 8/16/32 across:
 
-| Metric | Min cycles | Avg cycles | Max cycles |
-|---|---:|---:|---:|
-| `event_to_task` | 1407 | 1457 | 2001 |
-| `sem_isr_ready` | 300 | 319 | 327 |
-| `ready_to_task` | 922 | 1001 | 1597 |
-| `scheduler_decision` | 365 | 380 | 411 |
+- `none`;
+- `one_sleep`;
+- `all_sleep`;
+- `one_expiry`;
+- `simultaneous`;
+- `staggered`.
 
-Scheduler/PendSV decomposition:
+The intrusive delta sleeper queue gives bounded O(N) insertion in task context, O(1) no-expiry tick work, and O(K) processing for K expiries plus READY publication cost.
 
-| Segment | Min cycles | Avg cycles | Max cycles |
-|---|---:|---:|---:|
-| PendSV save | 88 | 88 | 88 |
-| scheduler decision | 365 | 380 | 411 |
-| PendSV restore | 63 | 63 | 63 |
-| PendSV software | 562 | 577 | 608 |
-| PendSV to task continuation | 779 | 800 | 1365 |
+### Event/notification timing benchmarks: 16
 
-These are engineering measurements, not WCET proofs. The diagnostic handler adds measurement work and derived intervals must not be presented as exact production instruction counts.
+- `event_isr_to_task`;
+- `notify_isr_to_task`;
+- `event_scan_none` at 1, 8, 16, 32 waiters;
+- `event_scan_one` at 1, 8, 16, 32 waiters;
+- `event_scan_all` at 1, 8, 16, 32 waiters;
+- `notify_isr_no_wake`;
+- `notify_isr_wake`.
 
-### Tick/sleeper scaling benchmarks
+Signal timing uses application-side DWT timestamps with ordinary event/notification code uninstrumented. Event scan firmware validates expected cumulative wake count so timing cannot pass with an incomplete fan-out workload.
 
-Eighteen measurements characterize production `hrt_tick_from_isr()` work across application-task capacities **8, 16, and 32**, with six workload shapes per capacity:
+These measurements characterize bounded implementation behavior. They are not formal WCET proofs.
 
-1. `none`;
-2. `one_sleep`;
-3. `all_sleep`;
-4. `one_expiry`;
-5. `simultaneous`;
-6. `staggered`.
+## Development evidence
 
-Current `develop` uses a static intrusive delta sleeper queue:
+The first complete event/notification functional H755 development run passed 13/13 functional contracts and 22/22 historical benchmarks. Later development evidence at `aa39e9bb5f12f8ada229441a13e83d91c0dbeae6` likewise passed the 13 functional contracts and historical benchmark baseline. These runs predate the consolidated 16-image signal timing matrix and are not final release evidence.
 
-```text
-hrt_sleep() insertion: bounded O(N) in task context
-no-expiry tick:        O(1)
-K expiries:            O(K)
-metadata:               O(N), static
-allocation:             none
-```
-
-Average cycle counts from the accepted `80f2042f` run:
-
-| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
-|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 543 | 544 | 592 | 830 | 1893 | 1171 |
-| 16 | 543 | 544 | 592 | 830 | 3181 | 1290 |
-| 32 | 504 | 552 | 555 | 837 | 5249 | 1331 |
-
-The no-expiry cases no longer scale materially with configured task capacity. Actual expiry work remains proportional to the number of tasks that genuinely wake, which is the intended structural contract.
-
-## Human observation
-
-LED examples require only a qualitative visual check: both LEDs visibly toggle and their configured relative rates are distinguishable. Exact millisecond timing is not a human acceptance criterion.
-
-Automated counters and DWT measurements provide quantitative progress/timing evidence.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Final v0.5.0 signal-profile numbers belong to the selected release evidence artifact produced from the frozen SHA.
 
 ## What belongs on hardware
 
-Hardware qualification focuses on behavior that can differ because of the Cortex-M port or real interrupt execution:
+Physical qualification focuses on paths affected by real Cortex-M execution:
 
 - PendSV/context switching and task progress;
 - SysTick/external-tick integration;
-- interrupt-safe synchronization and `BASEPRI` critical sections;
-- scheduler-aware preemption and retained RR quantum;
-- semaphore, queue, and mutex blocking/wake/handoff paths;
-- C/C++ integration;
-- scheduler and bounded tick/sleeper work;
-- scaling with configured task capacity and expiry population.
+- BASEPRI critical-section behavior;
+- scheduler-aware task/ISR wake and retained RR quantum;
+- semaphore, queue, mutex, event, and notification block/wake/handoff paths;
+- event and notification ISR timing;
+- event waiter-scan/fan-out scaling;
+- scheduler/tick/sleeper timing and capacity scaling;
+- C/C++ target integration.
 
-Pure argument validation and deterministic data-structure edge cases remain primarily hosted tests unless they interact with a port-specific path. Hardware validation is additive, not a replacement for the broader hosted suite.
+Pure argument/data-structure edge cases remain primarily hosted tests unless they interact with a target-specific path.
 
-## Release evidence requirements
+## Final v0.5.0 release evidence
 
-A release STM32 package must be generated from the exact release-candidate SHA and record at minimum:
+Before the hardware run, all release-facing source/docs/version changes must be complete and hosted CI must pass on one frozen SHA.
 
-- clean tracked HardRT source;
-- exact HardRT SHA;
-- clean recorded STM32CubeH7 checkout and SHA;
+The final STM32 package must then be generated from that exact SHA and record at minimum:
+
+- clean tracked HardRT source and exact SHA;
+- clean/pinned STM32CubeH7 checkout and SHA;
 - compiler/GDB/OpenOCD/CMake versions;
-- board/core and clock information;
-- board probe passing;
-- all **11** functional contracts passing;
-- all **22** current hardware benchmarks passing;
-- timing sample counts and min/avg/max values;
+- board/core identity;
+- board probe PASS;
+- **13/13 functional PASS**;
+- **38/38 benchmark PASS**;
+- benchmark sample counts and min/avg/max cycles;
+- event waiter count and expected/observed wake fan-out for scan cases;
 - scheduler/PendSV decomposition;
-- tick/sleeper scaling measurements for the qualified capacities;
-- raw debugger/build logs.
+- tick/sleeper scaling metadata;
+- raw build/OpenOCD/GDB logs.
 
-A filtered `--only functional` or `--only benchmark` run is useful development evidence but is not the complete release package.
+After that run passes, do not modify the qualified source tree. Promote the same source commit through `develop` and `main`, tag `v0.5.0` on `main`, and publish the qualification package and release binaries from that tag.
+
+## Human observation
+
+The two blinky cases retain a qualitative human check: both LEDs must visibly toggle and their configured relative rates must be distinguishable. Exact millisecond timing is not a human acceptance criterion.
 
 ## Relationship to broader hard-real-time qualification
 
-Passing this suite demonstrates that the tested Cortex-M configuration satisfies the current scheduler, lifecycle, context, IPC, tick and critical-section behavioral contracts and that the benchmark workloads remain within their measured ranges.
-
-It does **not** by itself prove a universal WCET bound. Broader work such as priority-inversion mitigation, maximum critical-section characterization, queue-copy scaling, interference analysis, machine-readable timing output and complete platform metadata remains tracked for post-v0.5 hard-real-time qualification.
+Passing the v0.5 matrix demonstrates the tested H755 configuration satisfies the current behavioral contracts and provides measured timing evidence for the benchmark workloads. It does not establish universal WCET bounds. Analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, richer interference analysis, and complete machine-readable timing evidence remain 1.0-quality work.

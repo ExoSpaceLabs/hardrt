@@ -315,6 +315,13 @@ namespace hardrt {
         hrt_queue_t _q{};
     };
 
+    /**
+     * @brief Fixed-capacity queue wrapper with compile-time owned storage.
+     *
+     * Payloads must be trivially copyable because the C queue copies items with
+     * memcpy. Capacity is checked against the uint16_t C queue contract at
+     * compile time and no dynamic allocation is used.
+     */
     template <typename T, size_t Capacity>
     class StaticQueue {
         static_assert(std::is_trivially_copyable<T>::value,

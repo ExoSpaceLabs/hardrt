@@ -1,18 +1,18 @@
 # STM32H755 Manual Validation
 
-HardRT's hosted Linux/POSIX tests are automatic. STM32H755 runtime validation remains manual until a hardware CI runner exists. Cross-compilation proves that firmware builds and links; it does not prove interrupt, PendSV, GPIO, clock, synchronization, or board behavior.
+HardRT's hosted Linux/POSIX tests are automatic. STM32H755 runtime validation remains manual until a hardware CI runner exists. Cross-compilation proves firmware builds and links; it does not prove interrupt, PendSV, GPIO, clock, synchronization, or board behavior.
 
-The supported manual target is currently NUCLEO-H755ZI-Q, exercising CM7 while CM4 is held in reset.
+The supported manual target is NUCLEO-H755ZI-Q, exercising CM7 while CM4 is held in reset.
 
 ## One human-facing runner
 
 Run from the repository root:
 
 ```bash
-./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The runner owns build, flash, OpenOCD/GDB sessions, result parsing, evidence capture, and final console/report summaries.
+This is the only human-facing hardware qualification command. It owns build, flash, OpenOCD/GDB sessions, functional validation, all timing/profile images, result parsing, evidence capture, and final console/report summaries. Event/notification profiling is part of this runner rather than a second procedure.
 
 ### Modes
 
@@ -22,17 +22,9 @@ The runner owns build, flash, OpenOCD/GDB sessions, result parsing, evidence cap
 --only benchmark  = benchmark only
 ```
 
-The board probe always runs first and is reported separately. The default unfiltered run is the release-candidate path; filtered modes are development shortcuts.
+The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
 
-For release-style evidence use:
-
-```bash
-./scripts/stm32_manual_test_full.sh \
-  /path/to/STM32CubeH7 \
-  --clean-builds
-```
-
-## Evidence location
+## Evidence location and release handling
 
 Development runs are written under:
 
@@ -40,13 +32,15 @@ Development runs are written under:
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-Timestamped development directories are gitignored.
-
-For a release candidate, run from the exact final SHA and manually retain the selected passing package under:
+For a release candidate, retain the selected passing package locally under:
 
 ```text
 validation/stm32/releases/vX.Y.Z/
 ```
+
+Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
+
+The selected package is instead published as a GitHub Release artifact from the qualified `vX.Y.Z` tag. The source commit tagged for release must be the same source tree that produced the passing hardware report.
 
 ## Common requirements
 
@@ -58,9 +52,9 @@ validation/stm32/releases/vX.Y.Z/
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 11 contracts
+## Functional validation: 13 contracts
 
-The board probe is a prerequisite, not a functional feature. Functional mode runs **11 behavior contracts**:
+The board probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -71,29 +65,35 @@ The board probe is a prerequisite, not a functional feature. Functional mode run
 7. **Semaphore hardware contract**: counting/saturation behavior plus real ISR wake and scheduler-aware `need_switch`.
 8. **Queue hardware contract**: FIFO/full/empty plus ISR send/receive wake paths, payload preservation and priority handoff.
 9. **Mutex hardware contract**: ownership, blocking, direct handoff and immediate execution of a newly eligible higher-priority owner.
-10. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep duration/tick accounting are correct and awakened higher-priority work preempts.
-11. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+10. **Event flags hardware contract**: wait-all is completed incrementally by task and real TIM2 ISR producers; clear-on-exit removes matched bits; retained wait-any bits remain until explicitly cleared; ISR wake reports scheduler-aware `need_switch` and preempts when required.
+11. **Task notification hardware contract**: pending data survives unrelated semaphore blocking; overwrite/no-overwrite/set-bits semantics are checked; a real TIM2 ISR notification wakes and preempts correctly; increment plus counting-take preserves and consumes the count correctly.
+12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep/tick accounting is correct, and awakened higher-priority work preempts.
+13. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
 ### External tick startup rule
 
-The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started.
+The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started. The H755 validator configures TIM2 before scheduler start but enables the timer from the first dispatched application task.
 
-The H755 validator therefore configures TIM2 before scheduler start but enables the timer from the first dispatched application task. This prevents an external tick from observing the pre-dispatch `g_current == -1` state.
+## Hardware benchmark suite: 38 images
 
-## Hardware benchmark suite: 22 images
+Benchmark mode runs **38 separate build/flash images**:
 
-Benchmark mode runs four latency/switch images plus an 18-point tick/sleeper scaling matrix.
+- 4 established scheduler/semaphore latency and switch measurements;
+- 16 v0.5 event/notification signal measurements;
+- 18 tick/sleeper scaling measurements.
 
-### Latency and switch benchmarks
+Every image is rebuilt and flashed independently. Ordinary HardRT builds remain uninstrumented.
+
+### Established latency and switch benchmarks
 
 1. `event_to_task`
 2. `sem_isr_ready`
 3. `ready_to_task`
 4. `scheduler_decision` / PendSV decomposition
 
-Each benchmark is a separate build/flash image. Timing instrumentation is compile-time selected and normal HardRT builds remain uninstrumented.
+`event_to_task` is the historical semaphore-backed composite ISR-to-task benchmark. Its name predates the v0.5 event-flags API and is retained unchanged for historical comparison.
 
 The scheduler diagnostic reports:
 
@@ -107,17 +107,25 @@ derived_software_other_avg
 derived_return_and_api_avg
 ```
 
-These values are engineering measurements, not WCET proofs.
+These are engineering measurements, not WCET proofs.
 
-### Tick/sleeper scaling matrix
+### v0.5 event/notification profiling: 16 images
 
-HardRT is rebuilt at application-task capacities:
+- `event_isr_to_task`
+- `notify_isr_to_task`
+- `event_scan_none` with 1, 8, 16 and 32 registered waiters
+- `event_scan_one` with 1, 8, 16 and 32 registered waiters
+- `event_scan_all` with 1, 8, 16 and 32 registered waiters
+- `notify_isr_no_wake`
+- `notify_isr_wake`
 
-```text
-8, 16, 32
-```
+These cases use direct DWT timestamps with `HARDRT_TIMING_PROFILE=none`; the production event/notification implementation is not instrumented internally.
 
-For each capacity the runner measures:
+The event scan cases validate actual waiter load and expected wake fan-out in addition to timing. The 32-waiter images rebuild HardRT with enough application slots for 32 real waiters plus the controller task.
+
+### Tick/sleeper scaling matrix: 18 images
+
+HardRT is rebuilt at application-task capacities 8, 16 and 32. Each capacity measures:
 
 | Scenario | Worker state / expiry pattern |
 |---|---|
@@ -128,55 +136,25 @@ For each capacity the runner measures:
 | `simultaneous` | all workers expire together every tick |
 | `staggered` | worker `i` sleeps `i+1` ticks |
 
-This produces 18 measurements around the production call:
+This measures production `hrt_tick_from_isr()` behavior. The intrusive delta sleeper queue has bounded O(N) task-context insertion, O(1) no-expiry tick work and O(K) work for K expiries plus READY publication.
 
-```c
-hrt_tick_from_isr();
-```
+## Accepted development evidence
 
-Current `develop` uses a static intrusive delta sleeper queue with bounded O(N) task-context insertion, O(1) no-expiry tick work and O(K) work for K expiries.
+### Scheduler/lifecycle baseline
 
-## Accepted current development run
+Run `20260905T134123Z_80f2042f` on SHA `80f2042f2c64053a9ea888666474c5dad5f72797` passed 11/11 functional contracts and 22/22 historical benchmarks.
 
-The scheduler/lifecycle hardening baseline was accepted on:
+### Event/notification development baseline
 
-```text
-Run ID:       20260905T134123Z_80f2042f
-HardRT SHA:   80f2042f2c64053a9ea888666474c5dad5f72797
-Tracked tree: clean
-STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
-Samples:      10000 per benchmark image
-```
-
-Result:
+Run `20260905T161136Z_aa39e9bb` on SHA `aa39e9bb5f12f8ada229441a13e83d91c0dbeae6` passed:
 
 ```text
-Board probe:           PASS
-Functional contracts:  11 / 11 PASS
-Hardware benchmarks:   22 / 22 PASS
-Overall:                PASS
+Functional: 13 / 13 PASS
+Historical benchmarks: 22 / 22 PASS
+Overall: PASS
 ```
 
-Current latency/switch values:
-
-| Metric | Min cycles | Avg cycles | Max cycles |
-|---|---:|---:|---:|
-| `event_to_task` | 1407 | 1457 | 2001 |
-| `sem_isr_ready` | 300 | 319 | 327 |
-| `ready_to_task` | 922 | 1001 | 1597 |
-| `scheduler_decision` | 365 | 380 | 411 |
-
-Current tick/sleeper averages:
-
-| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
-|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 543 | 544 | 592 | 830 | 1893 | 1171 |
-| 16 | 543 | 544 | 592 | 830 | 3181 | 1290 |
-| 32 | 504 | 552 | 555 | 837 | 5249 | 1331 |
-
-The no-expiry cases no longer scale materially with configured task capacity. Actual expiry work remains proportional to the number of workers that wake.
-
-This is accepted **development evidence**. It is not the final v0.5.0 release qualification because later release-facing changes will move the exact SHA.
+That run proves the event/notification functional hardware contracts but predates the subsequently integrated 16-image signal timing matrix, so it is not final v0.5.0 release evidence.
 
 ## Human LED acceptance
 
@@ -189,14 +167,16 @@ The runner records:
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
-- functional `N/11 PASS`, failure and not-run counts
-- benchmark `N/22 PASS`, failure and not-run counts
-- timing min/avg/max
+- functional `N/13 PASS`, failure and not-run counts
+- benchmark `N/38 PASS`, failure and not-run counts
+- established timing min/avg/max
+- event/notification ISR and event-scan timing min/avg/max
+- signal waiter count and expected/observed wake fan-out
 - scheduler/PendSV breakdown
 - tick/sleeper scenario/capacity/wake metadata
 - RR trace/quantum evidence
 - raw build/OpenOCD/GDB log locations
 
-A default full run is the only run mode intended to become complete release evidence.
+A default full run is the only mode intended to become complete release evidence.
 
-See [QUALIFICATION.md](QUALIFICATION.md) for the release-evidence policy and [STATISTICS.md](STATISTICS.md) for current/historical timing interpretation.
+See [QUALIFICATION.md](QUALIFICATION.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).

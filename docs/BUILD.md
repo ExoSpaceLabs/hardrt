@@ -1,34 +1,26 @@
 # Build and Install
 
-This page describes the build behavior on the current `develop` branch. The CMake project version remains `0.4.0` until the v0.5.0 release metadata is finalized; the build contracts below describe the implemented v0.5-line behavior.
-
-## Prerequisites
-
-HardRT starts as a C-only CMake project:
+HardRT 0.5.0 is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
 
 ```cmake
-project(hardrt VERSION 0.4.0 LANGUAGES C)
+project(hardrt VERSION 0.5.0 LANGUAGES C)
 ```
 
-Additional languages are enabled only when the selected build needs them:
+## Requirements
 
-- C11 is always required;
-- C++17 is required only with `HARDRT_ENABLE_CPP=ON`;
-- ASM is enabled only for `HARDRT_PORT=cortex_m`;
-- CMake 3.16 or newer is required.
+- CMake 3.16 or newer
+- a C11 compiler
+- a C++17 compiler only with `HARDRT_ENABLE_CPP=ON`
+- GNU Arm Embedded (`arm-none-eabi-gcc`) for the supplied Cortex-M toolchain
+- `arm-none-eabi-g++` only for Cortex-M builds that enable the C++ wrapper
 
-For Cortex-M builds, the supplied GNU Arm Embedded toolchain requires `arm-none-eabi-gcc`. `arm-none-eabi-g++` is required only when `HARDRT_ENABLE_CPP=ON`. The Cortex-M assembly sources are compiled through GCC with assembler preprocessing enabled.
+CI verifies that C-only null, POSIX, and Cortex-M builds do not require a C++ compiler.
 
-CI explicitly verifies that C-only null, POSIX, and Cortex-M builds do not require a C++ compiler.
-
-## Configure and build the POSIX port
-
-C-only:
+## POSIX build
 
 ```bash
 git clone https://github.com/ExoSpaceLabs/hardrt.git
 cd hardrt
-
 cmake -S . -B build \
   -DHARDRT_PORT=posix \
   -DHARDRT_ENABLE_CPP=OFF \
@@ -37,20 +29,15 @@ cmake --build build -j
 ./build/examples/two_tasks/two_tasks
 ```
 
-With the optional C++ wrappers:
+Enable the optional C++ wrappers with:
 
-```bash
-cmake -S . -B build-cpp \
-  -DHARDRT_PORT=posix \
-  -DHARDRT_ENABLE_CPP=ON
-cmake --build build-cpp -j
+```text
+-DHARDRT_ENABLE_CPP=ON
 ```
 
-Representative output begins with the selected version and port. Task interleaving depends on task configuration and scheduling points and should not be treated as a fixed output transcript.
+The POSIX port uses Linux/glibc `ucontext` and signals. It is a functional/scheduler environment, not a Cortex-M timing model.
 
-The POSIX port uses Linux/glibc `ucontext` plus signals. It is intended for logic and scheduler testing rather than timing validation.
-
-## Build and run tests
+## Tests
 
 ```bash
 cmake -S . -B build-tests \
@@ -60,68 +47,50 @@ cmake --build build-tests --target hardrt_tests -j
 ctest --test-dir build-tests --output-on-failure
 ```
 
-The runtime test target is created only for the POSIX port. With another port selected, CMake reports that the runtime test target is skipped.
+Runtime tests are created only for the POSIX port. See [TESTS_POSIX.md](TESTS_POSIX.md).
 
-See [TESTS_POSIX.md](TESTS_POSIX.md).
+## Main CMake options
 
-## CMake options
-
-| Option | Default | Effective behavior |
+| Option | Default | Meaning |
 |---|---:|---|
-| `HARDRT_PORT` | `null` | Selects `null`, `posix`, or `cortex_m`; any other value is a configure error. |
-| `HARDRT_ENABLE_CPP` | `OFF` | Enables CXX, adds the header-only `hardrtpp` interface target, and installs the C++ wrapper. CXX is not enabled when this option is OFF. |
-| `HARDRT_BUILD_EXAMPLES` | `ON` | Adds bundled example targets. C++ examples are added only when the wrapper is enabled. |
-| `HARDRT_BUILD_TESTS` | `ON` | Includes the test configuration. A runnable `hardrt_tests` target is created only for `posix`. |
-| `HARDRT_STRICT` | `OFF` | Adds strict warning flags for POSIX builds. |
-| `HARDRT_SANITIZE` | `OFF` | Enables UndefinedBehaviorSanitizer for the POSIX test configuration. AddressSanitizer is deliberately not enabled because of `ucontext`. |
-| `HARDRT_STALL_ON_ERROR` | `OFF` | Enables fatal-error stalling where supported. POSIX does not support this mode: requesting ON is force-normalized to effective OFF and the public compile definition is `HARDRT_STALL_ON_ERROR=0`. |
-| `HARDRT_DEBUG` | `OFF` | Publishes `HARDRT_DEBUG=0` or `1` and enables guarded diagnostic checks/variables. |
-| `HARDRT_CFG_MAX_TASKS` | `8` | Number of application task slots. The kernel allocates one additional private idle slot. |
-| `HARDRT_CFG_MAX_PRIO` | `4` | Number of priority classes, with priority zero highest. Valid range is 1 through 12. |
-| `HARDRT_TIMING_PROFILE` | `none` | Private timing instrumentation profile. Production/default `none` emits no timing-hook code. |
-| `HARDRT_TIMING_HOOK_HEADER` | empty | Required only by an active timing profile such as `ipc`. |
+| `HARDRT_PORT` | `null` | `null`, `posix`, or `cortex_m` |
+| `HARDRT_ENABLE_CPP` | `OFF` | Enable/install the header-only C++17 wrapper target |
+| `HARDRT_BUILD_EXAMPLES` | `ON` | Build bundled examples |
+| `HARDRT_BUILD_TESTS` | `ON` | Enable test configuration; runtime test executable is POSIX-only |
+| `HARDRT_STRICT` | `OFF` | Strict POSIX warning set |
+| `HARDRT_SANITIZE` | `OFF` | UndefinedBehaviorSanitizer for POSIX validation |
+| `HARDRT_STALL_ON_ERROR` | `OFF` | Fatal-error stall where supported; forced OFF on POSIX |
+| `HARDRT_DEBUG` | `OFF` | Enable guarded diagnostics |
+| `HARDRT_CFG_MAX_TASKS` | `8` | Application-task slots; one additional private idle slot is reserved |
+| `HARDRT_CFG_MAX_PRIO` | `4` | Priority classes, zero highest; valid range 1..12 |
+| `HARDRT_TIMING_PROFILE` | `none` | Private timing instrumentation profile |
+| `HARDRT_TIMING_HOOK_HEADER` | empty | Required only for an active timing profile |
 
-CMake status output reports the effective values after port-specific normalization rather than merely echoing the originally requested cache values.
-
-## Configuration validation
-
-CMake rejects configurations where:
-
-- `HARDRT_PORT` is not `null`, `posix`, or `cortex_m`;
-- `HARDRT_CFG_MAX_PRIO` is outside `[1, 12]`;
-- `HARDRT_CFG_MAX_TASKS < 1`;
-- `HARDRT_CFG_MAX_TASKS > 254`;
-- `HARDRT_CFG_MAX_TASKS < HARDRT_CFG_MAX_PRIO`;
-- an active timing profile is unknown or lacks its required hook header.
-
-For a CMake build with the defaults:
+The default task configuration produces:
 
 ```text
 HARDRT_CFG_MAX_TASKS = 8 application slots
 HARDRT_APP_MAX_TASKS = 8 creatable application tasks
-HARDRT_MAX_TASKS     = 9 total TCB slots, including one private idle slot
+HARDRT_MAX_TASKS     = 9 total TCB slots including private idle
 HRT_IDLE_ID          = 8 (private/internal)
 ```
 
-`HARDRT_MAX_TASKS` remains the legacy total-slot compatibility macro. Application code that needs the number of creatable tasks should use `HARDRT_APP_MAX_TASKS`. Direct/non-CMake builds that define only the legacy `HARDRT_MAX_TASKS` value infer application capacity as `HARDRT_MAX_TASKS - 1`; with neither macro supplied, the fallback is 8 application tasks plus one idle slot.
+CMake rejects invalid ports, priority counts outside 1..12, task capacities outside 1..254, task capacity smaller than priority-class count, and invalid/incomplete timing-profile configurations.
 
-### Runtime kernel configuration
+## Runtime configuration
 
-CMake validation and `hrt_init()` validation are intentionally separate. Build-time options decide which implementation is compiled; runtime `hrt_config_t` decides how that build is initialized.
+Build-time CMake options and runtime `hrt_config_t` are separate contracts. `hrt_init()` accepts initialization exactly once and validates:
 
-The v0.5 lifecycle contract accepts initialization exactly once and rejects invalid runtime configuration with public `hrt_status_t` values. For an explicit `hrt_config_t`:
+- non-zero `tick_hz`;
+- declared scheduler policy;
+- `HRT_TICK_SYSTICK` or `HRT_TICK_EXTERNAL`;
+- port-specific representability of the requested tick source/rate.
 
-- `tick_hz` must be non-zero. The public range is `1 .. UINT32_MAX`; a port-owned tick source may support a narrower representable subset.
-- `policy` must be one of the declared `HRT_SCHED_*` values.
-- `tick_src` must be `HRT_TICK_SYSTICK` or `HRT_TICK_EXTERNAL`.
-- on Cortex-M/SysTick, `core_hz == 0` delegates to `hrt_port_get_core_hz()`; a non-zero value explicitly overrides that clock for SysTick reload calculation.
-- ports and tick modes that do not consume a CPU core clock ignore `core_hz`; keeping board clock metadata populated while using `HRT_TICK_EXTERNAL` is valid.
+On Cortex-M SysTick, `core_hz == 0` delegates clock discovery to `hrt_port_get_core_hz()`; a non-zero value explicitly overrides that clock for reload calculation. External-tick configurations do not consume `core_hz`.
 
-`HRT_ERR_INVALID_CONFIG` means the policy, tick source, or public tick-frequency contract is invalid. `HRT_ERR_PORT_INIT` means the public configuration is structurally valid but the selected port cannot represent it, such as a Cortex-M SysTick reload outside the 24-bit range or a POSIX internal tick whose timer period rounds to zero.
+Invalid public configuration returns `HRT_ERR_INVALID_CONFIG`; a structurally valid request that the selected port cannot represent returns `HRT_ERR_PORT_INIT`. Failed initialization leaves the kernel UNINITIALIZED so corrected configuration can retry.
 
-A failed initialization leaves the lifecycle `UNINITIALIZED`, so the caller may retry with corrected settings. A successful initialization enters `INITIALIZED`; `hrt_start()` then enters `RUNNING`. Task creation is valid after initialization both before and during `RUNNING`, while a second `hrt_init()` or `hrt_start()` is rejected.
-
-## Strict warnings and sanitizers
+## Strict warnings and UBSan
 
 ```bash
 cmake -S . -B build-strict \
@@ -133,19 +102,19 @@ cmake --build build-strict -j
 ctest --test-dir build-strict --output-on-failure
 ```
 
-`HARDRT_STRICT` enables:
+Strict warnings include:
 
 ```text
 -Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow
 ```
 
-`HARDRT_SANITIZE` enables:
+UBSan uses:
 
 ```text
 -fsanitize=undefined -fno-omit-frame-pointer
 ```
 
-It does not enable AddressSanitizer.
+AddressSanitizer is deliberately excluded because the POSIX port uses `ucontext`.
 
 ## Null port
 
@@ -156,11 +125,9 @@ cmake -S . -B build-null \
 cmake --build build-null -j
 ```
 
-The null port provides build-time stubs and does not require CXX or ASM. It does not start a tick or transfer into task contexts.
+The null port is a build/contract stub. It does not run tasks or a tick.
 
-## Cortex-M library build
-
-C-only Cortex-M library:
+## Cortex-M library
 
 ```bash
 cmake -S . -B build-cortex \
@@ -172,27 +139,14 @@ cmake -S . -B build-cortex \
 cmake --build build-cortex -j
 ```
 
-This requires `arm-none-eabi-gcc` but not `arm-none-eabi-g++`.
-
-To expose the C++ wrapper target in the same cross-build, add:
-
-```text
--DHARDRT_ENABLE_CPP=ON
-```
-
-That configuration additionally requires `arm-none-eabi-g++`.
-
-Use the supplied toolchain or an application-specific toolchain that provides the expected CPU and linker settings. The library port sources include ARM assembly and reference linker-provided RAM boundary symbols.
-
-The STM32H755 examples have board/vendor dependencies and are validated separately by the repository's cross-build and hardware qualification flows.
+Add `-DHARDRT_ENABLE_CPP=ON` to expose the C++ target in the cross-build. The STM32H755 board examples have additional CMSIS/HAL dependencies and are exercised by `scripts/build-stm32-examples-ci.sh` and the physical qualification runner.
 
 ## Helper scripts
 
-- `scripts/run-all-examples.sh` configures, builds, and runs POSIX-compatible examples under timeouts.
-- `scripts/build-lib-posix.sh` configures a POSIX build, runs tests, and launches its example path.
-- `scripts/build-stm32-examples-ci.sh` cross-builds the STM32H755 example matrix used in CI.
-
-Inspect scripts before using them in a different build layout; they encode the repository's current target names and assumptions.
+- `scripts/run-all-examples.sh`: configure/build/run POSIX-compatible examples with timeouts.
+- `scripts/build-lib-posix.sh`: POSIX library/test helper.
+- `scripts/build-stm32-examples-ci.sh`: cross-build the STM32H755 validation matrix.
+- `scripts/stm32_manual_test_full.sh`: the single physical STM32H755 qualification entry point.
 
 ## Install
 
@@ -200,32 +154,26 @@ Inspect scripts before using them in a different build layout; they encode the r
 cmake --install build --prefix "$PWD/build/install"
 ```
 
-The install contains:
+The install contains `libhardrt.a`, public C headers, generated `hardrt_version.h` and `hardrt_port.h`, and CMake package files under `lib/cmake/HardRT`. When C++ is enabled, the wrapper headers and `HardRT::hardrtpp` are installed as well.
 
-- `libhardrt.a`;
-- public headers from `inc/`, excluding kernel-private headers;
-- generated `hardrt_version.h` and `hardrt_port.h`;
-- CMake package files under `lib/cmake/HardRT`;
-- `hardrtpp.hpp` and `HardRT::hardrtpp` when `HARDRT_ENABLE_CPP=ON`.
+Kernel/port-private headers are not installed.
 
-CI builds downstream C and C++ consumers against the installed package so the exported API is checked independently of in-tree include paths.
+## Consume with CMake
 
-## Consume from another CMake project
-
-C application:
+C:
 
 ```cmake
-find_package(HardRT 0.4.0 REQUIRED)
+find_package(HardRT 0.5.0 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
 
-C++ wrapper application, when the installed package includes it:
+C++ when the package was built with wrappers enabled:
 
 ```cmake
-find_package(HardRT 0.4.0 REQUIRED)
+find_package(HardRT 0.5.0 REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```
 
-Package compatibility is generated with CMake's `SameMajorVersion` policy. Since the project major version is zero, consumers should still review release notes for source, ABI, and behavioral changes between minor releases.
+The generated package version uses CMake `SameMajorVersion`, but HardRT is pre-1.0 and does not infer ABI stability from that setting. See [COMPATIBILITY.md](COMPATIBILITY.md).

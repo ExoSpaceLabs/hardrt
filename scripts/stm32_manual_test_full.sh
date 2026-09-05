@@ -15,8 +15,8 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=11
-BENCHMARK_TOTAL=22
+FUNCTIONAL_TOTAL=13
+BENCHMARK_TOTAL=38
 
 NAMES=()
 STATUSES=()
@@ -240,7 +240,8 @@ cat > "$REPORT" <<EOF
 The board probe is reported separately from functional and benchmark counts.
 Each benchmark is rebuilt and flashed as a separate image. The build script enables
 only the timing profile/hooks required by that benchmark; ordinary HardRT builds
-remain uninstrumented.
+remain uninstrumented. The benchmark count includes the complete v0.5 event and
+notification signal-profiling matrix.
 
 OpenOCD/GDB sessions are managed by this runner; no additional terminal windows are required.
 
@@ -403,6 +404,45 @@ timing_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+signal_timing_case() {
+  local case="$1" waiters="$2"
+  local suffix=""
+  [[ "$case" == event_scan_* ]] && suffix="_waiters${waiters}"
+  local label="${case}${suffix}"
+  local title="DWT ${label} timing"
+  local prefix="timing_${label}" status=PASS notes=""
+  local elf="$ROOT_DIR/examples/hardrt_h755_dwt_timing/build-cortex_m/hardrt_cm7_dwt_timing.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Production event/notification path reaches the target sample count with no kernel/example error; min <= avg <= max; event-scan waiter load and wake fan-out match the requested scenario."
+
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" \
+       "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
+       --case "$case" --waiters "$waiters" --samples "$TIMING_SAMPLES"; then
+    status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/timing.dbg" "$prefix"; then
+    status=FAIL; notes="Timing GDB run failed or timed out."
+  else
+    local count target min avg max signal_waiters expected observed error
+    count="$(sed -n 's/^count=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    target="$(sed -n 's/^event_hz=[0-9][0-9]* target_samples=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+    read -r min avg max < <(sed -n 's/^min=\([0-9][0-9]*\) cycles, avg=\([0-9][0-9]*\) cycles (sum\/count=[0-9][0-9]*), max=\([0-9][0-9]*\) cycles$/\1 \2 \3/p' "$glog" | tail -n1) || true
+    read -r signal_waiters expected observed < <(sed -n 's/^signal_waiters=\([0-9][0-9]*\) expected_wakes_per_sample=\([0-9][0-9]*\) observed_wakes=\([0-9][0-9]*\)$/\1 \2 \3/p' "$glog" | tail -n1) || true
+    error="$(sed -n 's/^error=\([0-9][0-9]*\)$/\1/p' "$glog" | tail -n1)"
+
+    if ! grep -q '^RESULT: PASS$' "$glog" || \
+       [[ -z "$count" || -z "$target" || -z "${min:-}" || -z "${avg:-}" || -z "${max:-}" || -z "${signal_waiters:-}" || -z "${expected:-}" || -z "${observed:-}" || -z "$error" ]] || \
+       (( count != TIMING_SAMPLES || target != TIMING_SAMPLES || min > avg || avg > max || error != 0 )); then
+      status=FAIL; notes="Automated signal timing acceptance failed."
+    elif [[ "$case" == event_scan_* ]] && (( signal_waiters != waiters )); then
+      status=FAIL; notes="Firmware waiter count did not match requested event scan load."
+    else
+      notes="waiters=$signal_waiters, expected_wakes/sample=$expected, observed_wakes=$observed, count=$count, min=$min cycles, avg=$avg cycles, max=$max cycles."
+    fi
+  fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 tick_benchmark_case() {
   local scenario="$1" tasks="$2"
   local title="DWT tick_${scenario}_tasks${tasks} timing"
@@ -451,7 +491,7 @@ global_rr_case() {
   local title="Global RR mixed-priority hardware contract"
   local elf="$ROOT_DIR/examples/hardrt_h755_global_rr/build-cortex_m/hardrt_h755_global_rr.elf"
   local glog="$RAW/${prefix}_gdb.log"
-  local criterion="Under HRT_SCHED_RR, mixed-priority READY tasks follow one global FIFO; a real TIM2 ISR wake reports need_switch=0; the interrupted task continues and the woken high-priority task joins the tail behind already READY work."
+  local criterion="Under HRT_SCHED_RR, mixed-priority READY tasks follow one global FIFO; a real TIM2 ISR wake reports need_switch=0; the interrupted task continues and the woken high-priority task joins the global tail behind already READY work."
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-global-rr.sh"; then status=FAIL; notes="Build/flash failed."
   elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/global_rr.dbg" "$prefix"; then status=FAIL; notes="Global RR GDB run failed or timed out."
@@ -469,6 +509,8 @@ ipc_case() {
     semaphore) criterion="Counting/saturation checks pass; real TIM2 ISR wakes a blocked higher-priority waiter with correct need_switch." ;;
     queue) criterion="FIFO/full/empty checks pass; ISR send->blocked receiver and ISR receive->blocked sender preserve payload and priority handoff." ;;
     mutex) criterion="Ownership, blocking, direct handoff and immediate higher-priority execution after unlock are correct." ;;
+    event) criterion="Wait-all completes from incremental task/ISR sets; clear-on-exit and retained wait-any behavior are correct; the real TIM2 ISR reports scheduler-aware need_switch and preempts when required." ;;
+    notification) criterion="Pending notifications survive unrelated IPC blocking; overwrite/no-overwrite/set-bits, real TIM2 ISR wake/need_switch, increment and counting-take semantics are correct." ;;
   esac
   echo; echo "========== $title =========="
   if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" --case "$case"; then status=FAIL; notes="Build/flash failed."
@@ -537,18 +579,31 @@ run_functional_matrix() {
   ipc_case semaphore "Semaphore hardware contract"
   ipc_case queue "Queue hardware contract"
   ipc_case mutex "Mutex hardware contract"
+  ipc_case event "Event flags hardware contract"
+  ipc_case notification "Task notification hardware contract"
   external_tick_case
   basepri_case
 }
 
 run_benchmarks() {
   # Every benchmark gets its own build and flash. The timing helper selects
-  # HARDRT_TIMING_PROFILE/hooks per case; the tick matrix uses profile=none and
-  # application-side DWT around the production external-tick API.
+  # HARDRT_TIMING_PROFILE/hooks per case; tick and v0.5 signal timing use
+  # application-side DWT around production code with profile=none.
   timing_case event_to_task "DWT event_to_task timing"
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
   timing_case ready_to_task "DWT ready_to_task timing"
   timing_case scheduler_decision "DWT scheduler_decision timing"
+
+  signal_timing_case event_isr_to_task 1
+  signal_timing_case notify_isr_to_task 1
+  local waiters
+  for waiters in 1 8 16 32; do
+    signal_timing_case event_scan_none "$waiters"
+    signal_timing_case event_scan_one "$waiters"
+    signal_timing_case event_scan_all "$waiters"
+  done
+  signal_timing_case notify_isr_no_wake 1
+  signal_timing_case notify_isr_wake 1
 
   local tasks scenario
   for tasks in 8 16 32; do

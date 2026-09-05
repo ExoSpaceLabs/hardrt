@@ -1,173 +1,144 @@
 # Hard real-time qualification
 
-HardRT is intended to evolve toward documented hard real-time behavior on supported Cortex-M configurations.
-
-This document defines the engineering direction and the current qualification boundary. It is not a claim that every HardRT configuration is already hard real time.
+HardRT is being engineered toward documented hard real-time behavior on explicitly supported Cortex-M configurations. This page defines that engineering boundary; it is not a claim that every build is already hard real time.
 
 ## Qualification boundary
 
-Hard real-time qualification applies only to explicitly supported Cortex-M targets and configurations for which the required timing and interference assumptions are recorded.
+Hard-real-time qualification applies only to Cortex-M targets/configurations whose timing and interference assumptions are recorded. The POSIX port is a functional/scheduler validation environment and is excluded from timing qualification.
 
-The POSIX port is excluded from hard real-time qualification. It is a functional and scheduler-validation environment and does not model Cortex-M execution timing.
+## v0.5 development evidence
 
-## Current v0.5 development status
+The scheduler/lifecycle hardening baseline on NUCLEO-H755ZI-Q / CM7 passed 11 functional contracts and 22 historical benchmark images on SHA `80f2042f2c64053a9ea888666474c5dad5f72797`.
 
-The v0.5 scheduler/lifecycle hardening phase has an accepted physical-hardware baseline on NUCLEO-H755ZI-Q CM7:
+After events/notifications landed, development hardware run `20260905T152422Z_6f4ef62a` passed:
 
 ```text
-Run ID:       20260905T134123Z_80f2042f
-HardRT SHA:   80f2042f2c64053a9ea888666474c5dad5f72797
-Tracked tree: clean
-STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
-Functional:   11 / 11 PASS
-Benchmarks:   22 / 22 PASS
+HardRT SHA:   6f4ef62a8a0d13a0632537c6e65a50cbd315d656
+Functional:   13 / 13 PASS
+Historical benchmarks: 22 / 22 PASS
 Overall:      PASS
 ```
 
-The accepted suite covers task/context progress, scheduler-policy behavior, lifecycle-sensitive task creation/reuse, fixed-priority and RR wake behavior, semaphores, queues, mutexes, external tick integration, `BASEPRI` preservation, scheduler/PendSV timing and tick/sleeper scaling through 32 configured application tasks.
+The final v0.5 runner additionally integrates 16 event/notification timing images, for a complete release matrix of **13 functional contracts + 38 benchmark images**. Final release evidence must come from the exact frozen release SHA.
 
-This evidence is sufficient to close the **v0.5 scheduler/lifecycle hardening phase**. It is not a universal WCET proof and it is not yet the final v0.5.0 release package. The final RC must repeat the full unfiltered hardware qualification on the exact frozen release SHA.
+These results are development measurements, not a universal WCET proof.
 
 ## Required properties for a formal hard-real-time configuration
 
-A HardRT configuration may be described as hard real time only when all relevant kernel operations and interference sources have finite, documented bounds under a stated configuration.
+A HardRT configuration can be described as hard real time only when relevant kernel operations and interference sources have finite, documented bounds under explicit assumptions.
 
-At minimum, qualification requires:
+### Static resource bounds
 
-1. **Static resource bounds**
-   - no dynamic allocation in kernel runtime paths;
-   - fixed maximum task, waiter, queue, event and notification capacities;
-   - documented stack and static-memory requirements.
+- no dynamic allocation in kernel runtime paths;
+- fixed task, waiter, event, notification, and queue capacities;
+- documented stack/static-memory costs.
 
-2. **Bounded scheduler behavior**
-   - deterministic ready-task selection;
-   - bounded ready-queue insertion/removal/selection;
-   - explicit behavior for all scheduler policies;
-   - no duplicate or stale task membership in scheduler structures.
+### Bounded scheduler behavior
 
-3. **Bounded interrupt behavior**
-   - defined interrupt-priority ceiling for kernel-aware ISRs;
-   - bounded critical sections;
-   - no blocking operations from ISR context;
-   - explicit scheduling decision after ISR wake-up.
+- deterministic READY selection and insertion/removal;
+- explicit behavior for every scheduler policy;
+- no duplicate/stale scheduler membership;
+- bounded sleeper insertion and expiry processing.
 
-4. **Bounded synchronization behavior**
-   - bounded waiter inspection and handoff;
-   - explicit priority-inversion strategy for mutex ownership;
-   - deterministic wake ordering;
-   - bounded timeout processing where timeout APIs exist.
+### Bounded interrupt behavior
 
-5. **Lifecycle and error determinism**
-   - invalid configuration and invalid lifecycle transitions fail predictably;
-   - kernel corruption or contract violations are observable;
-   - debug/release differences do not invalidate the behavioral contract.
+- documented interrupt-priority ceiling for kernel-aware ISRs;
+- bounded critical sections;
+- no ISR blocking;
+- explicit scheduler decision after ISR wake.
 
-6. **Reproducible timing evidence**
-   - exact HardRT commit;
-   - compiler, binutils, optimization and link flags;
-   - MCU/core, board revision, clock tree and flash/SRAM placement;
-   - cache and FPU state;
-   - tick source and frequency;
-   - IRQ priorities and syscall interrupt ceiling;
-   - task priorities and scheduler policy;
-   - raw machine-readable timing results.
+### Bounded synchronization behavior
 
-## What the v0.5 hardening already establishes
+- deterministic waiter ordering/handoff;
+- bounded event waiter inspection;
+- O(1) notification producer work;
+- explicit priority-inversion strategy for mutexes in any configuration that claims a formal bound;
+- bounded timeout processing if/when timeout APIs exist.
 
-The current development baseline provides strong evidence for these parts of the model:
+### Lifecycle/error determinism
 
-- static kernel/task storage and no runtime heap allocation;
+- invalid configuration/lifecycle transitions fail predictably;
+- contract violations are observable;
+- debug/release differences do not silently change public behavior.
+
+### Reproducible timing evidence
+
+Formal claims require, as applicable:
+
+- exact HardRT commit;
+- compiler/binutils versions and compile/link flags;
+- MCU/core and board revision;
+- clock tree and flash/SRAM placement;
+- cache/FPU/lazy-stacking state;
+- tick source/frequency;
+- IRQ priorities and syscall ceiling;
+- task priorities and scheduler policy;
+- raw/machine-readable timing evidence.
+
+## What v0.5 establishes
+
+v0.5 provides engineering evidence for:
+
+- static kernel/task/synchronization storage;
 - deterministic policy-specific READY storage;
-- O(1) no-expiry tick work with the intrusive delta sleeper queue;
-- O(K) wake processing for K sleepers expiring together;
-- scheduler-aware wake/preemption behavior;
-- separation of RUNNING from READY membership;
-- explicit slot ownership versus task execution state;
+- true global RR and retained-quantum priority RR;
+- intrusive delta sleeper queue with O(1) no-expiry tick work and O(K) work for K expiries;
+- scheduler-aware task/ISR wake decisions;
+- RUNNING/READY and slot/task-state separation;
 - Cortex-M hard-float context preservation;
-- preserved stricter caller `BASEPRI` state and nested critical-section restoration;
-- public lifecycle/configuration failure semantics;
-- external-tick source ownership and startup ordering;
-- physical H755 coverage for semaphore, queue and mutex wake/handoff paths.
+- BASEPRI-preserving nested critical sections;
+- external-tick ownership/startup ordering;
+- semaphore/queue/mutex/event/notification hardware behavior;
+- event ISR-to-task and waiter-scan profiling fixtures;
+- notification ISR-to-task and producer-cost profiling fixtures.
 
-## Remaining hard-real-time work
+Event-set cost is bounded by configured application-task capacity because the set path scans registered waiter metadata. Task-notification producer cost is O(1). The physical profile reports observed cycles for representative/fan-out cases; those measurements are not analytical upper bounds.
 
-The following work remains intentionally open and is **post-v0.5/non-blocking for the current scheduler-hardening phase**:
+## Remaining 1.0-quality work
 
-- maximum observed and analytical bounds for all kernel critical sections;
-- queue `memcpy()` scaling and a bounded item-size/design decision;
-- explicit priority-inversion mitigation for mutexes;
+These items remain deliberately open and do not block v0.5 while release documentation avoids unsupported universal guarantees:
+
+- analytical/max critical-section bounds for all kernel paths;
+- queue `memcpy()` scaling and an explicit payload-size design bound;
+- bounded mutex priority-inversion mitigation;
 - robust/owner-death mutex semantics if adopted;
-- complete interference matrices with higher-priority interrupts/tasks;
-- true hardware-event-to-ISR-entry measurements where practical;
+- richer higher-priority interrupt/task interference matrices;
+- true hardware-event-to-ISR-entry measurement where practical;
 - complete machine-readable timing output;
-- complete board/cache/FPU/memory/compile/link metadata in release evidence;
-- periodic-task timing primitives and release-jitter characterization;
-- event/notification timing once those APIs are implemented.
+- complete board/cache/FPU/memory/compile/link metadata;
+- periodic-task/release-jitter primitives and qualification.
 
-These items remain tracked by #37 and #48 with supporting work in #49–#54 and #66. Keeping them open is deliberate: passing the current development suite does not justify pretending these broader 1.0-quality questions disappeared.
+Tracked primarily by #37 and #48 with supporting #49–#54 and #66.
 
 ## Timing terminology
 
-HardRT documentation must distinguish:
+Documentation must distinguish:
 
-- a measured average;
-- a measured maximum under a recorded test configuration;
-- an analytically derived upper bound;
-- a hardware/configuration-specific worst-case bound.
+- measured average;
+- measured maximum under a recorded test configuration;
+- analytically derived upper bound;
+- hardware/configuration-specific worst-case bound.
 
-A measured maximum is not, by itself, a worst-case execution-time proof.
+A measured maximum is not automatically WCET.
 
 ## Timing decomposition
 
-The qualification architecture separates:
+Qualification separates:
 
-1. **Interrupt/wake path**
-   - kernel-aware ISR service duration;
-   - task wake to READY transition;
-   - reschedule request;
-   - READY task to resumed task continuation;
-   - complete event-to-task response as a composite metric.
-
-2. **Scheduler/context switch**
-   - scheduler decision;
-   - outgoing context save;
-   - incoming context restore;
-   - complete PendSV software interval;
-   - PendSV entry to resumed task continuation.
-
-3. **Synchronization**
-   - primitive execution cost;
-   - waiter selection and READY latency;
-   - waiter RUNNING latency;
-   - ISR-aware operation separately from task-context operation;
-   - queue copy cost separately from scheduler/handoff cost.
-
-4. **Critical sections and bounded work**
-   - interrupt-masked duration;
-   - READY operations;
-   - sleeper insertion/wake processing;
-   - operation cost as a function of configured task, priority, waiter and item-size bounds.
-
-5. **Timekeeping/release jitter**
-   - tick processing cost;
-   - sleep-expiry to READY/RUNNING latency;
-   - internal and external tick paths separately;
-   - periodic-task release jitter once an absolute periodic timing primitive exists.
+1. **Interrupt/wake path**: ISR producer cost, wake-to-READY, reschedule request, READY-to-task continuation, composite ISR-to-task latency.
+2. **Scheduler/context switch**: scheduler decision, context save/restore, PendSV software interval, PendSV-to-task continuation.
+3. **Synchronization**: primitive cost, waiter publication, task continuation, ISR/task variants, queue-copy cost.
+4. **Critical sections/bounded work**: interrupt-masked duration and cost as a function of configured task/waiter/payload limits.
+5. **Timekeeping**: tick cost, sleep expiry, internal/external tick behavior, and future periodic-release jitter.
 
 ## Instrumentation rule
 
-Timing hooks are compile-time selected and disabled in ordinary builds. Instrumented images must quantify or at least acknowledge probe overhead, and measurement points must remain isolated enough that unrelated instrumentation does not silently contaminate a narrower metric.
-
-On Cortex-M, DWT `CYCCNT` is the preferred cycle counter where supported. Scheduler/PendSV decomposition may require measurement-specific switch instrumentation, but the production scheduling semantics must remain unchanged.
+Timing hooks are compile-time selected and disabled in ordinary builds. Measurement images must keep instrumentation isolated from production semantics and account for probe overhead where it materially affects interpretation. On Cortex-M, DWT `CYCCNT` is the preferred cycle counter where supported.
 
 ## Design rule
 
-When two implementations provide equivalent functionality, prefer the implementation that is easier to bound and reason about, even if another implementation saves a small amount of memory or improves average-case performance.
-
-Optimizations that make scheduler, ISR or synchronization behavior harder to analyze require evidence that the trade remains compatible with the qualification model.
+When implementations provide equivalent behavior, HardRT prefers the design that is easier to bound and reason about over one that improves only average-case performance.
 
 ## Release rule
 
-Before 1.0.0, HardRT may state that it is designed **toward hard real-time guarantees** and may publish configuration-specific measured results.
-
-A release must not make an unconditional hard-real-time latency guarantee until its supported target/configuration assumptions and corresponding evidence are published.
+Before 1.0.0, HardRT may publish configuration-specific measurements and state that it is engineered toward hard-real-time guarantees. It must not advertise an unconditional latency/WCET guarantee without the assumptions and evidence needed to support that claim.

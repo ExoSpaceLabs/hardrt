@@ -10,7 +10,7 @@ const test_case_t *get_tests_posix_critical_mask(int *out_count);
 /* Global failure counter used by assertion macros */
 int g_failures = 0;
 
-#define TEST_REGISTRY_CAPACITY 128
+#define TEST_REGISTRY_CAPACITY 160
 
 static int append_group(const test_case_t *group, int n,
                         const test_case_t **out_arr, int *inout_count,
@@ -68,6 +68,10 @@ int main(void) {
     APPEND_GROUP(get_tests_queue);
     APPEND_GROUP(get_tests_external_tick);
     APPEND_GROUP(get_tests_mutex);
+    APPEND_GROUP(get_tests_event);
+    APPEND_GROUP(get_tests_notify);
+    APPEND_GROUP(get_tests_signal_contract);
+    APPEND_GROUP(get_tests_signal_stress);
     APPEND_GROUP(get_tests_now_ms);
     APPEND_GROUP(get_tests_idle_behavior);
 

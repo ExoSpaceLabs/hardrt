@@ -3,10 +3,17 @@
 
 #include <stdint.h>
 
-#define HRT_TIMING_CASE_EVENT_TO_TASK       1u
-#define HRT_TIMING_CASE_SEM_ISR_READY       2u
-#define HRT_TIMING_CASE_READY_TO_TASK       3u
-#define HRT_TIMING_CASE_SCHEDULER_DECISION  4u
+#define HRT_TIMING_CASE_EVENT_TO_TASK          1u
+#define HRT_TIMING_CASE_SEM_ISR_READY          2u
+#define HRT_TIMING_CASE_READY_TO_TASK          3u
+#define HRT_TIMING_CASE_SCHEDULER_DECISION     4u
+#define HRT_TIMING_CASE_EVENT_ISR_TO_TASK      5u
+#define HRT_TIMING_CASE_NOTIFY_ISR_TO_TASK     6u
+#define HRT_TIMING_CASE_EVENT_SCAN_NONE        7u
+#define HRT_TIMING_CASE_EVENT_SCAN_ONE         8u
+#define HRT_TIMING_CASE_EVENT_SCAN_ALL         9u
+#define HRT_TIMING_CASE_NOTIFY_ISR_NO_WAKE    10u
+#define HRT_TIMING_CASE_NOTIFY_ISR_WAKE       11u
 
 #ifndef HRT_TIMING_CASE_ID
 #define HRT_TIMING_CASE_ID HRT_TIMING_CASE_EVENT_TO_TASK
@@ -18,6 +25,10 @@
 
 #ifndef HRT_TIMING_TARGET_SAMPLES
 #define HRT_TIMING_TARGET_SAMPLES 10000u
+#endif
+
+#ifndef HRT_TIMING_SIGNAL_WAITERS
+#define HRT_TIMING_SIGNAL_WAITERS 1u
 #endif
 
 typedef struct {
@@ -33,6 +44,7 @@ extern volatile uint32_t g_timing_start_cycles;
 extern volatile uint32_t g_timing_case_id;
 extern volatile uint32_t g_timing_event_hz;
 extern volatile uint32_t g_timing_target_samples;
+extern volatile uint32_t g_timing_signal_waiters;
 extern volatile uint32_t g_example_error;
 
 static inline __attribute__((always_inline))

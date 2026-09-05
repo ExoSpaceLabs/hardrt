@@ -1,0 +1,49 @@
+name: Signal stress
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  strict-ubsan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc g++
+
+      - name: Configure strict UBSan POSIX tests
+        run: |
+          cmake -S . -B build-signal-stress -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=OFF \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_STRICT=ON \
+            -DHARDRT_SANITIZE=ON
+
+      - name: Build strict UBSan POSIX tests
+        run: cmake --build build-signal-stress --parallel
+
+      - name: Run deterministic signal stress suite
+        timeout-minutes: 3
+        run: ctest -V --test-dir build-signal-stress -R '^hardrt_tests$' --timeout 120 --output-on-failure

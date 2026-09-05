@@ -14,6 +14,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     strategy:
@@ -23,6 +27,7 @@ jobs:
         build_type: [Release]
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -87,8 +92,9 @@ jobs:
           cmake --build build-posix --parallel
 
       - name: Run tests (POSIX)
+        timeout-minutes: 3
         run: |
-          ctest -V --test-dir build-posix --output-on-failure
+          ctest -V --test-dir build-posix --timeout 120 --output-on-failure
 
       - name: Validate C-only POSIX and effective error policy
         run: |
@@ -227,7 +233,7 @@ jobs:
 
           mkdir -p bundle/posix bundle/cortex_m
           cp -a install-posix/* bundle/posix/
-          cp -a install-cortexm/* bundle/cortex_m/
+          cp -a install-cortex_m/* bundle/cortex_m/
           tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
 
           ls -la packages

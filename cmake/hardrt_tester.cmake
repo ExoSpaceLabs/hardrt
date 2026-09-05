@@ -37,6 +37,10 @@ if(HARDRT_PORT STREQUAL "posix")
           ${CMAKE_SOURCE_DIR}/tests/test_external_tick.c
           ${CMAKE_SOURCE_DIR}/tests/test_idle_behavior.c
           ${CMAKE_SOURCE_DIR}/tests/test_mutex.c
+          ${CMAKE_SOURCE_DIR}/tests/test_event.c
+          ${CMAKE_SOURCE_DIR}/tests/test_notify.c
+          ${CMAKE_SOURCE_DIR}/tests/test_signal_contract.c
+          ${CMAKE_SOURCE_DIR}/tests/test_signal_stress.c
           ${CMAKE_SOURCE_DIR}/tests/test_now_ms.c
   )
 
@@ -60,13 +64,20 @@ if(HARDRT_PORT STREQUAL "posix")
   endif()
 
   if(HARDRT_SANITIZE)
-    add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=undefined -fno-omit-frame-pointer)
+    # Apply UBSan explicitly to the already-created production library and test
+    # executable. Directory-wide options added here would be order-dependent and
+    # could leave the actual kernel uninstrumented, which is a particularly silly
+    # way to claim sanitizer coverage.
+    target_compile_options(${LIB_NAME} PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+    target_compile_options(hardrt_tests PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+    target_link_options(hardrt_tests PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
 
     message(STATUS "POSIX sanitizers enabled: UBSan")
     message(STATUS "ASan disabled: ucontext (makecontext/swapcontext) is not ASan-safe")
   endif()
+
   add_test(NAME hardrt_tests COMMAND hardrt_tests)
+  set_tests_properties(hardrt_tests PROPERTIES TIMEOUT 120)
 else()
   message(STATUS "Tests are enabled but HARDRT_PORT=${HARDRT_PORT} has no runtime scheduler; skipping test target")
 endif()

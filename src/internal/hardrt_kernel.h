@@ -43,11 +43,14 @@ typedef struct {
     void (*entry)(void *);
     void *arg;
     uint32_t wake_tick;
+    uint32_t notify_value;
     uint16_t timeslice_cfg;
     uint16_t slice_left;
     uint8_t prio;
     uint8_t state;
     uint8_t slot_state;
+    uint8_t notify_pending;
+    uint8_t notify_waiting;
 } _hrt_tcb_t;
 
 /* HARDRT_APP_MAX_TASKS is the number of creatable application tasks.

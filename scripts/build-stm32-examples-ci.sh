@@ -93,10 +93,35 @@ build_app hardrt_h755_global_rr "$ROOT_DIR/examples/hardrt_h755_global_rr" "$BAS
 build_app hardrt_h755_ipc_semaphore "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=semaphore
 build_app hardrt_h755_ipc_queue "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=queue
 build_app hardrt_h755_ipc_mutex "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=mutex
+build_app hardrt_h755_ipc_event "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=event
+build_app hardrt_h755_ipc_notification "$ROOT_DIR/examples/hardrt_h755_ipc_validation" "$BASE_INSTALL" -DHARDRT_IPC_CASE=notification
 build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
 build_app hardrt_h755_basepri_validation "$ROOT_DIR/examples/hardrt_h755_basepri_validation" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
+
+# Signal profiling cases use direct DWT timestamps and an uninstrumented kernel.
+# Compile the latency and O(1) notification paths against the ordinary config,
+# plus the one-waiter forms of all event scan branches.
+build_app hardrt_h755_dwt_event_isr_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_isr_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_notify_isr_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=notify_isr_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_notify_isr_no_wake "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=notify_isr_no_wake -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_notify_isr_wake "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=notify_isr_wake -DHARDRT_TIMING_TARGET_SAMPLES=8
+for scan_case in event_scan_none event_scan_one event_scan_all; do
+  build_app "hardrt_h755_dwt_${scan_case}_1" "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" \
+    -DHARDRT_TIMING_CASE="$scan_case" -DHARDRT_TIMING_SIGNAL_WAITERS=1 -DHARDRT_TIMING_TARGET_SAMPLES=8
+done
+
+# Compile the maximum profiling load with 32 actual event waiters plus one
+# controller task. This catches static-storage, RAM and linker regressions that
+# the one-waiter images cannot reveal.
+SIGNAL33_BUILD="$ROOT_DIR/build-cortex_m-signal33-ci"
+SIGNAL33_INSTALL="$ROOT_DIR/install-cortexm-signal33-ci"
+configure_library "$SIGNAL33_BUILD" "$SIGNAL33_INSTALL" -DHARDRT_CFG_MAX_TASKS=33
+for scan_case in event_scan_none event_scan_one event_scan_all; do
+  build_app "hardrt_h755_dwt_${scan_case}_32" "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$SIGNAL33_INSTALL" \
+    -DHARDRT_TIMING_CASE="$scan_case" -DHARDRT_TIMING_SIGNAL_WAITERS=32 -DHARDRT_TIMING_TARGET_SAMPLES=8
+done
 
 # Compile every tick/sleeper workload branch using the normal eight-task
 # configuration, then compile the most demanding simultaneous-expiry workload
