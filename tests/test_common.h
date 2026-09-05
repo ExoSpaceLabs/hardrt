@@ -49,6 +49,12 @@ void hrt__test_set_tick(uint32_t v);
  * @brief Get the current tick counter.
  */
 uint32_t hrt__test_get_tick(void);
+
+/** @brief Read a used task's private execution state, or -1 for no task. */
+int hrt__test_task_state(int id);
+
+/** @brief Read the private TCB-slot ownership state, or -1 for invalid ID. */
+int hrt__test_slot_state(int id);
 #endif
 #ifdef __cplusplus
 }

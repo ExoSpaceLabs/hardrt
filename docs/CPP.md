@@ -1,6 +1,6 @@
 # C++17 Wrapper (`hardrtpp.hpp`)
 
-HardRT v0.4.0 provides an optional header-only C++17 wrapper in `cpp/hardrtpp.hpp`. The wrapper is a thin layer over the C API and does not add dynamic allocation, exceptions, or a separate scheduler model.
+HardRT provides an optional header-only C++17 wrapper in `cpp/hardrtpp.hpp`. The wrapper is a thin layer over the C API and does not add dynamic allocation, exceptions, or a separate scheduler model.
 
 Enable it with:
 
@@ -20,8 +20,6 @@ Downstream CMake projects link `HardRT::hardrtpp` when the package was built and
 - `hardrt::Mutex`
 - `hardrt::QueueRef<T>`
 - `hardrt::StaticQueue<T, Capacity>`
-
-There is no `hardrt::Queue<T, Capacity>` alias in v0.4.0.
 
 ## System management
 
@@ -60,9 +58,7 @@ int main() {
 }
 ```
 
-The current wrapper method is `version_string()`, not `version()`.
-
-`System::init()` forwards directly to `hrt_init()`. In the current C implementation, initialization returns `0` and does not validate repeated initialization or invalid lifecycle ordering.
+`System::init()` forwards directly to `hrt_init()`. Full lifecycle/configuration validation remains tracked separately by issue #33.
 
 ## Task management
 
@@ -88,9 +84,11 @@ int create_tasks() {
 }
 ```
 
-Each unique `<StackWords, Tag>` template combination owns one function-local static stack array.
+Each unique `<StackWords, Tag>` template combination owns one function-local static stack array. Repeating the same specialization therefore refers to the same stack storage.
 
-The return value is the non-negative task ID returned by `hrt_create_task()`, or a negative failure result. It is not merely `0` on success.
+The v0.5 kernel enforces stack ownership at the common C task-creation boundary. A second live task cannot reuse or partially overlap another live task's stack, including a wrapper-owned static stack from the same `Task::create<StackWords, Tag>` specialization. Such creation fails rather than allowing two contexts to corrupt one stack. Once the previous task has entered `EXITED`, that stack is safe to reuse and its occupied task slot may be reclaimed.
+
+The return value is the non-negative task ID returned by `hrt_create_task()`, or a negative failure result.
 
 The `slice` argument is passed through an explicit `hrt_task_attr_t`:
 
@@ -113,6 +111,8 @@ const int id = hardrt::Task::create_with_stack(
     5);
 ```
 
+The same non-overlap rule applies to application-owned stacks.
+
 ### Task control
 
 ```cpp
@@ -121,9 +121,9 @@ hardrt::Task::yield();
 hardrt::Task::delete_current();
 ```
 
-In v0.4.0, `Task::sleep(0)` sleeps for one tick because it forwards to `hrt_sleep(0)`. Use `Task::yield()` for an immediate voluntary scheduling point.
+`Task::sleep(0)` currently sleeps for one tick because it forwards to `hrt_sleep(0)`. Use `Task::yield()` for an immediate voluntary scheduling point.
 
-A task that returns from its entry function is deleted by the port trampoline.
+A dispatched task is internally `RUNNING`. A voluntary scheduling point returns it to `READY` as appropriate. A task that returns from its entry function, or calls `Task::delete_current()`, enters `EXITED`; its TCB slot remains occupied until later reclamation.
 
 ## Semaphores
 
@@ -147,7 +147,7 @@ sem.give();
 sem.give_from_isr(need_switch);
 ```
 
-`give_from_isr()` forwards to the C API. In v0.4.0, `need_switch` becomes `1` whenever a waiter is awakened, regardless of the waiter's priority relative to the interrupted task.
+`give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.
 
 ## Mutexes
 
@@ -165,7 +165,7 @@ void worker_with_lock(void *arg) {
 }
 ```
 
-The wrapper exposes `lock()`, `try_lock()`, and `unlock()`. The underlying mutex is non-recursive, owner-tracked, task-context-only, and has no timed lock or priority inheritance.
+The wrapper exposes `lock()`, `try_lock()`, and `unlock()`. The underlying mutex is non-recursive, owner-tracked, task-context-only, and has no timed lock, priority inheritance, or automatic owner-death recovery. A task must release its owned mutexes before returning or deleting itself.
 
 ## Queues with external storage
 
@@ -208,7 +208,7 @@ Both queue wrappers expose:
 - `try_send_from_isr` and `try_recv_from_isr`;
 - `native_handle`.
 
-The C queue implementation copies objects as raw bytes with `memcpy`. Use queue element types that are safe to copy byte-for-byte, normally trivially copyable types. The v0.4.0 wrapper does not enforce that requirement with a `static_assert`.
+The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>` and `StaticQueue<T, Capacity>` therefore enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
 
 ## Allocation and ownership
 

@@ -45,6 +45,13 @@ if(HARDRT_PORT STREQUAL "posix")
   target_compile_features(hardrt_tests PRIVATE c_std_11)
   target_compile_definitions(hardrt_tests PRIVATE HARDRT_TEST_HOOKS)
 
+  if(HARDRT_ENABLE_CPP)
+    add_executable(hardrt_cpp_task_stack ${CMAKE_SOURCE_DIR}/tests/test_cpp_task_stack.cpp)
+    target_link_libraries(hardrt_cpp_task_stack PRIVATE ${LIB_NAME_CPP} Threads::Threads)
+    target_compile_features(hardrt_cpp_task_stack PRIVATE cxx_std_17)
+    add_test(NAME hardrt_cpp_task_stack COMMAND hardrt_cpp_task_stack)
+  endif()
+
   if(HARDRT_CFG_MAX_PRIO EQUAL 1)
     add_executable(hardrt_min_prio_smoke ${CMAKE_SOURCE_DIR}/tests/min_prio_smoke.c)
     target_link_libraries(hardrt_min_prio_smoke PRIVATE ${LIB_NAME} Threads::Threads)

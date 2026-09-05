@@ -82,7 +82,8 @@ typedef enum {
     ERR_MUTEX_OWNER = 16,
     ERR_MUTEX_RECURSIVE = 17,
     ERR_MUTEX_BAD_CTX = 18,
-    ERR_TICK_SOURCE_MISMATCH = 19
+    ERR_TICK_SOURCE_MISMATCH = 19,
+    ERR_STACK_IN_USE = 20
 } hrt_err;
 
 /**
@@ -150,7 +151,13 @@ int hrt_port_id(void);
 /** Initialize kernel state. */
 int hrt_init(const hrt_config_t *cfg);
 
-/** Create a task and place it into the ready state. */
+/**
+ * Create a task and place it into the ready state.
+ *
+ * The supplied stack must not overlap the stack of any live task. An exited
+ * task no longer uses its stack and may have its occupied TCB slot reclaimed
+ * by a later task creation.
+ */
 int hrt_create_task(hrt_task_fn fn, void *arg,
                     uint32_t *stack_words, size_t n_words,
                     const hrt_task_attr_t *attr);
@@ -164,7 +171,12 @@ void hrt_sleep(uint32_t ms);
 /** Voluntarily yield the processor. */
 void hrt_yield(void);
 
-/** Permanently remove the current task from the scheduler. */
+/**
+ * Permanently remove the current task from scheduling.
+ *
+ * The task enters the internal EXITED state. Its TCB slot remains occupied
+ * until reclaimed by a later task creation.
+ */
 void hrt_task_delete(void);
 
 /** Return the current system tick count. */

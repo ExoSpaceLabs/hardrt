@@ -85,14 +85,14 @@ static void assert_fail_safe(const char *context) {
                     "overflow watchdog did not need to recover a blocked probe");
     T_ASSERT_EQ_INT(-1, g_probe_rc,
                     "blocking API reports waiter insertion failure");
-    T_ASSERT_EQ_INT(HRT_READY, g_probe_state_after,
-                    "caller remained READY when waiter insertion failed");
+    T_ASSERT_EQ_INT(HRT_RUNNING, g_probe_state_after,
+                    "caller remains RUNNING when waiter insertion fails before blocking");
     T_ASSERT_EQ_INT(HARDRT_APP_MAX_TASKS, g_wait_count_after,
                     "full waiter count was not modified on insertion failure");
     if (g_probe_id >= 0) {
         const _hrt_tcb_t *t = hrt__tcb(g_probe_id);
         T_ASSERT_TRUE(t != NULL && t->state == HRT_READY,
-                      "probe TCB remains READY after scheduler returns");
+                      "probe TCB is READY after scheduler returns");
     }
 }
 

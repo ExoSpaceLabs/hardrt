@@ -1,6 +1,6 @@
 # Mutexes
 
-HardRT v0.4.0 provides an owner-tracked mutex for mutual exclusion in task context.
+HardRT provides an owner-tracked mutex for mutual exclusion in task context.
 
 ## Current semantics
 
@@ -12,7 +12,7 @@ The current `hrt_mutex_t` implementation is:
 - direct-handoff on unlock;
 - task-context-only.
 
-It does not provide priority inheritance, recursive locking, timeout operations, or ISR lock/unlock APIs.
+It does not provide priority inheritance, recursive locking, timeout operations, ISR lock/unlock APIs, or automatic owner-death recovery.
 
 ## API
 
@@ -54,7 +54,7 @@ After initialization, the mutex is unlocked, its owner is `HRT_MUTEX_NO_OWNER`, 
 
 When a blocked task resumes after direct handoff, it already owns the mutex.
 
-There is no timed-lock variant in v0.4.0.
+There is no timed-lock variant in v0.5.
 
 ## Unlock
 
@@ -64,7 +64,15 @@ Only the owning task may unlock.
 - With a waiter, ownership is transferred directly to the first FIFO waiter and that task is made ready.
 - A non-owner unlock returns `-1`.
 
-The current implementation yields after waking a waiter. Waiter selection is FIFO at the mutex, while final execution still follows the scheduler's priority-queue selection.
+Waiter selection is FIFO at the mutex, while final execution follows the scheduler's active policy.
+
+## Task exit and mutex ownership
+
+A task must release every mutex it owns before returning from its entry function or calling `hrt_task_delete()`.
+
+The v0.5 kernel records that task as `EXITED`, but mutex objects are application-owned static objects and the kernel does not maintain a reverse list of mutexes owned by each task. It therefore does **not** automatically unlock, abandon, or transfer mutexes when their owner exits. If a task exits while owning a mutex, that mutex remains owned by a non-running task and later users can remain blocked indefinitely.
+
+Automatic robust/owner-death mutex recovery is intentionally outside the v0.5 contract and requires a separate design rather than silently guessing whether protected state is still valid.
 
 ## C example
 
@@ -151,4 +159,5 @@ static void worker(void *arg) {
 - Do not call mutex APIs from an ISR.
 - Unlock only from the owning task.
 - Do not attempt recursive locking.
-- Analyze priority inversion at the application level; v0.4.0 has no mitigation mechanism.
+- Release every owned mutex before task return or `hrt_task_delete()`.
+- Analyze priority inversion at the application level; v0.5 has no mitigation mechanism.

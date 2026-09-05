@@ -10,12 +10,28 @@
 extern "C" {
 #endif
 
-/* Kernel-private task states. They are not part of the application API. */
+/*
+ * Kernel-private TCB-slot ownership. Slot allocation is deliberately separate
+ * from task execution state: an EXITED task may continue to own its slot until
+ * the kernel reclaims it for a later creation. Slot ownership is allocation /
+ * lifetime metadata; normal scheduling, wake, and tick paths rely on task state
+ * and queue membership instead of consulting it.
+ */
+typedef enum {
+    HRT_SLOT_UNUSED = 0,
+    HRT_SLOT_USED
+} hrt_slot_state_t;
+
+/*
+ * Kernel-private task execution states. A value is meaningful only while the
+ * containing TCB slot is HRT_SLOT_USED.
+ */
 typedef enum {
     HRT_READY = 0,
+    HRT_RUNNING,
     HRT_SLEEP,
     HRT_BLOCKED,
-    HRT_UNUSED
+    HRT_EXITED
 } hrt_state_t;
 
 /* Kernel-private task control block. Ports may access this only through the
@@ -31,6 +47,7 @@ typedef struct {
     uint16_t slice_left;
     uint8_t prio;
     uint8_t state;
+    uint8_t slot_state;
 } _hrt_tcb_t;
 
 /* HARDRT_APP_MAX_TASKS is the number of creatable application tasks.
@@ -77,6 +94,8 @@ uint16_t hrt__test_task_slice_left(int id);
 int hrt__test_ready_occurrences(int id);
 int hrt__test_task_ready_queued(int id);
 uint32_t hrt__test_ready_prio_mask(void);
+int hrt__test_task_state(int id);
+int hrt__test_slot_state(int id);
 #endif
 
 #ifdef __cplusplus

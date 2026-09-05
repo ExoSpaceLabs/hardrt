@@ -1,5 +1,5 @@
 /* Verifies application creation limits, private idle reservation, task-create
- * transactionality, min stack rejection, and default attributes. */
+ * transactionality, stack ownership, min stack rejection, and default attributes. */
 #include "test_common.h"
 #include "hardrt_kernel.h"
 
@@ -27,7 +27,10 @@ static void test_max_tasks_enforced(void) {
 
     _hrt_tcb_t *idle = hrt__tcb(HRT_IDLE_ID);
     T_ASSERT_TRUE(idle != NULL, "private idle TCB exists");
-    T_ASSERT_EQ_INT(HRT_READY, idle->state, "private idle TCB is reserved before app creation");
+    T_ASSERT_EQ_INT(HRT_SLOT_USED, idle->slot_state,
+                    "private idle TCB slot is reserved before app creation");
+    T_ASSERT_EQ_INT(HRT_READY, idle->state,
+                    "private idle task begins READY before scheduler start");
 
     int created = 0;
     static uint32_t stacks[HARDRT_APP_MAX_TASKS][1024];
@@ -44,7 +47,10 @@ static void test_max_tasks_enforced(void) {
     static uint32_t extra[1024];
     const int fail_tid = hrt_create_task(dummy_task, NULL, extra, 1024, &a);
     T_ASSERT_TRUE(fail_tid < 0, "creating beyond application capacity should fail");
-    T_ASSERT_EQ_INT(HRT_READY, idle->state, "failed extra creation leaves private idle reserved");
+    T_ASSERT_EQ_INT(HRT_SLOT_USED, idle->slot_state,
+                    "failed extra creation leaves private idle slot reserved");
+    T_ASSERT_EQ_INT(HRT_READY, idle->state,
+                    "failed extra creation leaves private idle task READY");
 }
 
 static void test_waiter_capacity_excludes_idle(void) {
@@ -67,8 +73,10 @@ static void test_invalid_priority_is_transactional(void) {
     hrt_task_attr_t bad = {.priority = (hrt_prio_t)HARDRT_MAX_PRIO, .timeslice = 3};
     const int bad_id = hrt_create_task(dummy_task, NULL, bad_stack, 1024, &bad);
     T_ASSERT_TRUE(bad_id < 0, "priority outside configured range is rejected");
-    T_ASSERT_EQ_INT(HRT_UNUSED, hrt__tcb(0)->state,
-                    "invalid priority leaves first application slot UNUSED");
+    T_ASSERT_EQ_INT(HRT_SLOT_UNUSED, hrt__tcb(0)->slot_state,
+                    "invalid priority leaves first application slot unused");
+    T_ASSERT_EQ_INT(-1, hrt__test_task_state(0),
+                    "unused slot has no meaningful task execution state");
     T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(0),
                     "invalid priority leaves no READY membership");
 
@@ -89,13 +97,44 @@ static void test_prepare_failure_is_transactional(void) {
 #endif
     const int fail_id = hrt_create_task(dummy_task, NULL, fail_stack, 1024, &a);
     T_ASSERT_TRUE(fail_id < 0, "port context preparation failure is returned by task creation");
-    T_ASSERT_EQ_INT(HRT_UNUSED, hrt__tcb(0)->state,
-                    "context preparation failure rolls task slot back to UNUSED");
+    T_ASSERT_EQ_INT(HRT_SLOT_UNUSED, hrt__tcb(0)->slot_state,
+                    "context preparation failure rolls task slot back to unused");
+    T_ASSERT_EQ_INT(-1, hrt__test_task_state(0),
+                    "rolled-back unused slot exposes no task state");
     T_ASSERT_EQ_INT(0, hrt__test_ready_occurrences(0),
                     "context preparation failure never publishes READY membership");
 
     const int good_id = hrt_create_task(dummy_task, NULL, good_stack, 1024, &a);
     T_ASSERT_EQ_INT(0, good_id, "slot is reusable immediately after context preparation failure");
+}
+
+static void test_live_stack_reuse_rejected(void) {
+    hrt__test_reset_scheduler_state();
+    hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 3};
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init should return 0 (stack ownership)");
+
+    static uint32_t shared_stack[1024];
+    hrt_task_attr_t a = {.priority = HRT_PRIO0, .timeslice = 3};
+
+    const int first = hrt_create_task(dummy_task, NULL, shared_stack, 1024, &a);
+    T_ASSERT_EQ_INT(0, first, "first task acquires shared stack");
+    T_ASSERT_EQ_INT(HRT_SLOT_USED, hrt__test_slot_state(first),
+                    "created task owns a used TCB slot");
+    T_ASSERT_EQ_INT(HRT_READY, hrt__test_task_state(first),
+                    "created task is READY before scheduler start");
+
+    const int exact_reuse = hrt_create_task(dummy_task, NULL, shared_stack, 1024, &a);
+    T_ASSERT_TRUE(exact_reuse < 0,
+                  "second live task cannot reuse the exact same stack");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(first),
+                    "failed duplicate stack create does not duplicate READY membership");
+
+    const int partial_reuse = hrt_create_task(dummy_task, NULL,
+                                              shared_stack + 64, 960, &a);
+    T_ASSERT_TRUE(partial_reuse < 0,
+                  "second live task cannot use a partially overlapping stack");
+    T_ASSERT_EQ_INT(HRT_READY, hrt__test_task_state(first),
+                    "stack-overlap rejection leaves original task intact");
 }
 
 static void test_min_stack_rejected(void) {
@@ -183,6 +222,7 @@ static const test_case_t CASES[] = {
     {"IPC: waiter capacity excludes private idle", test_waiter_capacity_excludes_idle},
     {"Create: invalid priority rolls back transaction", test_invalid_priority_is_transactional},
     {"Create: port context failure rolls back transaction", test_prepare_failure_is_transactional},
+    {"Create: live task stack reuse is rejected", test_live_stack_reuse_rejected},
     {"Create: minimum stack rejected", test_min_stack_rejected},
     {"Create: attr==NULL preserves cooperative default slice", test_attr_null_inherits_default_slice_zero},
 };

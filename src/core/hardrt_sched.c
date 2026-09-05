@@ -22,7 +22,7 @@ void hrt__tick_isr(void) {
     } else {
         _hrt_tcb_t *ct = hrt__tcb(cur);
         if (!ct) hrt_error(ERR_TCB_NULL);
-        if (ct && ct->state == HRT_READY) {
+        if (ct && ct->state == HRT_RUNNING) {
             const hrt_policy_t pol = hrt__policy();
             if ((pol == HRT_SCHED_RR || pol == HRT_SCHED_PRIORITY_RR) &&
                 ct->timeslice_cfg > 0u && ct->slice_left > 0u) {
