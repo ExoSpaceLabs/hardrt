@@ -10,7 +10,7 @@ static int receiver_id = -1;
 static void receiver(void *) {
     for (;;) {
         uint32_t matched = 0u;
-        if (signals.wait_any(0x1u, matched, true) == 0) {
+        if (signals.wait_all(0x3u, matched, true) == 0) {
             std::printf("[event-cpp] matched=0x%08x\n", static_cast<unsigned>(matched));
         }
 
@@ -21,14 +21,23 @@ static void receiver(void *) {
     }
 }
 
-static void producer(void *) {
+static void producer_a(void *) {
     uint32_t sequence = 1u;
     for (;;) {
         hardrt::Task::sleep(200u);
+        hardrt::TaskNotification::notify(receiver_id,
+                                         sequence++,
+                                         hardrt::NotifyAction::overwrite);
         signals.set(0x1u);
+        hardrt::Task::sleep(400u);
+    }
+}
 
-        hardrt::Task::sleep(100u);
-        hardrt::TaskNotification::notify(receiver_id, sequence++, HRT_NOTIFY_OVERWRITE);
+static void producer_b(void *) {
+    for (;;) {
+        hardrt::Task::sleep(300u);
+        signals.set(0x2u);
+        hardrt::Task::sleep(300u);
     }
 }
 
@@ -50,8 +59,12 @@ int main() {
         std::puts("create receiver failed");
         return 1;
     }
-    if (hardrt::Task::create<2048, 2>(producer, nullptr, HRT_PRIO2, 3u) < 0) {
-        std::puts("create producer failed");
+    if (hardrt::Task::create<2048, 2>(producer_a, nullptr, HRT_PRIO2, 3u) < 0) {
+        std::puts("create producer A failed");
+        return 1;
+    }
+    if (hardrt::Task::create<2048, 3>(producer_b, nullptr, HRT_PRIO2, 3u) < 0) {
+        std::puts("create producer B failed");
         return 1;
     }
 
