@@ -79,9 +79,6 @@ void hrt_port_sp_valid(const uintptr_t sp) {
     if (ram_hi - ram_lo < 2u * frame_bytes) hrt_error(ERR_INVALID_RAM_RANGE);
     if (sp < ram_lo + frame_bytes || sp > ram_hi - frame_bytes) hrt_error(ERR_STACK_RANGE);
 #if HARDRT_CORTEXM_HAS_FPU
-    /* Saving EXC_RETURN adds one word to the software frame. The stored TCB SP
-       can therefore be 4-byte aligned even though exception return restores
-       the architectural PSP to the original 8-byte-aligned frame boundary. */
     if (sp & 0x3u) hrt_error(ERR_STACK_ALIGN);
 #else
     if (sp & 0x7u) hrt_error(ERR_STACK_ALIGN);
@@ -112,9 +109,6 @@ static inline void _set_BASEPRI(uint32_t v) {
 }
 
 static inline void _raise_BASEPRI(uint32_t v) {
-    /* BASEPRI_MAX applies the new threshold only when doing so increases
-       masking. This preserves any stricter mask already established by the
-       caller/interrupt context instead of accidentally weakening it. */
     __asm volatile ("msr BASEPRI_MAX, %0" :: "r"(v) : "memory");
 }
 
@@ -131,9 +125,6 @@ static inline void _hrt_port_barrier(void) {
 
 #if HARDRT_CORTEXM_HAS_FPU
 static void _configure_fpu_context(void) {
-    /* The qualified hard-float Cortex-M contract owns task FP context.
-       Enable CP10/CP11 and architectural automatic/lazy FP state preservation
-       before the first HardRT task can execute floating-point instructions. */
     SCB_CPACR |= SCB_CPACR_CP10_CP11_FULL;
     _hrt_port_barrier();
     FPU_FPCCR |= FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk;
@@ -198,9 +189,6 @@ void hrt__init_idle_task(void) {
     *(--sp) = 0;
     *(--sp) = 0;
 #if HARDRT_CORTEXM_HAS_FPU
-    /* Software EXC_RETURN accompanies r4-r11 in FP-capable builds. New/idle
-       contexts start basic and become extended only after Thread mode actually
-       activates the FPU. */
     *(--sp) = 0xFFFFFFFDu;
 #endif
     for (int i = 0; i < 8; ++i) *(--sp) = 0;
@@ -222,37 +210,23 @@ void hrt__pend_context_switch(void) {
 }
 
 void hrt_port_yield_to_scheduler(void) {
-    /* Core task-context paths follow a two-stage contract:
-     *   hrt__pend_context_switch();
-     *   hrt_port_yield_to_scheduler();
-     *
-     * On POSIX the first stage sets a pending flag and the second performs the
-     * host context hop. On Cortex-M, however, the first stage already requests
-     * PendSV and the DSB/ISB in _pend_pendsv() makes that request visible at the
-     * architectural exception boundary. Re-pending here can make a task that
-     * has just resumed from a blocking call enter PendSV a second time before
-     * the API returns. The task-context yield stage therefore has no additional
-     * hardware action on Cortex-M.
-     */
 }
 
 int hrt_port_configure_tick(const uint32_t tick_hz) {
     g_systick_ctrl = 0u;
 
-    /* PendSV is part of the scheduler mechanism in both tick modes. Merely
-       configure its priority here; hrt_init() must not enable interrupts. */
     SCB->SHPR[10] = 0xF0;
 
     if (hrt__cfg_tick_src() == HRT_TICK_EXTERNAL) return 0;
     if (tick_hz == 0u) return -1;
 
-    const uint32_t core_hz = hrt_port_get_core_hz();
+    uint32_t core_hz = hrt__cfg_core_hz();
+    if (core_hz == 0u) core_hz = hrt_port_get_core_hz();
     if (core_hz == 0u) return -1;
 
     const uint32_t counts = core_hz / tick_hz;
     if (counts == 0u || counts > 0x01000000u) return -1;
 
-    /* Configure but deliberately leave SysTick disabled until hrt_start(). */
     SysTick->CTRL = 0u;
     SysTick->LOAD = counts - 1u;
     SysTick->VAL = 0u;
@@ -295,9 +269,6 @@ int hrt_port_prepare_task_stack(const int id, void (*tramp)(void),
 }
 
 void hrt_port_enter_scheduler(void) {
-    /* Scheduler startup is one ordered boundary: no task or tick can run until
-       FP context support is configured, the first PendSV is pending, and the
-       selected periodic tick is armed. */
     __asm volatile ("cpsid i");
 #if HARDRT_CORTEXM_HAS_FPU
     _configure_fpu_context();
