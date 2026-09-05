@@ -4,7 +4,7 @@ HardRT documents its public API directly in headers under `inc/` and the C++ wra
 
 ## Where the docs live
 - Public C API: declarations in `inc/`
-- Public C++ wrapper: declarations in `cpp/hardrtpp.hpp`
+- Public C++ wrapper: declarations in `cpp/hardrtpp.hpp` and companion wrapper headers under `cpp/`
 - Feature guides and behavioral notes: `docs/`
 - Internal/static helpers in `.c` files are intentionally not documented unless promoted to public API
 - Tests and examples are not part of the generated API docs
@@ -16,6 +16,8 @@ At this point the documented public surface includes:
 - semaphores
 - mutexes
 - queues
+- event flags
+- task notifications
 - optional C++ wrappers for the same primitives
 
 When one of these changes, the corresponding docs under `docs/` should be updated in the same branch.
@@ -52,3 +54,4 @@ Then open `docs/html/index.html`.
 - Semaphores: `docs/SEMAPHORES.md`
 - Mutexes: `docs/MUTEXES.md`
 - Queues: `docs/QUEUES.md`
+- Event flags and task notifications: `docs/EVENTS_NOTIFICATIONS.md`
