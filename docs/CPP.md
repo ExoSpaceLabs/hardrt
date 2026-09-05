@@ -20,6 +20,7 @@ Downstream CMake projects link `HardRT::hardrtpp` when the package was built and
 - `hardrt::Mutex`
 - `hardrt::QueueRef<T>`
 - `hardrt::StaticQueue<T, Capacity>`
+- `hardrt::Queue<T, Capacity>` as a convenience alias for `StaticQueue<T, Capacity>`
 
 ## System management
 
@@ -43,6 +44,7 @@ int main() {
     const auto ticks = hardrt::System::tick_now();
     const auto now_ms = hardrt::System::now_ms();
     const char *version = hardrt::System::version_string();
+    const char *version_alias = hardrt::System::version();
     const auto packed_version = hardrt::System::version_u32();
     const char *port = hardrt::System::port_name();
     const int port_id = hardrt::System::port_id();
@@ -50,6 +52,7 @@ int main() {
     (void)ticks;
     (void)now_ms;
     (void)version;
+    (void)version_alias;
     (void)packed_version;
     (void)port;
     (void)port_id;
@@ -57,6 +60,8 @@ int main() {
     hardrt::System::start();
 }
 ```
+
+`System::version_string()` is the canonical explicit name. `System::version()` is a forwarding convenience alias and returns the same string.
 
 `System::init()` forwards directly to `hrt_init()`. Full lifecycle/configuration validation remains tracked separately by issue #33.
 
@@ -121,7 +126,7 @@ hardrt::Task::yield();
 hardrt::Task::delete_current();
 ```
 
-`Task::sleep(0)` currently sleeps for one tick because it forwards to `hrt_sleep(0)`. Use `Task::yield()` for an immediate voluntary scheduling point.
+`Task::sleep(0)` forwards to the v0.5 C contract: it yields immediately without entering the sleep queue or waiting for a tick. Positive sub-tick values still round up to one tick.
 
 A dispatched task is internally `RUNNING`. A voluntary scheduling point returns it to `READY` as appropriate. A task that returns from its entry function, or calls `Task::delete_current()`, enters `EXITED`; its TCB slot remains occupied until later reclamation.
 
@@ -185,9 +190,21 @@ void init_queue() {
 
 ## Queues with wrapper-owned storage
 
+The explicit canonical type remains `StaticQueue<T, Capacity>`:
+
 ```cpp
 hardrt::StaticQueue<int, 8> queue;
+```
 
+The shorter `Queue<T, Capacity>` name is exactly the same type:
+
+```cpp
+hardrt::Queue<int, 8> queue_alias;
+```
+
+Both spellings own the fixed-capacity storage inside the wrapper object.
+
+```cpp
 void producer(void *arg) {
     (void)arg;
     const int value = 42;
@@ -201,14 +218,14 @@ void consumer(void *arg) {
 }
 ```
 
-Both queue wrappers expose:
+All queue wrappers expose:
 
 - `send` and `recv`;
 - `try_send` and `try_recv`;
 - `try_send_from_isr` and `try_recv_from_isr`;
 - `native_handle`.
 
-The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>` and `StaticQueue<T, Capacity>` therefore enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
+The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>`, `StaticQueue<T, Capacity>`, and therefore the `Queue<T, Capacity>` alias enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
 
 ## Allocation and ownership
 
