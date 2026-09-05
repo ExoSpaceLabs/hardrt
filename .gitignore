@@ -14,13 +14,16 @@ CMakeUserPresets.json
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
+#  and can be added to the global gitignore or merged with your project. For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #cmake-build-*
 
 # Legacy local hardware qualification / profiling evidence.
 .qualification/
 
-# Development hardware qualification / profiling evidence.
-# Keep it in the visible validation tree while ignoring timestamped development runs.
+# Hardware qualification evidence is generated from a frozen source SHA and
+# must not mutate that qualified source tree. Development runs and locally
+# retained release packages stay untracked; the selected release package is
+# published as a GitHub Release artifact from the qualified vX.Y.Z tag.
 validation/stm32/20*/
+validation/stm32/releases/
