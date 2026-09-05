@@ -138,6 +138,7 @@ configure_file(
 
 set(LIBRARY_SOURCES
   "${SOURCE_CORE_DIR}/hardrt_core.c"
+  "${SOURCE_CORE_DIR}/hardrt_lifecycle.c"
   "${SOURCE_CORE_DIR}/hardrt_sched.c"
   "${SOURCE_CORE_DIR}/hardrt_time.c"
   "${SOURCE_CORE_DIR}/hardrt_version.c"
@@ -145,6 +146,14 @@ set(LIBRARY_SOURCES
   "${SOURCE_CORE_DIR}/hardrt_sem.c"
   "${SOURCE_CORE_DIR}/hardrt_queue.c"
   "${SOURCE_CORE_DIR}/hardrt_mutex.c"
+)
+
+# Keep the existing scheduler implementation private while a small lifecycle
+# facade owns the public checked init/create/start API. This avoids duplicating
+# scheduler internals merely to add state/configuration validation.
+set_source_files_properties("${SOURCE_CORE_DIR}/hardrt_core.c" PROPERTIES
+  COMPILE_DEFINITIONS
+    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl"
 )
 
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
