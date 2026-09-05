@@ -65,6 +65,7 @@ jobs:
           EXTRACT_ALL = NO
           GENERATE_HTML = YES
           GENERATE_LATEX = NO
+          HAVE_DOT = NO
           OUTPUT_DIRECTORY = $RUNNER_TEMP/doxygen
           WARN_AS_ERROR = YES
           WARN_IF_UNDOCUMENTED = NO
