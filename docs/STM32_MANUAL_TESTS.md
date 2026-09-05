@@ -14,11 +14,7 @@ Run from the repository root:
 
 The runner owns build, flash, OpenOCD/GDB sessions, result parsing, evidence capture, and final console/report summaries.
 
-Do not manually chain the individual build/GDB helper scripts for normal qualification. They remain implementation details used by the runner and CI.
-
 ### Modes
-
-The mode logic is symmetric:
 
 ```text
 (no --only)       = functional + benchmark
@@ -26,32 +22,19 @@ The mode logic is symmetric:
 --only benchmark  = benchmark only
 ```
 
-The board probe always runs first and is reported separately.
+The board probe always runs first and is reported separately. The default unfiltered run is the release-candidate path; filtered modes are development shortcuts.
 
-Examples:
+For release-style evidence use:
 
 ```bash
-# Complete hardware run. This is the release-candidate path.
 ./scripts/stm32_manual_test_full.sh \
   /path/to/STM32CubeH7 \
   --clean-builds
-
-# Repeat only behavior/functional validation.
-./scripts/stm32_manual_test_full.sh \
-  /path/to/STM32CubeH7 \
-  --only functional
-
-# Run every hardware benchmark, each as its own build/flash image.
-./scripts/stm32_manual_test_full.sh \
-  /path/to/STM32CubeH7 \
-  --only benchmark
 ```
-
-The default run is genuinely complete. Filtered modes exist only to avoid repeating unrelated hardware work during development.
 
 ## Evidence location
 
-By default each run is written visibly under:
+Development runs are written under:
 
 ```text
 validation/stm32/<UTC>_<short-sha>/
@@ -59,183 +42,60 @@ validation/stm32/<UTC>_<short-sha>/
 
 Timestamped development directories are gitignored.
 
-For a release candidate, run the default full mode from the exact final SHA. After inspection, manually copy or move the chosen run to:
+For a release candidate, run from the exact final SHA and manually retain the selected passing package under:
 
 ```text
 validation/stm32/releases/vX.Y.Z/
 ```
 
-There is no separate qualification wrapper and no promotion script.
-
 ## Common requirements
 
-- ARM GNU bare-metal toolchain (`arm-none-eabi-*`).
-- OpenOCD with ST-Link support.
-- `gdb-multiarch` or `arm-none-eabi-gdb`.
-- local STM32CubeH7 checkout supplied to the runner.
-- physical NUCLEO-H755ZI-Q connected through ST-Link.
+- ARM GNU bare-metal toolchain (`arm-none-eabi-*`)
+- OpenOCD with ST-Link support
+- `gdb-multiarch` or `arm-none-eabi-gdb`
+- local STM32CubeH7 checkout supplied to the runner
+- physical NUCLEO-H755ZI-Q connected through ST-Link
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 9 contracts
+## Functional validation: 11 contracts
 
-The board probe is a prerequisite, not a functional feature. After it passes, functional mode runs nine behavior contracts:
+The board probe is a prerequisite, not a functional feature. Functional mode runs **11 behavior contracts**:
 
-1. **C blinky**
-   - both task counters advance;
-   - `g_example_error == 0`;
-   - both LEDs visibly toggle;
-   - their configured relative rates are visibly distinguishable.
+1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
+2. **C++ blinky**: same contract through the C++ API.
+3. **Scheduler counter demo**: task-entry/post-sleep counters advance and no example error is recorded.
+4. **Fixed-priority hardware preemption**: real TIM2 ISR wakes a blocked higher-priority task before interrupted lower-priority Thread mode continues.
+5. **Global RR mixed-priority contract**: one global FIFO ignores task priority; ISR wake reports no immediate priority-based steal and the woken task joins the global tail.
+6. **`PRIORITY_RR` retained-quantum preemption**: higher-priority preemption preserves interrupted-task queue precedence and unused quantum.
+7. **Semaphore hardware contract**: counting/saturation behavior plus real ISR wake and scheduler-aware `need_switch`.
+8. **Queue hardware contract**: FIFO/full/empty plus ISR send/receive wake paths, payload preservation and priority handoff.
+9. **Mutex hardware contract**: ownership, blocking, direct handoff and immediate execution of a newly eligible higher-priority owner.
+10. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep duration/tick accounting are correct and awakened higher-priority work preempts.
+11. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
-2. **C++ blinky**
-   - same acceptance principle as the C example using the C++ API.
+Timing measurements are deliberately not counted as functional contracts.
 
-3. **Scheduler counter demo**
-   - both task-entry and post-sleep counters advance;
-   - no example error.
+### External tick startup rule
 
-4. **Fixed-priority hardware preemption**
-   - TIM2 ISR wakes a blocked higher-priority task while lower-priority Thread mode is CPU-bound;
-   - high-priority task must execute before interrupted low-priority Thread mode continues.
+The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started.
 
-5. **`PRIORITY_RR` retained-quantum preemption**
-   - required trace is:
-
-   ```text
-   low-A -> IRQ -> high -> low-A -> low-B
-   ```
-
-   - asynchronous higher-priority preemption must not rotate low-A behind same-priority low-B;
-   - low-A must retain its unused RR quantum.
-
-6. **Semaphore hardware contract**
-   - counting/saturation behavior;
-   - actual TIM2 ISR wakes blocked higher-priority waiter;
-   - `need_switch` reports scheduler-preemption need correctly.
-
-7. **Queue hardware contract**
-   - FIFO/full/empty behavior;
-   - ISR send wakes blocked receiver with payload preserved;
-   - ISR receive wakes blocked sender with payload/order preserved;
-   - priority handoff occurs before lower-priority continuation.
-
-8. **Mutex hardware contract**
-   - ownership and blocking;
-   - direct ownership handoff on unlock;
-   - higher-priority new owner executes before lower-priority unlocker continues;
-   - mutex remains task-context only.
-
-9. **External tick hardware contract**
-   - SysTick disabled for the test;
-   - TIM2 periodic IRQ drives `hrt_tick_from_isr()`;
-   - sleep duration matches requested tick count;
-   - awakened high-priority task preempts lower-priority work;
-   - `hrt_now_ms()` and kernel tick agree for the 1 kHz fixture.
-
-Timing measurements are deliberately not counted as functional contracts. Adding a new benchmark must not make the kernel appear to have acquired another functional feature.
+The H755 validator therefore configures TIM2 before scheduler start but enables the timer from the first dispatched application task. This prevents an external tick from observing the pre-dispatch `g_current == -1` state.
 
 ## Hardware benchmark suite: 22 images
 
-Benchmark mode currently runs 22 independent hardware images: four latency/switch benchmarks and an 18-point tick/sleeper scaling matrix.
+Benchmark mode runs four latency/switch images plus an 18-point tick/sleeper scaling matrix.
 
 ### Latency and switch benchmarks
 
-1. **`event_to_task`**
-   - composite software ISR point to awakened task continuation;
-   - application-side DWT timestamps;
-   - HardRT timing profile remains `none`.
+1. `event_to_task`
+2. `sem_isr_ready`
+3. `ready_to_task`
+4. `scheduler_decision` / PendSV decomposition
 
-2. **`sem_isr_ready`**
-   - ISR semaphore call entry to waiter READY transition;
-   - built with the private `ipc` timing profile and the required hook header.
+Each benchmark is a separate build/flash image. Timing instrumentation is compile-time selected and normal HardRT builds remain uninstrumented.
 
-3. **`ready_to_task`**
-   - waiter READY transition to continuation after blocked `hrt_sem_take()` returns;
-   - built with the private `ipc` timing profile and waiter-READY hook;
-   - includes ISR tail, scheduler/context switch, exception return and blocked API continuation;
-   - not a pure context-switch microbenchmark.
-
-4. **`scheduler_decision` / PendSV decomposition**
-   - built as a diagnostic-only timing image;
-   - uses the unmodified production `hrt__schedule()`;
-   - substitutes a measurement-only PendSV handler in that benchmark image.
-
-The runner calls `scripts/build-lib-stm32h7xx-dwt-timing.sh` separately for each of these four images. Instrumentation is therefore a property of the benchmark image, not of normal HardRT builds.
-
-### Tick/sleeper scaling matrix
-
-The matrix was introduced to measure the former per-tick full-TCB sleeper scan and is intentionally retained after its replacement. It therefore provides a direct before/after contract instead of changing the benchmark whenever the implementation changes.
-
-Benchmark mode rebuilds HardRT at application-task capacities:
-
-```text
-8, 16, 32
-```
-
-For each capacity it runs six workloads:
-
-| Scenario | Worker state / expiry pattern |
-|---|---|
-| `none` | all worker slots occupied by semaphore-blocked tasks; no sleepers |
-| `one_sleep` | one worker sleeps beyond the 10k-sample window; remaining workers block |
-| `all_sleep` | all workers sleep beyond the sample window |
-| `one_expiry` | one worker expires every tick and sleeps again for one tick |
-| `simultaneous` | every worker expires on the same tick and sleeps again for one tick |
-| `staggered` | worker `i` sleeps for `i+1` ticks, distributing expiries |
-
-This produces **18 separate measurements**. Each image reports min/avg/max for:
-
-```c
-hrt_tick_from_isr();
-```
-
-The measurement points are application-side DWT reads immediately before and after that production API call. These images use:
-
-```text
-HARDRT_TIMING_PROFILE=none
-```
-
-so the tick scaling result contains no kernel timing hooks and no replacement tick implementation.
-
-TIM2 is one-shot for this matrix. After the measured tick call returns, the ISR wakes a lower-priority benchmark driver outside the measured interval. Any worker made READY by the tick has higher priority than that driver, so the worker runs and returns to its intended sleep/block state before the driver rearms the next sample. This ensures each sample begins from the workload state named by the scenario.
-
-The task capacity is a real HardRT build configuration, not merely a runtime worker count. `HARDRT_CFG_MAX_TASKS=8`, `16`, or `32` is passed when the library is built, then the benchmark fills all application slots with one driver/setup task and the remaining workers.
-
-`worker_wakes` is included in the debugger result as a workload sanity check. For the 10,000-sample one-shot fixture:
-
-- non-expiry scenarios must report zero wake completions;
-- `one_expiry` should report 9,999 completed wakes;
-- `simultaneous` should report `worker_count * 9,999`;
-- `staggered` should match the sum of the individual periodic wake counts.
-
-#### Baseline and current expectation
-
-The pre-delta baseline is physical run `20260903T212538Z_4ab7709a`, which completed **9/9 functional PASS and 22/22 benchmark PASS**. Average tick cycles were:
-
-| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
-|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 902 | 1050 | 1124 | 1367 | 2282 | 1700 |
-| 16 | 1389 | 1506 | 1761 | 1808 | 3990 | 2435 |
-| 32 | 1954 | 2597 | 3455 | 2952 | 8676 | 4413 |
-
-That baseline demonstrated material O(N) work even without expiries. At 32 application tasks, `none` averaged 1954 cycles and `all_sleep` averaged 3455 cycles.
-
-Current `develop` replaces the scan with a static intrusive delta sleeper queue. Its intended bounds are:
-
-```text
-hrt_sleep() insertion : O(N), bounded task-context work
-no-expiry tick        : O(1)
-K expiries            : O(K)
-sleeper metadata      : O(N), static
-```
-
-Equal deadlines use zero-delta followers and preserve FIFO wake order. Relative deltas make sleeper ordering independent of 32-bit absolute tick wrap. Hosted tests cover equal deadlines, staggered ordering, repeated sleep/wake cycles, and wraparound ordering.
-
-The post-change hardware run must use this **same 18-point matrix**. Acceptance is not a magic target cycle count: `none`, `one_sleep`, and `all_sleep` should stop growing materially with configured capacity, while `simultaneous` may still grow with the number of tasks that actually wake. Until that physical A/B exists, the documented delta-queue improvement is a structural bound, not a claimed measured speedup.
-
-### Scheduler/PendSV benchmark output
-
-The scheduler benchmark reports:
+The scheduler diagnostic reports:
 
 ```text
 pendsv_save
@@ -247,119 +107,96 @@ derived_software_other_avg
 derived_return_and_api_avg
 ```
 
-Meaning:
+These values are engineering measurements, not WCET proofs.
 
-- `pendsv_save`: PendSV software entry to outgoing `r4-r11` save completion;
-- `scheduler_decision`: direct execution time of `hrt__schedule()`;
-- `pendsv_restore`: scheduler return to incoming `r4-r11`/PSP restoration;
-- `pendsv_software`: PendSV software entry to incoming context restored;
-- `pendsv_to_task`: PendSV entry to awakened task continuation after the blocked API returns.
+### Tick/sleeper scaling matrix
 
-The derived values are engineering decompositions, not WCET bounds.
+HardRT is rebuilt at application-task capacities:
 
-The diagnostic handler performs extra DWT reads and stores. In particular, `pendsv_to_task - pendsv_software` includes diagnostic bookkeeping as well as exception return/API continuation and must not be interpreted as pure production exception-return latency.
+```text
+8, 16, 32
+```
+
+For each capacity the runner measures:
+
+| Scenario | Worker state / expiry pattern |
+|---|---|
+| `none` | all worker slots occupied by non-sleeping blocked tasks |
+| `one_sleep` | one long sleeper, remaining workers blocked |
+| `all_sleep` | all workers sleeping beyond the sample window |
+| `one_expiry` | one worker expires every tick |
+| `simultaneous` | all workers expire together every tick |
+| `staggered` | worker `i` sleeps `i+1` ticks |
+
+This produces 18 measurements around the production call:
+
+```c
+hrt_tick_from_isr();
+```
+
+Current `develop` uses a static intrusive delta sleeper queue with bounded O(N) task-context insertion, O(1) no-expiry tick work and O(K) work for K expiries.
+
+## Accepted current development run
+
+The scheduler/lifecycle hardening baseline was accepted on:
+
+```text
+Run ID:       20260905T134123Z_80f2042f
+HardRT SHA:   80f2042f2c64053a9ea888666474c5dad5f72797
+Tracked tree: clean
+STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
+Samples:      10000 per benchmark image
+```
+
+Result:
+
+```text
+Board probe:           PASS
+Functional contracts:  11 / 11 PASS
+Hardware benchmarks:   22 / 22 PASS
+Overall:                PASS
+```
+
+Current latency/switch values:
+
+| Metric | Min cycles | Avg cycles | Max cycles |
+|---|---:|---:|---:|
+| `event_to_task` | 1407 | 1457 | 2001 |
+| `sem_isr_ready` | 300 | 319 | 327 |
+| `ready_to_task` | 922 | 1001 | 1597 |
+| `scheduler_decision` | 365 | 380 | 411 |
+
+Current tick/sleeper averages:
+
+| app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 543 | 544 | 592 | 830 | 1893 | 1171 |
+| 16 | 543 | 544 | 592 | 830 | 3181 | 1290 |
+| 32 | 504 | 552 | 555 | 837 | 5249 | 1331 |
+
+The no-expiry cases no longer scale materially with configured task capacity. Actual expiry work remains proportional to the number of workers that wake.
+
+This is accepted **development evidence**. It is not the final v0.5.0 release qualification because later release-facing changes will move the exact SHA.
 
 ## Human LED acceptance
 
-The LED check is intentionally qualitative. A human is not expected to confirm exact 100 ms, 250 ms, or 500 ms periods by eye.
-
-PASS means:
-
-- both LEDs visibly toggle;
-- the relative speed difference is obvious and consistent with configuration, for example one is roughly twice as fast.
-
-Automated task counters prove progress. DWT benchmarks provide quantitative timing evidence.
-
-## 2026-09-03 duplicate-PendSV regression proof
-
-The benchmark instrumentation was introduced to explain why the Cortex-M composite response had risen from roughly the old 1.2k-cycle region to roughly 1.7k cycles.
-
-Before the port fix (`261e4a8e`):
-
-```text
-event_to_task avg       = 1705 cycles
-sem_isr_ready avg       =  328 cycles
-ready_to_task avg       = 1336 cycles
-scheduler_decision avg  =  331 cycles
-pendsv_software avg     =  430 cycles
-pendsv_to_task avg      = 1359 cycles
-derived return/API tail =  929 cycles
-```
-
-The Cortex-M port implemented both halves of the task-context reschedule contract by calling `_pend_pendsv()`:
-
-```c
-hrt__pend_context_switch();
-hrt_port_yield_to_scheduler();
-```
-
-That created a redundant second PendSV request on task-context blocking/yield paths.
-
-Commit:
-
-```text
-12f745673f8ce5069903eab314b38e43591b0899
-perf(hardrt): avoid duplicate Cortex-M PendSV request
-```
-
-removed the second Cortex-M hardware request while leaving POSIX behavior and scheduler semantics unchanged.
-
-After the fix (`12f74567`):
-
-```text
-event_to_task avg       = 1183 cycles
-sem_isr_ready avg       =  334 cycles
-ready_to_task avg       =  780 cycles
-scheduler_decision avg  =  329 cycles
-pendsv_software avg     =  429 cycles
-pendsv_to_task avg      =  680 cycles
-derived return/API tail =  251 cycles
-```
-
-At the time of that A/B run, the then-current 13-check hardware matrix passed completely. The runner has since been reorganized so timing cases are reported as benchmarks rather than functional features; the underlying hardware evidence is unchanged.
-
-The A/B result is important: scheduler decision and PendSV software cost stayed essentially unchanged while the excess tail dropped by roughly 678 cycles. This is direct evidence that the dominant regression came from the redundant reschedule request rather than the scheduler-correctness logic itself.
-
-Full evidence and interpretation are recorded in `docs/STATISTICS.md`.
-
-## Fixed-priority and PRIORITY_RR acceptance detail
-
-The preemption fixture exports a trace and result variables so pass/fail is deterministic under GDB.
-
-Strict priority requires the beginning of the sequence to represent:
-
-```text
-low-A -> IRQ -> high -> resumed low-A
-```
-
-The `PRIORITY_RR` case requires:
-
-```text
-low-A -> IRQ -> high -> low-A -> low-B
-```
-
-with:
-
-```text
-expected_remaining = configured_quantum - (irq_tick - a_start_tick)
-observed_remaining = b_first_tick - a_resume_tick
-```
-
-One tick of boundary tolerance is accepted. A higher-priority asynchronous interruption must preserve the interrupted task's same-priority queue precedence and remaining quantum.
+The LED check is qualitative. PASS means both LEDs visibly toggle and their relative configured rates are distinguishable. Automated counters prove task progress; DWT benchmarks provide quantitative timing evidence.
 
 ## Result summary
 
-The runner prints and writes:
+The runner records:
 
-- HardRT SHA and tracked source state;
-- STM32CubeH7 SHA/state;
-- board probe result;
-- functional `N/9 PASS`, failure and not-run counts;
-- benchmark `N/22 PASS`, failure and not-run counts;
-- benchmark timing min/avg/max;
-- scheduler/PendSV breakdown;
-- tick/sleeper matrix scenario/capacity/wake metadata;
-- PRIORITY_RR trace/quantum evidence;
-- raw build/OpenOCD/GDB log locations.
+- HardRT SHA and tracked source state
+- STM32CubeH7 SHA/state
+- board probe result
+- functional `N/11 PASS`, failure and not-run counts
+- benchmark `N/22 PASS`, failure and not-run counts
+- timing min/avg/max
+- scheduler/PendSV breakdown
+- tick/sleeper scenario/capacity/wake metadata
+- RR trace/quantum evidence
+- raw build/OpenOCD/GDB log locations
 
-A default full run is the only run mode intended to become complete release evidence. Filtered modes are development shortcuts.
+A default full run is the only run mode intended to become complete release evidence.
+
+See [QUALIFICATION.md](QUALIFICATION.md) for the release-evidence policy and [STATISTICS.md](STATISTICS.md) for current/historical timing interpretation.
