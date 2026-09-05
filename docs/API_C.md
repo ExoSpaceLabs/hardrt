@@ -130,13 +130,13 @@ uint32_t hrt_now_ms(void);
 
 ### `hrt_sleep`
 
-Milliseconds are converted with ceiling division:
+For positive durations, milliseconds are converted with ceiling division:
 
 ```text
 ceil(ms * tick_hz / 1000)
 ```
 
-Positive durations shorter than one tick sleep for one tick. In v0.4.0 and the current implementation, `hrt_sleep(0)` also sleeps for one tick rather than behaving like `hrt_yield()`.
+Positive durations shorter than one tick therefore sleep for one tick. `hrt_sleep(0)` is different: it performs an immediate scheduling point with the same rotation semantics as `hrt_yield()`, does not enter `SLEEP`, does not join the sleep queue, and does not require a tick before the caller can run again.
 
 ### `hrt_yield`
 
