@@ -108,6 +108,34 @@ No operation allocates, recurses, or uses a hidden worker. Event-set cost is bou
 
 The notification feature adds one `uint32_t` plus two byte-sized state flags to the private TCB. Natural alignment may round the actual structure growth; exact `sizeof(_hrt_tcb_t)` is compiler/ABI dependent and is verified in hosted builds rather than exposed as an ABI guarantee.
 
+## STM32 timing qualification
+
+Functional correctness alone is not sufficient evidence for the ISR-facing event path because `hrt_event_set_from_isr()` performs a bounded waiter scan while interrupts are masked by the HardRT critical-section contract. v0.5.0 therefore profiles the new primitives on the STM32H755 CM7 using the same DWT cycle counter used by the existing scheduler and tick qualification.
+
+The signal timing images use direct application-side DWT timestamps with `HARDRT_TIMING_PROFILE=none`. The production event and notification implementations are not rebuilt with timing hooks.
+
+Required measurements are:
+
+- `event_isr_to_task`: `hrt_event_set_from_isr()` entry to a higher-priority event waiter continuing after `hrt_event_wait()`;
+- `notify_isr_to_task`: `hrt_task_notify_from_isr()` entry to a higher-priority notification waiter continuing after `hrt_task_notify_wait()`;
+- `event_scan_none`: event-set ISR call cost with no matching waiter;
+- `event_scan_one`: event-set ISR call cost with exactly one matching waiter;
+- `event_scan_all`: event-set ISR call cost with all registered waiters matching;
+- `notify_isr_no_wake`: notification ISR call cost when no task becomes READY;
+- `notify_isr_wake`: notification ISR call cost when the blocked target becomes READY.
+
+The three event-scan cases are executed with **1, 8, 16 and 32 actual registered waiters**. The firmware verifies expected wake counts on every sample series, so a low cycle count cannot pass merely because the requested waiters failed to participate.
+
+The dedicated runner is:
+
+```bash
+scripts/stm32_signal_profile.sh /path/to/STM32CubeH7
+```
+
+It executes 16 profiling images at 10,000 samples per image by default and writes timestamped evidence under `validation/stm32/`. The legacy `event_to_task` timing case remains semaphore-backed for historical comparability and must not be interpreted as an event-flags measurement.
+
+The measurements are engineering timing characterizations, not formal WCET proofs. For release claims, the maximum observed event-set critical-section cost must be reported together with the waiter count and wake fan-out that produced it.
+
 ## Timeout scope
 
 Generic IPC timeout work is intentionally separate. Once the common timeout contract lands, event and notification timeout variants can use the same wrap-safe tick/deadline machinery rather than embedding a second timeout model here.
