@@ -1,8 +1,8 @@
-# C++17 Wrapper (`hardrtpp.hpp`)
+# C++17 wrappers
 
-HardRT provides an optional header-only C++17 wrapper in `cpp/hardrtpp.hpp`. The wrapper is a thin layer over the C API and does not add dynamic allocation, exceptions, or a separate scheduler model.
+HardRT provides optional header-only C++17 wrappers. The core wrapper is in `cpp/hardrtpp.hpp`; v0.5 event flags and task notifications are provided by the companion `cpp/hardrt_signals.hpp` header. The wrappers are thin layers over the C API and do not add dynamic allocation, exceptions, or a separate scheduler model.
 
-Enable it with:
+Enable them with:
 
 ```bash
 cmake -S . -B build \
@@ -14,6 +14,8 @@ Downstream CMake projects link `HardRT::hardrtpp` when the package was built and
 
 ## Available wrapper types
 
+From `<hardrtpp.hpp>`:
+
 - `hardrt::System`
 - `hardrt::Task`
 - `hardrt::Semaphore`
@@ -21,6 +23,14 @@ Downstream CMake projects link `HardRT::hardrtpp` when the package was built and
 - `hardrt::QueueRef<T>`
 - `hardrt::StaticQueue<T, Capacity>`
 - `hardrt::Queue<T, Capacity>` as a convenience alias for `StaticQueue<T, Capacity>`
+
+From `<hardrt_signals.hpp>`:
+
+- `hardrt::EventFlags`
+- `hardrt::NotifyAction`
+- `hardrt::TaskNotification`
+
+The signal header is intentionally separate rather than being silently pulled into `hardrtpp.hpp`; applications include only the wrapper surface they use.
 
 ## System management
 
@@ -63,7 +73,7 @@ int main() {
 
 `System::version_string()` is the canonical explicit name. `System::version()` is a forwarding convenience alias and returns the same string.
 
-`System::init()` forwards directly to `hrt_init()`. Full lifecycle/configuration validation remains tracked separately by issue #33.
+`System::init()` forwards directly to `hrt_init()` and therefore uses the same lifecycle and configuration validation as the C API.
 
 ## Task management
 
@@ -227,9 +237,72 @@ All queue wrappers expose:
 
 The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>`, `StaticQueue<T, Capacity>`, and therefore the `Queue<T, Capacity>` alias enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
 
+## Event flags
+
+Include the companion signal wrapper:
+
+```cpp
+#include <hardrt_signals.hpp>
+
+hardrt::EventFlags events;
+```
+
+`EventFlags` owns one statically stored `hrt_event_t`; construction calls `hrt_event_init()` and performs no allocation.
+
+Available operations are:
+
+```cpp
+uint32_t matched = 0;
+int need_switch = 0;
+
+events.bits();
+events.set(0x01u);
+events.set_from_isr(0x02u, need_switch);
+events.clear(0x01u);
+events.clear_from_isr(0x02u);
+events.wait_any(0x03u, matched, true);   // true = clear matched bits on exit
+events.wait_all(0x03u, matched, false);  // retain bits
+```
+
+`wait_any()` and `wait_all()` preserve the C semantics documented in [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md), including the common post-set snapshot used when one update satisfies multiple waiters.
+
+`native_handle()` returns the underlying `hrt_event_t*` (or const pointer on a const wrapper) for integration with code that needs the C API directly.
+
+## Task notifications
+
+Task notifications do not own a separate object; the notification word lives in each application task's private TCB. The C++ interface is therefore a static helper:
+
+```cpp
+#include <hardrt_signals.hpp>
+
+int need_switch = 0;
+uint32_t value = 0;
+
+hardrt::TaskNotification::notify(
+    task_id, 0x10u, hardrt::NotifyAction::set_bits);
+
+hardrt::TaskNotification::notify_from_isr(
+    task_id, 0x20u, hardrt::NotifyAction::overwrite, need_switch);
+
+hardrt::TaskNotification::wait(value, 0u, 0xFFu);
+const uint32_t count = hardrt::TaskNotification::take(false);
+```
+
+`NotifyAction` maps directly to the four C producer actions:
+
+- `NotifyAction::set_bits`
+- `NotifyAction::overwrite`
+- `NotifyAction::no_overwrite`
+- `NotifyAction::increment`
+
+`TaskNotification::notify()` defaults to `overwrite`. `notify_from_isr()` requires an explicit action and reports the scheduler decision through `need_switch`. `wait()` accepts clear-on-entry and clear-on-exit masks. `take(false)` decrements a counting notification by one; `take(true)` clears the count.
+
+The wrapper intentionally does not add timeout behavior, heap state, or hidden synchronization. See [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md) for the complete contract.
+
 ## Allocation and ownership
 
 - No wrapper performs heap allocation.
-- Task and queue storage remains static or caller-owned.
+- Task, queue, and event storage remains static or caller-owned.
 - Wrapper objects must outlive every task that accesses their underlying C object.
 - Pointer-valued queue elements do not transfer ownership; the application remains responsible for the pointed-to storage.
+- Task notifications are kernel-owned per-task state and require no application-side storage object.
