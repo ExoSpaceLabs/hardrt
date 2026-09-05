@@ -165,7 +165,13 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 /** Enter the scheduler. */
 void hrt_start(void);
 
-/** Sleep the calling task for at least the specified milliseconds. */
+/**
+ * Sleep the calling task for at least the specified milliseconds.
+ *
+ * A zero duration is an immediate scheduling point equivalent to hrt_yield()
+ * and does not enter the sleep queue or wait for a tick. Positive durations
+ * shorter than one tick round up to one tick.
+ */
 void hrt_sleep(uint32_t ms);
 
 /** Voluntarily yield the processor. */
