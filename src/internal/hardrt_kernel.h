@@ -96,6 +96,8 @@ int hrt__test_task_ready_queued(int id);
 uint32_t hrt__test_ready_prio_mask(void);
 int hrt__test_task_state(int id);
 int hrt__test_slot_state(int id);
+void hrt__test_reset_kernel_state(void);
+int hrt__test_kernel_state(void);
 #endif
 
 #ifdef __cplusplus
