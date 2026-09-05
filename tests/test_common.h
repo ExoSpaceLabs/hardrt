@@ -44,7 +44,8 @@ int hrt__test_slot_state(int id);
 extern int g_failures;
 
 #define T_ASSERT_TRUE(cond, msg) do { \
-    if (!(cond)) { \
+    const int _hrt_cond = !!(cond); \
+    if (!_hrt_cond) { \
         ++g_failures; \
         printf(ANSI_RED "FAIL" ANSI_RST ": %s\n", msg); \
         printf("  ASSERT: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
@@ -54,34 +55,40 @@ extern int g_failures;
 } while(0)
 
 #define T_ASSERT_EQ_INT(exp, got, msg) do { \
-    if ((exp) != (got)) { \
+    const int _hrt_exp = (int)(exp); \
+    const int _hrt_got = (int)(got); \
+    if (_hrt_exp != _hrt_got) { \
         ++g_failures; \
         printf(ANSI_RED "FAIL" ANSI_RST ": %s\n", msg); \
-        printf("  expected %d, got %d (%s:%d)\n", (int)(exp), (int)(got), __FILE__, __LINE__); \
+        printf("  expected %d, got %d (%s:%d)\n", _hrt_exp, _hrt_got, __FILE__, __LINE__); \
     } else { \
-        printf(ANSI_GRN "PASS" ANSI_RST ": %s (=%d)\n", msg, (int)(got)); \
+        printf(ANSI_GRN "PASS" ANSI_RST ": %s (=%d)\n", msg, _hrt_got); \
     } \
 } while(0)
 
 #define T_ASSERT_STREQ(exp, got, msg) do { \
-    if (strcmp((exp),(got)) != 0) { \
+    const char *const _hrt_exp = (exp); \
+    const char *const _hrt_got = (got); \
+    if (strcmp(_hrt_exp, _hrt_got) != 0) { \
         ++g_failures; \
         printf(ANSI_RED "FAIL" ANSI_RST ": %s\n", msg); \
-        printf("  expected '%s', got '%s' (%s:%d)\n", (exp), (got), __FILE__, __LINE__); \
+        printf("  expected '%s', got '%s' (%s:%d)\n", _hrt_exp, _hrt_got, __FILE__, __LINE__); \
     } else { \
-        printf(ANSI_GRN "PASS" ANSI_RST ": %s ('%s')\n", msg, (got)); \
+        printf(ANSI_GRN "PASS" ANSI_RST ": %s ('%s')\n", msg, _hrt_got); \
     } \
 } while(0)
 
 void hrt__inc_tick(void);
 
 #define T_ASSERT_EQ_UINT(exp, got, msg) do { \
-    if ((exp) != (got)) { \
+    const unsigned _hrt_exp = (unsigned)(exp); \
+    const unsigned _hrt_got = (unsigned)(got); \
+    if (_hrt_exp != _hrt_got) { \
         ++g_failures; \
         printf(ANSI_RED "FAIL" ANSI_RST ": %s\n", msg); \
-        printf("  expected %u, got %u (%s:%d)\n", (unsigned)(exp), (unsigned)(got), __FILE__, __LINE__); \
+        printf("  expected %u, got %u (%s:%d)\n", _hrt_exp, _hrt_got, __FILE__, __LINE__); \
     } else { \
-        printf(ANSI_GRN "PASS" ANSI_RST ": %s (=%u)\n", msg, (unsigned)(got)); \
+        printf(ANSI_GRN "PASS" ANSI_RST ": %s (=%u)\n", msg, _hrt_got); \
     } \
 } while(0)
 
