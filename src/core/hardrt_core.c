@@ -614,7 +614,14 @@ void hrt_task_delete(void) {
 
     hrt_port_crit_enter();
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t != NULL && t->slot_state == HRT_SLOT_USED) t->state = HRT_EXITED;
+#if HARDRT_DEBUG == 1
+    if (t == NULL || t->state != HRT_RUNNING) {
+        hrt_port_crit_exit();
+        hrt_error(ERR_INVALID_TASK);
+        return;
+    }
+#endif
+    t->state = HRT_EXITED;
     hrt_port_crit_exit();
 
     hrt__pend_context_switch();
@@ -655,7 +662,7 @@ void hrt_set_policy(const hrt_policy_t p) {
     const int cur = g_current;
     if (cur >= 0 && cur < HARDRT_MAX_TASKS && cur != HRT_IDLE_ID) {
         _hrt_tcb_t *t = hrt__tcb(cur);
-        if (t != NULL && t->slot_state == HRT_SLOT_USED && t->state == HRT_RUNNING) {
+        if (t != NULL && t->state == HRT_RUNNING) {
             t->slice_left = t->timeslice_cfg;
             /* A policy change is a scheduling point. The current task joins
              * the target policy at the tail when scheduler entry occurs. */
@@ -763,8 +770,14 @@ void hrt__prepare_current_for_reschedule(void) {
     }
 
     _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t == NULL || t->slot_state != HRT_SLOT_USED ||
-        t->state != HRT_RUNNING || ready_is_queued(cur)) {
+#if HARDRT_DEBUG == 1
+    if (t == NULL) {
+        hrt_error(ERR_TCB_NULL);
+        g_explicit_yield = 0u;
+        return;
+    }
+#endif
+    if (t->state != HRT_RUNNING || ready_is_queued(cur)) {
         g_explicit_yield = 0u;
         return;
     }
@@ -795,8 +808,13 @@ int hrt__should_preempt_after_wake(const int woken_id) {
 
     const _hrt_tcb_t *woken = hrt__tcb(woken_id);
     const _hrt_tcb_t *current = hrt__tcb(cur);
-    if (woken == NULL || current == NULL) return 0;
-    if (current->slot_state != HRT_SLOT_USED || current->state != HRT_RUNNING) return 1;
+#if HARDRT_DEBUG == 1
+    if (woken == NULL || current == NULL) {
+        hrt_error(ERR_TCB_NULL);
+        return 0;
+    }
+#endif
+    if (current->state != HRT_RUNNING) return 1;
 
     if (g_policy == HRT_SCHED_PRIORITY || g_policy == HRT_SCHED_PRIORITY_RR) {
         return woken->prio < current->prio;
@@ -872,22 +890,18 @@ void hrt__set_current(const int id) {
     const int previous = g_current;
     if (previous == HRT_IDLE_ID && previous != id) {
         _hrt_tcb_t *idle = hrt__tcb(HRT_IDLE_ID);
-        if (idle != NULL && idle->slot_state == HRT_SLOT_USED &&
-            idle->state == HRT_RUNNING) {
+        if (idle != NULL && idle->state == HRT_RUNNING) {
             idle->state = HRT_READY;
         }
     }
 
     _hrt_tcb_t *next = hrt__tcb(id);
-    if (next == NULL || next->slot_state != HRT_SLOT_USED) {
+#if HARDRT_DEBUG == 1
+    if (next == NULL || (next->state != HRT_READY && next->state != HRT_RUNNING)) {
         hrt_error(ERR_INVALID_TASK);
         return;
     }
-    if (next->state != HRT_READY && next->state != HRT_RUNNING) {
-        hrt_error(ERR_INVALID_TASK);
-        return;
-    }
-
+#endif
     next->state = HRT_RUNNING;
     g_current = id;
 }
