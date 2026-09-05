@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C)
+project(${LIB_NAME} VERSION 0.5.0 LANGUAGES C)
 
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
