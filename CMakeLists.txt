@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C CXX ASM)
+project(${LIB_NAME} VERSION 0.4.0 LANGUAGES C)
 
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
@@ -12,7 +12,16 @@ option(HARDRT_BUILD_TESTS "Build test suite (POSIX port)" ON)
 option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)" OFF)
 option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
-option(HARDRT_SANITIZE "Enable ASan/UBSan on POSIX tests" OFF)
+option(HARDRT_SANITIZE "Enable UBSan on POSIX tests" OFF)
+
+# Enable optional languages only when the selected build actually needs them.
+# This keeps the C kernel build independent of a host/cross C++ compiler.
+if(HARDRT_ENABLE_CPP)
+  enable_language(CXX)
+endif()
+if(HARDRT_PORT STREQUAL "cortex_m")
+  enable_language(ASM)
+endif()
 
 # Private timing instrumentation. `none` is the production/default profile and
 # produces no timing hook code. Additional profiles are enabled only after their
@@ -47,20 +56,6 @@ math(EXPR _HRT_CFG_PRIO "${HARDRT_CFG_MAX_PRIO}")
 math(EXPR _HRT_CFG_TASKS "${HARDRT_CFG_MAX_TASKS}")
 math(EXPR HARDRT_TOTAL_TASKS_VALUE "${HARDRT_CFG_MAX_TASKS} + 1")
 
-message("-- Definitions --")
-message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
-message("-- HARDRT_STRICT                : ${HARDRT_STRICT}")
-message("-- HARDRT_SANITIZE              : ${HARDRT_SANITIZE}")
-message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
-message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
-message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
-message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR}")
-message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
-message("-- HARDRT_TIMING_PROFILE        : ${HARDRT_TIMING_PROFILE}")
-message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} application tasks")
-message("-- HARDRT_TOTAL_TASKS           : ${HARDRT_TOTAL_TASKS_VALUE} including private idle")
-message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
-
 if(_HRT_CFG_PRIO LESS 1 OR _HRT_CFG_PRIO GREATER 12)
   message(FATAL_ERROR "HARDRT_CFG_MAX_PRIO must be between 1 and 12 (inclusive). Got ${HARDRT_CFG_MAX_PRIO}.")
 endif()
@@ -90,20 +85,40 @@ if(HARDRT_PORT STREQUAL "null")
 elseif(HARDRT_PORT STREQUAL "posix")
   set(HARDRT_PORT_ID 1)
   if(HARDRT_STALL_ON_ERROR)
-    message(WARNING "HRT_STALL_ON_ERROR is disabled for posix port.")
-    set(HRT_STALL_ON_ERROR 0)
+    message(STATUS "HARDRT_STALL_ON_ERROR is unsupported on POSIX; forcing effective value OFF")
+    set(HARDRT_STALL_ON_ERROR OFF CACHE BOOL
+        "Stall kernel on fatal error (debug / embedded use)" FORCE)
   endif()
 elseif(HARDRT_PORT STREQUAL "cortex_m")
   set(HARDRT_PORT_ID 2)
 else()
-  set(HARDRT_PORT_ID -1)
+  message(FATAL_ERROR "Unknown HARDRT_PORT=${HARDRT_PORT}; supported values are null|posix|cortex_m")
 endif()
 
-if(HARDRT_DEBUG)
-  set(HARDRT_DEBUG 1)
+if(HARDRT_STALL_ON_ERROR)
+  set(HARDRT_STALL_ON_ERROR_VALUE 1)
 else()
-  set(HARDRT_DEBUG 0)
+  set(HARDRT_STALL_ON_ERROR_VALUE 0)
 endif()
+if(HARDRT_DEBUG)
+  set(HARDRT_DEBUG_VALUE 1)
+else()
+  set(HARDRT_DEBUG_VALUE 0)
+endif()
+
+message("-- Definitions --")
+message("-- HARDRT_PORT                  : ${HARDRT_PORT}")
+message("-- HARDRT_STRICT                : ${HARDRT_STRICT}")
+message("-- HARDRT_SANITIZE              : ${HARDRT_SANITIZE}")
+message("-- HARDRT_ENABLE_CPP            : ${HARDRT_ENABLE_CPP}")
+message("-- HARDRT_BUILD_EXAMPLES        : ${HARDRT_BUILD_EXAMPLES}")
+message("-- HARDRT_BUILD_TESTS           : ${HARDRT_BUILD_TESTS}")
+message("-- HARDRT_STALL_ON_ERROR        : ${HARDRT_STALL_ON_ERROR} (effective)")
+message("-- HARDRT_DEBUG                 : ${HARDRT_DEBUG}")
+message("-- HARDRT_TIMING_PROFILE        : ${HARDRT_TIMING_PROFILE}")
+message("-- HARDRT_CFG_MAX_TASKS         : ${HARDRT_CFG_MAX_TASKS} application tasks")
+message("-- HARDRT_TOTAL_TASKS           : ${HARDRT_TOTAL_TASKS_VALUE} including private idle")
+message("-- HARDRT_CFG_MAX_PRIO          : ${HARDRT_CFG_MAX_PRIO}")
 
 configure_file(
   "${CMAKE_SOURCE_DIR}/inc/hardrt_port.h.in"
@@ -139,8 +154,8 @@ target_compile_definitions(${LIB_NAME}
   HARDRT_APP_MAX_TASKS=${HARDRT_CFG_MAX_TASKS}
   HARDRT_MAX_TASKS=${HARDRT_TOTAL_TASKS_VALUE}
   HARDRT_MAX_PRIO=${HARDRT_CFG_MAX_PRIO}
-  HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR}
-  HARDRT_DEBUG=${HARDRT_DEBUG}
+  HARDRT_STALL_ON_ERROR=${HARDRT_STALL_ON_ERROR_VALUE}
+  HARDRT_DEBUG=${HARDRT_DEBUG_VALUE}
 )
 
 target_include_directories(${LIB_NAME}
@@ -180,8 +195,6 @@ elseif(HARDRT_PORT STREQUAL "cortex_m")
     "${SOURCE_PORT_DIR}/cortex_m/hardfault_diag.c"
     "${SOURCE_PORT_DIR}/cortex_m/hrt_pendsv_handler.s"
   )
-else()
-  message(FATAL_ERROR "Unknown HARDRT_PORT=${HARDRT_PORT}")
 endif()
 
 if(HARDRT_ENABLE_CPP)
