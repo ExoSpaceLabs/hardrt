@@ -106,7 +106,37 @@ ISR producers use the existing kernel critical-section contract. `need_switch` i
 
 No operation allocates, recurses, or uses a hidden worker. Event-set cost is bounded by configured application task capacity. Task-notification producer cost is O(1).
 
-The notification feature adds one `uint32_t` plus two byte-sized state flags to the private TCB. Natural alignment may round the actual structure growth; exact `sizeof(_hrt_tcb_t)` is compiler/ABI dependent and is verified in hosted builds rather than exposed as an ABI guarantee.
+For the default `HARDRT_APP_MAX_TASKS=8` configuration:
+
+- `sizeof(hrt_event_t) == 96` bytes;
+- the Cortex-M private TCB grows from 32 bytes to 40 bytes because the notification value/state adds six source bytes and natural 32-bit alignment rounds the structure growth to eight bytes per application task;
+- the signaling primitives add no dedicated task stack and no dynamic allocation;
+- call-frame stack use is compiler/optimization dependent, but the implementation is bounded and non-recursive.
+
+The hosted test suite prints the configured event-object and private-TCB sizes and explicitly verifies the default event-object size. A test-only registration hook fills every configured event waiter slot to prove bounded waiter storage at exact capacity without creating a fake production API.
+
+Exact `_hrt_tcb_t` layout remains private and is not an ABI guarantee.
+
+## Deterministic stress and invariants
+
+The v0.5 hosted suite includes a bounded deterministic signal-stress group. It uses seed `0x00C0FFEE` and executes 1,024 mixed event/notification operations under each scheduler policy:
+
+- `HRT_SCHED_PRIORITY`;
+- `HRT_SCHED_RR`;
+- `HRT_SCHED_PRIORITY_RR`.
+
+The sequence mixes wait-any/wait-all, retained and clear-on-exit event bits, all notification producer actions, ISR-facing producer APIs, and external tick activity. Invariant checks verify after every relevant transition that:
+
+- READY tasks appear exactly once in the ready queues;
+- RUNNING/BLOCKED/SLEEP/EXITED tasks do not appear in a ready queue;
+- event waiter queue membership and `wait_active[]` agree with each other;
+- every registered event waiter is actually BLOCKED;
+- a task marked as waiting on a notification is BLOCKED;
+- unused slots have no ready or event-waiter membership.
+
+Dedicated deterministic cases additionally cover notification clear-on-entry/clear-on-exit, a 64-increment burst, saturation, READY/RUNNING/EXITED target states, simultaneous event + notification wakeups, and same-priority publication order.
+
+The tests run in normal POSIX CI and in a strict-warning + UBSan job. Task return/deletion **while blocked** is not an applicable public-API state in v0.5: HardRT only exposes deletion of the current task, and a blocked task cannot execute its own return/delete path. External deletion of another blocked task would require a future lifecycle API and its own waiter-unlink contract.
 
 ## STM32 timing qualification
 
@@ -126,13 +156,13 @@ Required measurements are:
 
 The three event-scan cases are executed with **1, 8, 16 and 32 actual registered waiters**. The firmware verifies expected wake counts on every sample series, so a low cycle count cannot pass merely because the requested waiters failed to participate.
 
-The dedicated runner is:
+All physical validation and profiling is executed by the single qualification runner:
 
 ```bash
-scripts/stm32_signal_profile.sh /path/to/STM32CubeH7
+scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7
 ```
 
-It executes 16 profiling images at 10,000 samples per image by default and writes timestamped evidence under `validation/stm32/`. The legacy `event_to_task` timing case remains semaphore-backed for historical comparability and must not be interpreted as an event-flags measurement.
+A full run executes the 13 functional contracts plus all 38 benchmark images, including the 16 signal-profile images, at 10,000 samples per benchmark image by default. The legacy `event_to_task` timing case remains semaphore-backed for historical comparability and must not be interpreted as an event-flags measurement.
 
 The measurements are engineering timing characterizations, not formal WCET proofs. For release claims, the maximum observed event-set critical-section cost must be reported together with the waiter count and wake fan-out that produced it.
 
