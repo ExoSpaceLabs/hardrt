@@ -4,7 +4,7 @@ HardRT's hosted Linux/POSIX tests are automatic. STM32H755 runtime validation re
 
 The supported manual target is currently NUCLEO-H755ZI-Q, exercising CM7 while CM4 is held in reset.
 
-## One human-facing runner
+## Functional and baseline timing runner
 
 Run from the repository root:
 
@@ -22,7 +22,7 @@ The runner owns build, flash, OpenOCD/GDB sessions, result parsing, evidence cap
 --only benchmark  = benchmark only
 ```
 
-The board probe always runs first and is reported separately. The default unfiltered run is the release-candidate path; filtered modes are development shortcuts.
+The board probe always runs first and is reported separately. The default unfiltered run is the release-candidate path for the established functional and scheduler/tick timing suite; filtered modes are development shortcuts.
 
 For release-style evidence use:
 
@@ -32,17 +32,38 @@ For release-style evidence use:
   --clean-builds
 ```
 
+## v0.5 event / notification profiling runner
+
+The event-flags and task-notification feature has a separate timing runner so the historical 22-image scheduler/tick benchmark set remains directly comparable across releases:
+
+```bash
+./scripts/stm32_signal_profile.sh /path/to/STM32CubeH7
+```
+
+It executes **16 additional timing images**:
+
+- `event_isr_to_task`;
+- `notify_isr_to_task`;
+- `event_scan_none`, `event_scan_one`, and `event_scan_all`, each with 1, 8, 16, and 32 actual registered event waiters;
+- `notify_isr_no_wake`;
+- `notify_isr_wake`.
+
+The signal images use direct DWT timestamps with `HARDRT_TIMING_PROFILE=none`. Event scan results also validate the expected cumulative wake count so the measured path is tied to the requested fan-out.
+
+For a v0.5.0 release candidate, complete release evidence consists of a passing full functional/baseline-timing run **and** a passing signal-profiling run from the same frozen SHA.
+
 ## Evidence location
 
 Development runs are written under:
 
 ```text
 validation/stm32/<UTC>_<short-sha>/
+validation/stm32/<UTC>_<short-sha>_signals/
 ```
 
 Timestamped development directories are gitignored.
 
-For a release candidate, run from the exact final SHA and manually retain the selected passing package under:
+For a release candidate, run from the exact final SHA and manually retain the selected passing packages under:
 
 ```text
 validation/stm32/releases/vX.Y.Z/
@@ -84,9 +105,9 @@ The application owns an external tick source. It must not begin routing periodic
 
 The H755 validator therefore configures TIM2 before scheduler start but enables the timer from the first dispatched application task. This prevents an external tick from observing the pre-dispatch `g_current == -1` state.
 
-## Hardware benchmark suite: 22 images
+## Established hardware benchmark suite: 22 images
 
-Benchmark mode runs four latency/switch images plus an 18-point tick/sleeper scaling matrix.
+Baseline benchmark mode runs four latency/switch images plus an 18-point tick/sleeper scaling matrix.
 
 ### Latency and switch benchmarks
 
@@ -94,6 +115,8 @@ Benchmark mode runs four latency/switch images plus an 18-point tick/sleeper sca
 2. `sem_isr_ready`
 3. `ready_to_task`
 4. `scheduler_decision` / PendSV decomposition
+
+`event_to_task` is a legacy semaphore-backed composite ISR-to-task measurement. Its name predates the v0.5 event-flags API and it is retained unchanged for historical timing comparisons.
 
 Each benchmark is a separate build/flash image. Timing instrumentation is compile-time selected and normal HardRT builds remain uninstrumented.
 
@@ -138,13 +161,13 @@ hrt_tick_from_isr();
 
 Current `develop` uses a static intrusive delta sleeper queue with bounded O(N) task-context insertion, O(1) no-expiry tick work and O(K) work for K expiries.
 
-## Accepted scheduler/lifecycle development baseline
+## Accepted event / notification functional development baseline
 
-The scheduler/lifecycle hardening baseline was accepted on:
+The first complete 13-contract hardware run for the event/notification branch was accepted on:
 
 ```text
-Run ID:       20260905T134123Z_80f2042f
-HardRT SHA:   80f2042f2c64053a9ea888666474c5dad5f72797
+Run ID:       20260905T152422Z_6f4ef62a
+HardRT SHA:   6f4ef62a8a0d13a0632537c6e65a50cbd315d656
 Tracked tree: clean
 STM32CubeH7:  f5c0b7a2b1f6eb26fde150f72edb2d7deb647066 / clean
 Samples:      10000 per benchmark image
@@ -154,33 +177,43 @@ Result:
 
 ```text
 Board probe:           PASS
-Functional contracts:  11 / 11 PASS
+Functional contracts:  13 / 13 PASS
 Hardware benchmarks:   22 / 22 PASS
 Overall:                PASS
 ```
 
-That run predates the event-flags and task-notification hardware contracts. It remains valid evidence for the scheduler/lifecycle baseline, but it is **not** evidence for functional contracts 10 and 11 in the current 13-contract matrix.
+The event-flags and task-notification hardware contracts both passed. This establishes physical functional behavior for the new primitives at that development SHA. It does **not** include the later dedicated signal timing matrix, which must be run on the profiling-enabled head.
 
-Current latency/switch values from that baseline:
+Latency/switch values from that run:
 
 | Metric | Min cycles | Avg cycles | Max cycles |
 |---|---:|---:|---:|
-| `event_to_task` | 1407 | 1457 | 2001 |
-| `sem_isr_ready` | 300 | 319 | 327 |
-| `ready_to_task` | 922 | 1001 | 1597 |
-| `scheduler_decision` | 365 | 380 | 411 |
+| `event_to_task` | 1427 | 1470 | 2024 |
+| `sem_isr_ready` | 355 | 355 | 356 |
+| `ready_to_task` | 948 | 996 | 1590 |
+| `scheduler_decision` | 356 | 363 | 394 |
 
-Current tick/sleeper averages from that baseline:
+Scheduler/PendSV average decomposition from that run:
+
+```text
+pendsv_save=99 cycles
+scheduler_decision=363 cycles
+pendsv_restore=70 cycles
+pendsv_software=579 cycles
+pendsv_to_task=797 cycles
+```
+
+Tick/sleeper averages from that run:
 
 | app tasks | none | one_sleep | all_sleep | one_expiry | simultaneous | staggered |
 |---:|---:|---:|---:|---:|---:|---:|
-| 8 | 543 | 544 | 592 | 830 | 1893 | 1171 |
-| 16 | 543 | 544 | 592 | 830 | 3181 | 1290 |
-| 32 | 504 | 552 | 555 | 837 | 5249 | 1331 |
+| 8 | 561 | 598 | 580 | 858 | 1932 | 1194 |
+| 16 | 561 | 598 | 580 | 858 | 3236 | 1315 |
+| 32 | 545 | 566 | 585 | 865 | 6155 | 1478 |
 
-The no-expiry cases no longer scale materially with configured task capacity. Actual expiry work remains proportional to the number of workers that wake.
+The no-expiry cases remain effectively independent of configured task capacity. Actual expiry work remains proportional to the number of workers that wake.
 
-This is accepted **development evidence**. It is not the final v0.5.0 release qualification because later release-facing changes move the exact SHA and the new signal contracts still require a physical-board run on the final candidate.
+This is accepted **development evidence**, not final v0.5.0 release evidence. The final release qualification must be performed on the frozen release-candidate SHA and include the 16-image signal profiling matrix.
 
 ## Human LED acceptance
 
@@ -188,19 +221,19 @@ The LED check is qualitative. PASS means both LEDs visibly toggle and their rela
 
 ## Result summary
 
-The runner records:
+The established runner records:
 
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
 - functional `N/13 PASS`, failure and not-run counts
-- benchmark `N/22 PASS`, failure and not-run counts
+- baseline benchmark `N/22 PASS`, failure and not-run counts
 - timing min/avg/max
 - scheduler/PendSV breakdown
 - tick/sleeper scenario/capacity/wake metadata
 - RR trace/quantum evidence
 - raw build/OpenOCD/GDB log locations
 
-A default full run is the only run mode intended to become complete release evidence.
+The signal profiling runner records the same source identity plus all 16 event/notification timing cases, configured event waiter count, expected wake fan-out, observed wake count, and cycle min/avg/max.
 
-See [QUALIFICATION.md](QUALIFICATION.md) for the release-evidence policy and [STATISTICS.md](STATISTICS.md) for current/historical timing interpretation.
+See [QUALIFICATION.md](QUALIFICATION.md) for the release-evidence policy, [STATISTICS.md](STATISTICS.md) for timing interpretation, and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md) for the v0.5 signal semantics and profiling contract.
