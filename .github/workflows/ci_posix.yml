@@ -33,14 +33,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build make g++ binutils
 
-      - name: Configure & build (null port contract)
+      - name: Configure & build (C-only null port contract)
         run: |
           cmake -S . -B build-null -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DHARDRT_PORT=null \
+            -DHARDRT_ENABLE_CPP=OFF \
             -DHARDRT_BUILD_TESTS=ON \
-            -DHARDRT_BUILD_EXAMPLES=OFF
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DCMAKE_CXX_COMPILER=/definitely/not/a/compiler
           cmake --build build-null --parallel
+
+          if find build-null/CMakeFiles -name CMakeCXXCompiler.cmake -print -quit | grep -q .; then
+            echo "C-only null build unexpectedly enabled the CXX language"
+            exit 1
+          fi
 
       - name: Validate timing profile isolation
         run: |
@@ -69,7 +76,7 @@ jobs:
           cmake --build build-timing-profile-consumer --parallel
           ./build-timing-profile-consumer/timing_profile_smoke
 
-      - name: Configure & build (POSIX)
+      - name: Configure & build (POSIX + C++ wrappers)
         run: |
           cmake -S . -B build-posix -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
@@ -83,12 +90,32 @@ jobs:
         run: |
           ctest -V --test-dir build-posix --output-on-failure
 
+      - name: Validate C-only POSIX and effective error policy
+        run: |
+          cmake -S . -B build-posix-c-only -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=OFF \
+            -DHARDRT_STALL_ON_ERROR=ON \
+            -DHARDRT_BUILD_TESTS=OFF \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DCMAKE_CXX_COMPILER=/definitely/not/a/compiler
+          cmake --build build-posix-c-only --parallel
+
+          grep -q '^HARDRT_STALL_ON_ERROR:BOOL=OFF$' build-posix-c-only/CMakeCache.txt
+          grep -q 'HARDRT_STALL_ON_ERROR=0' build-posix-c-only/build.ninja
+          if find build-posix-c-only/CMakeFiles -name CMakeCXXCompiler.cmake -print -quit | grep -q .; then
+            echo "C-only POSIX build unexpectedly enabled the CXX language"
+            exit 1
+          fi
+
       - name: Validate single-priority task creation
         if: matrix.os == 'ubuntu-latest'
         run: |
           cmake -S . -B build-min-prio -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=OFF \
             -DHARDRT_BUILD_TESTS=ON \
             -DHARDRT_BUILD_EXAMPLES=OFF \
             -DHARDRT_CFG_MAX_PRIO=1
@@ -141,7 +168,25 @@ jobs:
           test -f "$cube/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"
           echo "STM32CUBE_H7_ROOT=$cube" >> "$GITHUB_ENV"
 
-      - name: Configure & build (Cortex-M library, 22.04 only)
+      - name: Configure & build (Cortex-M C-only, 22.04 only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cmake -S . -B build-cortex_m-c-only -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DHARDRT_PORT=cortex_m \
+            -DHARDRT_BUILD_TESTS=OFF \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_ENABLE_CPP=OFF \
+            -DARM_NONE_EABI_GPP=/definitely/not/a/compiler \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
+          cmake --build build-cortex_m-c-only --parallel
+
+          if find build-cortex_m-c-only/CMakeFiles -name CMakeCXXCompiler.cmake -print -quit | grep -q .; then
+            echo "C-only Cortex-M build unexpectedly enabled the CXX language"
+            exit 1
+          fi
+
+      - name: Configure & build (Cortex-M + C++ wrappers, 22.04 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           cmake -S . -B build-cortex_m -G Ninja \
@@ -152,6 +197,7 @@ jobs:
             -DHARDRT_ENABLE_CPP=ON \
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
           cmake --build build-cortex_m --parallel
+          test -f build-cortex_m/CMakeFiles/*/CMakeCXXCompiler.cmake
 
       - name: Cross-build STM32H755 examples (22.04 only)
         if: matrix.os == 'ubuntu-22.04'
