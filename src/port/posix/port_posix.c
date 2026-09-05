@@ -38,6 +38,7 @@ void hrt__test_reset_scheduler_state(void) {
     g_test_stop = 0;
     g_switch_pending = 1;
     g_test_fail_next_prepare = 0;
+    hrt__test_reset_kernel_state();
 }
 void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
 unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
