@@ -57,6 +57,8 @@ extern "C" {
 #include "hardrt_sem.h"
 #include "hardrt_mutex.h"
 #include "hardrt_queue.h"
+#include "hardrt_event.h"
+#include "hardrt_notify.h"
 
 /** Task entry function signature. */
 typedef void (*hrt_task_fn)(void *);
