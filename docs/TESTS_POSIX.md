@@ -1,34 +1,22 @@
 # POSIX Test Suite
 
-This document describes the hosted test suite for HardRT v0.4.0.
+The POSIX suite validates HardRT 0.5.0 core logic and hosted scheduler integration. It is not a Cortex-M timing test.
 
-## Purpose and execution model
+## Execution model
 
 - Port: `posix`
-- Test executable: `hardrt_tests`
-- Tick source: normally `SIGALRM`
+- Main executable: `hardrt_tests`
+- Tick source: normally `SIGALRM`, with explicit external-tick tests as well
 - Task contexts: Linux/glibc `ucontext`
-- Context handoff: cooperative at HardRT scheduling points
+- Context handoff: at HardRT scheduling points
 
-The signal handler advances tick accounting and marks rescheduling pending. It does not call `swapcontext()`. A task returns control to the scheduler through sleep, yield, blocking IPC, deletion, or task return.
-
-The POSIX suite validates core logic and hosted integration. It is not a timing-accuracy test for Cortex-M.
+The signal handler advances tick accounting and requests scheduling; it does not perform `swapcontext()` directly.
 
 ## Test hooks
 
-Tests compile the library and test executable with `HARDRT_TEST_HOOKS`.
+Hosted tests build with `HARDRT_TEST_HOOKS`. Test-only hooks include scheduler stop/reset, tick fast-forward/set/get, task/slot state inspection, READY-membership inspection, idle counters, and targeted event-waiter registration/invariant helpers.
 
-Current hooks include:
-
-- `hrt__test_stop_scheduler()`
-- `hrt__test_reset_scheduler_state()`
-- `hrt__test_fast_forward_ticks(uint32_t delta)`
-- `hrt__test_idle_counter_reset()`
-- `hrt__test_idle_counter_value()`
-- `hrt__test_set_tick(uint32_t value)`
-- `hrt__test_get_tick()`
-
-These symbols are not part of a normal release build.
+These are private test facilities and are not installed public API.
 
 ## Build and run
 
@@ -40,60 +28,51 @@ cmake --build build-tests --target hardrt_tests -j
 ctest --test-dir build-tests --output-on-failure
 ```
 
-`HARDRT_BUILD_TESTS` defaults to ON, but the executable is created only when `HARDRT_PORT=posix`.
-
-The helper script also runs the suite:
-
-```bash
-./scripts/build-lib-posix.sh
-```
+The runtime test executable is created only for `HARDRT_PORT=posix`.
 
 ## Current coverage
 
-The registered test sources cover:
+The suite covers:
 
-- version, port identity, and basic initialization;
-- sleep/wake behavior and controlled scheduler shutdown;
-- same-priority yield and sleep rotation;
-- strict priority dominance;
-- cooperative versus sliced tasks within a priority class;
-- tick-rate conversion;
-- task creation limits and default attributes;
+- version/port identity and initialization/lifecycle validation;
+- task creation limits, transactional creation, runtime creation, stack-overlap rejection, EXITED-slot reclamation;
+- READY/RUNNING/slot-state invariants;
+- strict priority, true global RR, and priority-RR scheduling;
+- explicit yield and `hrt_sleep(0)` immediate scheduling-point behavior;
+- positive sleep conversion, sleeper FIFO/order, repeated sleep/wake cycles, and 32-bit tick wrap;
 - runtime policy/default-slice updates;
-- FIFO ready-queue order within a priority class;
-- tick wraparound;
-- current `sleep(0)` behavior;
-- task return;
-- semaphores, queues, mutexes, and external tick mode;
-- idle behavior and `hrt_now_ms()`.
+- semaphore, queue, mutex, and external-tick contracts;
+- queue wake policy/barging/waiter-overflow edges;
+- event wait-any/wait-all, retained/clear-on-exit bits, overlapping/multiple waiters, invalid masks, pre-set events, and repeated set/clear cycles;
+- task-notification pending-before-wait, actions, clear masks, unrelated blocking, target-state handling, bursts, saturation, EXITED/unused/invalid targets, and slot reuse;
+- simultaneous event and notification wake publication;
+- deterministic long-running signal stress under PRIORITY, global RR, and PRIORITY_RR;
+- external tick activity interleaved with synchronization stress;
+- internal invariants for task state, slot ownership, waiter membership, notification-wait state, and READY membership.
 
-The `sleep(0)` test currently verifies that `hrt_sleep(0)` delays for at least one tick. It does not treat zero as an alias for `hrt_yield()`.
+The deterministic signal stress uses a fixed seed and 1024 synchronization operations per scheduler policy. Failures record the policy/iteration and primitive-specific state instead of hanging the suite.
 
-The RR tests exercise tasks within the same priority class. They do not prove that `HRT_SCHED_RR` ignores task priorities; the current scheduler continues to select the highest non-empty priority queue.
+## Strict warnings and UBSan
 
-## Output
+The dedicated signal-stress CI job configures:
 
-Each test prints a heading, assertion results, and a suite summary. The process returns zero only when all registered cases pass.
+```text
+HARDRT_STRICT=ON
+HARDRT_SANITIZE=ON
+```
 
-## Sanitizer behavior
-
-With `HARDRT_SANITIZE=ON`, the test configuration enables UndefinedBehaviorSanitizer:
+Strict warnings include `-Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow`. UBSan is applied to the actual HardRT production library and the test executable with:
 
 ```text
 -fsanitize=undefined -fno-omit-frame-pointer
 ```
 
-AddressSanitizer is not enabled because `makecontext()` and `swapcontext()` are not compatible with the intended ASan setup.
+AddressSanitizer is intentionally excluded because of the POSIX `ucontext` execution model.
+
+`hardrt_tests` also has a CTest timeout so a broken synchronization test becomes a bounded CI failure rather than an immortal runner.
 
 ## What a passing suite demonstrates
 
-A passing run provides evidence that, on the tested Linux/glibc environment:
+On the tested Linux/glibc environment, a passing suite provides evidence that the registered lifecycle, scheduler, time, synchronization, event/notification, and invariant contracts hold without detected UBSan errors in the strict stress configuration.
 
-- core tick and millisecond conversion behave as asserted by the tests;
-- sleep, wake, block, and ready-queue transitions complete without detected test failures;
-- same-priority FIFO and slice behavior matches the registered cases;
-- synchronization primitives integrate with the hosted scheduler;
-- no context switch is performed directly in the SIGALRM handler;
-- test-only scheduler shutdown remains deterministic.
-
-It does not establish Cortex-M timing bounds, portability to another libc, global priority-independent round-robin semantics, or absence of defects outside the covered cases.
+It does not establish Cortex-M timing bounds, portability to every libc/Unix implementation, or absence of defects outside covered cases. Cortex-M behavior and timing require the separate physical qualification matrix.
