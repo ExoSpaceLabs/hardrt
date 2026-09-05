@@ -66,7 +66,8 @@ namespace hardrt {
 
         /**
          * @brief Put the current task to sleep for a specified duration.
-         * @param ms Duration in milliseconds. Zero currently sleeps for one tick.
+         * @param ms Duration in milliseconds. Zero yields immediately without
+         *           entering the sleep queue; positive sub-tick values round up.
          */
         static void sleep(uint32_t ms) {
             hrt_sleep(ms);
