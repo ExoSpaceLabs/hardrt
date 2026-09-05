@@ -1,0 +1,72 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags: [ '*.*.*' ]
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install documentation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc g++ python3 doxygen
+
+      - name: Configure generated public headers
+        run: |
+          cmake -S . -B build-docs -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=ON \
+            -DHARDRT_BUILD_TESTS=OFF \
+            -DHARDRT_BUILD_EXAMPLES=OFF
+          cmake --build build-docs --parallel
+
+      - name: Compile documented C API
+        run: |
+          cc -std=c11 -Wall -Wextra -Wpedantic -Werror \
+            -Iinc -Ibuild-docs/generated \
+            -c tests/docs/api_c_smoke.c -o "$RUNNER_TEMP/api_c_smoke.o"
+
+      - name: Compile documented C++ API
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Wpedantic -Werror \
+            -Iinc -Icpp -Ibuild-docs/generated \
+            -c tests/docs/api_cpp_smoke.cpp -o "$RUNNER_TEMP/api_cpp_smoke.o"
+
+      - name: Check links paths and stale references
+        run: python3 scripts/check-docs.py
+
+      - name: Generate Doxygen without warnings
+        run: |
+          cat > "$RUNNER_TEMP/Doxyfile" <<EOF
+          PROJECT_NAME = HardRT
+          INPUT = $GITHUB_WORKSPACE/inc $GITHUB_WORKSPACE/cpp
+          RECURSIVE = YES
+          EXTRACT_ALL = NO
+          GENERATE_HTML = YES
+          GENERATE_LATEX = NO
+          OUTPUT_DIRECTORY = $RUNNER_TEMP/doxygen
+          WARN_AS_ERROR = YES
+          QUIET = YES
+          EOF
+          doxygen "$RUNNER_TEMP/Doxyfile"
