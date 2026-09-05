@@ -1,5 +1,6 @@
 #include "hardrtpp.hpp"
 #include <cstdio>
+#include <cstring>
 
 using namespace hardrt;
 
@@ -24,8 +25,13 @@ static void taskB(void *arg) {
 }
 
 int main() {
+    if (std::strcmp(System::version(), System::version_string()) != 0) {
+        std::puts("System::version alias mismatch");
+        return 1;
+    }
+
     std::printf("HardRT version: %s (0x%06X), port: %s (id=%d)\n",
-                System::version_string(), System::version_u32(),
+                System::version(), System::version_u32(),
                 System::port_name(), System::port_id());
 
     const hrt_config_t cfg = {
