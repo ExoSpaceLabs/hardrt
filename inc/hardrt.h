@@ -137,15 +137,23 @@ typedef enum {
     HRT_TICK_EXTERNAL = 1
 } hrt_tick_source_t;
 
+/** Public tick-frequency range for explicit configuration. */
+#define HRT_TICK_HZ_MIN 1u
+#define HRT_TICK_HZ_MAX UINT32_MAX
+
 /**
  * @brief Kernel initialization parameters.
  *
- * `tick_hz` must be non-zero in an explicit configuration. Port-specific
- * representability is validated during initialization.
+ * `tick_hz` must be in `[HRT_TICK_HZ_MIN, HRT_TICK_HZ_MAX]` for an explicit
+ * configuration. With a port-owned tick source, the selected port may impose a
+ * narrower representable range and `hrt_init()` reports `HRT_ERR_PORT_INIT`
+ * when the requested frequency cannot be represented.
  *
- * `core_hz` is a Cortex-M SysTick clock override. Zero asks the Cortex-M port
- * to obtain the clock through `hrt_port_get_core_hz()`. It is otherwise ignored
- * by ports/tick modes that do not require a CPU clock to represent the tick.
+ * `core_hz` is only meaningful for Cortex-M with `HRT_TICK_SYSTICK`. Zero asks
+ * the Cortex-M port to obtain the clock through `hrt_port_get_core_hz()`; a
+ * non-zero value explicitly overrides that clock for SysTick reload
+ * calculation. `core_hz` must be zero with `HRT_TICK_EXTERNAL` and on ports
+ * that do not consume a CPU core clock.
  */
 typedef struct {
     uint32_t tick_hz;
@@ -189,10 +197,12 @@ hrt_status_t hrt_init(const hrt_config_t *cfg);
 /**
  * Create a task and place it into the ready state.
  *
- * Task creation is valid only after successful hrt_init() and before
- * hrt_start(). The supplied stack must not overlap the stack of any live task.
- * An exited task no longer uses its stack and may have its occupied TCB slot
- * reclaimed by a later task creation.
+ * Task creation is valid after successful `hrt_init()`, both before and after
+ * `hrt_start()`. Runtime creation is serialized against scheduler/tick state;
+ * the new task becomes READY but does not force immediate preemption and joins
+ * scheduling at the next scheduling point. The supplied stack must not overlap
+ * the stack of any live task. An exited task no longer uses its stack and may
+ * have its occupied TCB slot reclaimed by a later task creation.
  *
  * @return Non-negative task ID on success, or -1 on validation/lifecycle error.
  */

@@ -48,10 +48,15 @@ static void test_valid_explicit_configuration(void) {
     hrt_config_t cfg = external_cfg();
     cfg.policy = HRT_SCHED_PRIORITY;
     cfg.default_slice = 0u;
-    cfg.core_hz = 64000000u; /* accepted; irrelevant to external POSIX tick */
 
     T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
                     "valid explicit configuration initializes successfully");
+    hrt__test_reset_scheduler_state();
+
+    cfg = external_cfg();
+    cfg.tick_hz = HRT_TICK_HZ_MAX;
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "external tick accepts the full documented non-zero uint32 range");
     hrt__test_reset_scheduler_state();
 }
 
@@ -72,6 +77,11 @@ static void test_invalid_configuration_values(void) {
     cfg.tick_src = (hrt_tick_source_t)99;
     T_ASSERT_EQ_INT(HRT_ERR_INVALID_CONFIG, hrt_init(&cfg),
                     "invalid tick source is rejected");
+
+    cfg = external_cfg();
+    cfg.core_hz = 64000000u;
+    T_ASSERT_EQ_INT(HRT_ERR_INVALID_CONFIG, hrt_init(&cfg),
+                    "core_hz is rejected when the selected port/tick source does not consume it");
 
     hrt__test_reset_scheduler_state();
 }
