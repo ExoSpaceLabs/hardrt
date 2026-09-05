@@ -61,6 +61,20 @@ extern "C" {
 /** Task entry function signature. */
 typedef void (*hrt_task_fn)(void *);
 
+/**
+ * @brief Public lifecycle/configuration status codes.
+ *
+ * These statuses are deliberately separate from hrt_err, which remains the
+ * lower-level kernel diagnostic channel used for invariant/API diagnostics.
+ */
+typedef enum {
+    HRT_OK = 0,
+    HRT_ERR_ALREADY_INITIALIZED = -1,
+    HRT_ERR_INVALID_CONFIG = -2,
+    HRT_ERR_INVALID_STATE = -3,
+    HRT_ERR_PORT_INIT = -4
+} hrt_status_t;
+
 /** Kernel error identifiers currently exposed for diagnostics. */
 typedef enum {
     NONE = 0,
@@ -83,7 +97,9 @@ typedef enum {
     ERR_MUTEX_RECURSIVE = 17,
     ERR_MUTEX_BAD_CTX = 18,
     ERR_TICK_SOURCE_MISMATCH = 19,
-    ERR_STACK_IN_USE = 20
+    ERR_STACK_IN_USE = 20,
+    ERR_INVALID_STATE = 21,
+    ERR_INVALID_CONFIG = 22
 } hrt_err;
 
 /**
@@ -121,7 +137,16 @@ typedef enum {
     HRT_TICK_EXTERNAL = 1
 } hrt_tick_source_t;
 
-/** Kernel initialization parameters. */
+/**
+ * @brief Kernel initialization parameters.
+ *
+ * `tick_hz` must be non-zero in an explicit configuration. Port-specific
+ * representability is validated during initialization.
+ *
+ * `core_hz` is a Cortex-M SysTick clock override. Zero asks the Cortex-M port
+ * to obtain the clock through `hrt_port_get_core_hz()`. It is otherwise ignored
+ * by ports/tick modes that do not require a CPU clock to represent the tick.
+ */
 typedef struct {
     uint32_t tick_hz;
     hrt_policy_t policy;
@@ -148,22 +173,44 @@ const char *hrt_port_name(void);
 /** Return the selected numeric port identifier. */
 int hrt_port_id(void);
 
-/** Initialize kernel state. */
+/* The legacy core implementation is privately renamed at build time so the
+ * lifecycle facade can preserve the historical implementation signatures while
+ * exposing the checked public v0.5 contract. */
+#ifdef HARDRT_CORE_IMPL
 int hrt_init(const hrt_config_t *cfg);
+#else
+/**
+ * @brief Initialize HardRT exactly once before task creation/start.
+ * @return HRT_OK on success or a public HRT_ERR_* lifecycle/config status.
+ */
+hrt_status_t hrt_init(const hrt_config_t *cfg);
+#endif
 
 /**
  * Create a task and place it into the ready state.
  *
- * The supplied stack must not overlap the stack of any live task. An exited
- * task no longer uses its stack and may have its occupied TCB slot reclaimed
- * by a later task creation.
+ * Task creation is valid only after successful hrt_init() and before
+ * hrt_start(). The supplied stack must not overlap the stack of any live task.
+ * An exited task no longer uses its stack and may have its occupied TCB slot
+ * reclaimed by a later task creation.
+ *
+ * @return Non-negative task ID on success, or -1 on validation/lifecycle error.
  */
 int hrt_create_task(hrt_task_fn fn, void *arg,
                     uint32_t *stack_words, size_t n_words,
                     const hrt_task_attr_t *attr);
 
-/** Enter the scheduler. */
+#ifdef HARDRT_CORE_IMPL
 void hrt_start(void);
+#else
+/**
+ * @brief Start the scheduler from the INITIALIZED state.
+ * @return HRT_ERR_INVALID_STATE if called before init or after scheduler start;
+ *         HRT_OK only on ports/test harnesses where scheduler entry returns.
+ * @note Cortex-M normally never returns after a successful call.
+ */
+hrt_status_t hrt_start(void);
+#endif
 
 /**
  * Sleep the calling task for at least the specified milliseconds.
