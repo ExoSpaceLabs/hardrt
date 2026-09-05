@@ -27,6 +27,10 @@ namespace hardrt {
          * overlaps an existing live task; the same specialization becomes safe
          * to reuse after its previous task has exited.
          *
+         * Task creation is valid after successful System::init(), including
+         * while the scheduler is already RUNNING. Runtime-created tasks become
+         * READY and participate at the next scheduling point.
+         *
          * @tparam StackWords Size of the stack in 32-bit words.
          * @tparam Tag Unique identifier to differentiate stacks of the same size.
          *
@@ -116,24 +120,25 @@ namespace hardrt {
         /**
          * @brief Initialize the RTOS kernel.
          *
-         * Applications should call this before creating tasks or starting the
-         * scheduler. Full public lifecycle validation remains tracked by the
-         * v0.5 lifecycle work; this wrapper returns the C API result unchanged.
+         * Applications must initialize the kernel exactly once before creating
+         * tasks or starting the scheduler. Invalid configuration and lifecycle
+         * transitions are returned through the public hrt_status_t contract.
          * @param cfg Configuration structure (tick rate, scheduling policy, etc.).
-         * @return The value returned by hrt_init().
+         * @return HRT_OK on success or the corresponding HRT_ERR_* status.
          */
-        static int init(const hrt_config_t& cfg) {
+        static hrt_status_t init(const hrt_config_t& cfg) {
             return hrt_init(&cfg);
         }
 
         /**
-         * @brief Start the RTOS scheduler.
+         * @brief Start the RTOS scheduler from the INITIALIZED state.
          *
-         * This function normally does not return on Cortex-M. The null port
-         * returns without running tasks.
+         * This function normally does not return on Cortex-M. The null port and
+         * POSIX test harness may return HRT_OK. Invalid/repeated start attempts
+         * return HRT_ERR_INVALID_STATE.
          */
-        static void start() {
-            hrt_start();
+        static hrt_status_t start() {
+            return hrt_start();
         }
 
         /**
