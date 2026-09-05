@@ -27,6 +27,7 @@ jobs:
         build_type: [Release]
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -232,7 +233,7 @@ jobs:
 
           mkdir -p bundle/posix bundle/cortex_m
           cp -a install-posix/* bundle/posix/
-          cp -a install-cortexm/* bundle/cortex_m/
+          cp -a install-cortex_m/* bundle/cortex_m/
           tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
 
           ls -la packages
