@@ -2,8 +2,13 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <type_traits>
 
-static hardrt::StaticQueue<uint32_t, 32> q;
+static_assert(std::is_same<hardrt::Queue<uint32_t, 32>,
+                           hardrt::StaticQueue<uint32_t, 32>>::value,
+              "Queue alias must remain equivalent to StaticQueue");
+
+static hardrt::Queue<uint32_t, 32> q;
 
 static void producer(void *arg) {
     (void)arg;
