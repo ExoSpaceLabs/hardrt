@@ -6,6 +6,7 @@ APP_DIR="$ROOT_DIR/examples/hardrt_h755_dwt_timing"
 CASE="event_to_task"
 EVENT_HZ="1000"
 SAMPLES="10000"
+WAITERS="1"
 DO_FLASH=1
 
 usage() {
@@ -13,28 +14,33 @@ usage() {
 Usage: scripts/build-lib-stm32h7xx-dwt-timing.sh [options]
 
 Options:
-  --case event_to_task|sem_isr_ready|ready_to_task|scheduler_decision
+  --case CASE
   --event-hz HZ
   --samples N
+  --waiters N
   --no-flash
   -h, --help
 
 Cases:
-  event_to_task      Direct DWT timestamps only. HardRT timing profile is `none`.
-                     Measures the composite interval from a software point in
-                     TIM2 ISR to the latency task continuing after semaphore wake.
+  event_to_task       Existing semaphore-backed composite ISR -> task latency.
+  sem_isr_ready       hrt_sem_give_from_isr entry -> waiter marked READY.
+  ready_to_task       Waiter marked READY -> task continuation.
+  scheduler_decision  Diagnostic PendSV scheduler/context-switch breakdown.
 
-  sem_isr_ready      Builds HardRT with only the private `ipc` timing profile.
-                     Measures hrt_sem_give_from_isr entry -> waiter marked READY.
+  event_isr_to_task   hrt_event_set_from_isr path plus dispatch to one waiter.
+  notify_isr_to_task  hrt_task_notify_from_isr path plus dispatch to one waiter.
 
-  ready_to_task      Builds HardRT with the private `ipc` timing profile and a
-                     waiter-READY start marker. Measures waiter marked READY ->
-                     latency task continuation after the blocked semaphore returns.
+  event_scan_none     hrt_event_set_from_isr entry -> return, no waiter matches.
+  event_scan_one      hrt_event_set_from_isr entry -> return, one waiter matches.
+  event_scan_all      hrt_event_set_from_isr entry -> return, all waiters match.
+                      Use --waiters 1|8|16|32 for the qualification matrix.
 
-  scheduler_decision Diagnostic-only PendSV timing image. Measures the direct
-                     hrt__schedule() call plus outgoing save, incoming restore,
-                     PendSV software span, and PendSV-entry -> task continuation.
-                     Production HardRT kernel/scheduler code is unchanged.
+  notify_isr_no_wake  hrt_task_notify_from_isr entry -> return, target running.
+  notify_isr_wake     hrt_task_notify_from_isr entry -> return, blocked waiter wakes.
+
+All new event/notification cases use direct application-side DWT timestamps and
+HARDRT_TIMING_PROFILE=none. Event scan builds size HARDRT_CFG_MAX_TASKS to
+waiters + one controller task so the requested waiter count is actually present.
 USAGE
 }
 
@@ -43,16 +49,29 @@ while [[ $# -gt 0 ]]; do
     --case) CASE="$2"; shift 2;;
     --event-hz) EVENT_HZ="$2"; shift 2;;
     --samples) SAMPLES="$2"; shift 2;;
+    --waiters) WAITERS="$2"; shift 2;;
     --no-flash) DO_FLASH=0; shift;;
     -h|--help) usage; exit 0;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1;;
   esac
 done
 
+for value in "$EVENT_HZ" "$SAMPLES" "$WAITERS"; do
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 )) || {
+    echo "event-hz, samples and waiters must be positive integers" >&2
+    exit 1
+  }
+done
+(( WAITERS <= 32 )) || { echo "--waiters must be <= 32" >&2; exit 1; }
+
 HARD_RT_ARGS=()
 case "$CASE" in
-  event_to_task|scheduler_decision)
+  event_to_task|scheduler_decision|event_isr_to_task|notify_isr_to_task|notify_isr_no_wake|notify_isr_wake)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
+    ;;
+  event_scan_none|event_scan_one|event_scan_all)
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_CFG_MAX_TASKS=$((WAITERS + 1))")
     ;;
   sem_isr_ready)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=ipc")
@@ -73,11 +92,13 @@ APP_ARGS=(
   --app-cmake-arg "-DHARDRT_TIMING_CASE=$CASE"
   --app-cmake-arg "-DHARDRT_TIMING_EVENT_HZ=$EVENT_HZ"
   --app-cmake-arg "-DHARDRT_TIMING_TARGET_SAMPLES=$SAMPLES"
+  --app-cmake-arg "-DHARDRT_TIMING_SIGNAL_WAITERS=$WAITERS"
 )
 
 echo "[INFO] Timing case    : $CASE"
 echo "[INFO] Event rate     : $EVENT_HZ Hz"
 echo "[INFO] Target samples : $SAMPLES"
+echo "[INFO] Signal waiters : $WAITERS"
 
 "$ROOT_DIR/scripts/build-lib-stm32h7xx.sh" \
   --hardrt "$ROOT_DIR" \
