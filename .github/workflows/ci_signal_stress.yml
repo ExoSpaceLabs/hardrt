@@ -13,9 +13,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   strict-ubsan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,4 +45,5 @@ jobs:
         run: cmake --build build-signal-stress --parallel
 
       - name: Run deterministic signal stress suite
-        run: ctest -V --test-dir build-signal-stress -R '^hardrt_tests$' --output-on-failure
+        timeout-minutes: 3
+        run: ctest -V --test-dir build-signal-stress -R '^hardrt_tests$' --timeout 120 --output-on-failure
