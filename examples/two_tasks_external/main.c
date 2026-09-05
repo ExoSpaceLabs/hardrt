@@ -60,8 +60,9 @@ int main(void) {
         .tick_src = HRT_TICK_EXTERNAL
     };
 
-    if (hrt_init(&cfg) != 0) {
-        puts("HardRT init failed");
+    const hrt_status_t init_status = hrt_init(&cfg);
+    if (init_status != HRT_OK) {
+        printf("HardRT init failed: %d\n", (int)init_status);
         return 1;
     }
 
@@ -83,7 +84,7 @@ int main(void) {
         return 1;
     }
 
-    hrt_start();
+    (void)hrt_start();
 
     atomic_store(&g_run_tick_thread, 0);
     pthread_join(tick_thread, NULL);

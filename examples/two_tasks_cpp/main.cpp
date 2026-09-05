@@ -42,8 +42,9 @@ int main() {
         HRT_TICK_SYSTICK
     };
 
-    if (System::init(cfg) != 0) {
-        std::puts("HardRT init failed");
+    const hrt_status_t init_status = System::init(cfg);
+    if (init_status != HRT_OK) {
+        std::printf("HardRT init failed: %d\n", static_cast<int>(init_status));
         return 1;
     }
 
@@ -56,6 +57,6 @@ int main() {
         return 1;
     }
 
-    System::start();
+    (void)System::start();
     return 0;
 }

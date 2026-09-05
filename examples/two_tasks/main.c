@@ -42,8 +42,9 @@ int main(void) {
         .core_hz = 0,
         .tick_src = HRT_TICK_SYSTICK
     };
-    if (hrt_init(&cfg) != 0) {
-        puts("HardRT init failed");
+    const hrt_status_t init_status = hrt_init(&cfg);
+    if (init_status != HRT_OK) {
+        printf("HardRT init failed: %d\n", (int)init_status);
         return 1;
     }
 
@@ -59,6 +60,6 @@ int main(void) {
         return 1;
     }
 
-    hrt_start();
+    (void)hrt_start();
     return 0;
 }
