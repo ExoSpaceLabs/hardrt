@@ -65,20 +65,28 @@ private:
     hrt_event_t _event{};
 };
 
+/** Strongly typed C++ notification producer actions. */
+enum class NotifyAction : uint8_t {
+    set_bits,
+    overwrite,
+    no_overwrite,
+    increment
+};
+
 /** Lightweight static helpers for per-task notification operations. */
 class TaskNotification {
 public:
     static int notify(const int task_id,
                       const uint32_t value,
-                      const hrt_notify_action_t action = HRT_NOTIFY_OVERWRITE) {
-        return hrt_task_notify(task_id, value, action);
+                      const NotifyAction action = NotifyAction::overwrite) {
+        return hrt_task_notify(task_id, value, to_c_action(action));
     }
 
     static int notify_from_isr(const int task_id,
                                const uint32_t value,
-                               const hrt_notify_action_t action,
+                               const NotifyAction action,
                                int& need_switch) {
-        return hrt_task_notify_from_isr(task_id, value, action, &need_switch);
+        return hrt_task_notify_from_isr(task_id, value, to_c_action(action), &need_switch);
     }
 
     static int wait(uint32_t& value,
@@ -89,6 +97,17 @@ public:
 
     static uint32_t take(const bool clear_count_on_exit = false) {
         return hrt_task_notify_take(clear_count_on_exit ? 1 : 0);
+    }
+
+private:
+    static constexpr hrt_notify_action_t to_c_action(const NotifyAction action) {
+        switch (action) {
+            case NotifyAction::set_bits: return HRT_NOTIFY_SET_BITS;
+            case NotifyAction::overwrite: return HRT_NOTIFY_OVERWRITE;
+            case NotifyAction::no_overwrite: return HRT_NOTIFY_NO_OVERWRITE;
+            case NotifyAction::increment: return HRT_NOTIFY_INCREMENT;
+        }
+        return HRT_NOTIFY_OVERWRITE;
     }
 };
 
