@@ -105,6 +105,23 @@ HRT_IDLE_ID          = 8 (private/internal)
 
 `HARDRT_MAX_TASKS` remains the legacy total-slot compatibility macro. Application code that needs the number of creatable tasks should use `HARDRT_APP_MAX_TASKS`. Direct/non-CMake builds that define only the legacy `HARDRT_MAX_TASKS` value infer application capacity as `HARDRT_MAX_TASKS - 1`; with neither macro supplied, the fallback is 8 application tasks plus one idle slot.
 
+### Runtime kernel configuration
+
+CMake validation and `hrt_init()` validation are intentionally separate. Build-time options decide which implementation is compiled; runtime `hrt_config_t` decides how that build is initialized.
+
+The v0.5 lifecycle contract accepts initialization exactly once and rejects invalid runtime configuration with public `hrt_status_t` values. For an explicit `hrt_config_t`:
+
+- `tick_hz` must be non-zero. The public range is `1 .. UINT32_MAX`; a port-owned tick source may support a narrower representable subset.
+- `policy` must be one of the declared `HRT_SCHED_*` values.
+- `tick_src` must be `HRT_TICK_SYSTICK` or `HRT_TICK_EXTERNAL`.
+- `core_hz` must be zero unless the build uses the Cortex-M port with `HRT_TICK_SYSTICK`.
+- on Cortex-M/SysTick, `core_hz == 0` delegates to `hrt_port_get_core_hz()`; a non-zero value explicitly overrides that clock for SysTick reload calculation.
+- `core_hz` is rejected for external-tick configurations instead of being silently ignored.
+
+`HRT_ERR_INVALID_CONFIG` means the configuration is contradictory or outside the public contract. `HRT_ERR_PORT_INIT` means the public configuration is structurally valid but the selected port cannot represent it, such as a Cortex-M SysTick reload outside the 24-bit range or a POSIX internal tick whose timer period rounds to zero.
+
+A failed initialization leaves the lifecycle `UNINITIALIZED`, so the caller may retry with corrected settings. A successful initialization enters `INITIALIZED`; `hrt_start()` then enters `RUNNING`. Task creation is valid after initialization both before and during `RUNNING`, while a second `hrt_init()` or `hrt_start()` is rejected.
+
 ## Strict warnings and sanitizers
 
 ```bash
