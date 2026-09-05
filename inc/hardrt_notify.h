@@ -8,6 +8,7 @@ extern "C" {
 
 #include <stdint.h>
 
+/** Producer actions supported by task notifications. */
 typedef enum {
     HRT_NOTIFY_SET_BITS = 0,
     HRT_NOTIFY_OVERWRITE,
