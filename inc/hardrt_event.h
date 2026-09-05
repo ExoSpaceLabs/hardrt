@@ -11,6 +11,7 @@ extern "C" {
 
 typedef uint32_t hrt_event_bits_t;
 
+/** Event-wait behavior flags accepted by hrt_event_wait(). */
 typedef enum {
     HRT_EVENT_WAIT_ANY = 0u,
     HRT_EVENT_WAIT_ALL = 1u << 0,
