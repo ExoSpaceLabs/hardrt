@@ -53,6 +53,10 @@ commands
   # +64/+68/+72  pendsv_restore min/avg/max
   # +76/+80/+84  pendsv_software min/avg/max
   # +88/+92/+96  pendsv_to_task min/avg/max
+  # Signal profiling extension:
+  # +100 signal_waiters
+  # +104 expected_wakes_per_sample
+  # +108 observed_wakes
   set $base = (unsigned int)$r0
   set $case = *(unsigned int*)($base + 0)
   set $event_hz = *(unsigned int*)($base + 4)
@@ -66,6 +70,9 @@ commands
   set $cnt = *(unsigned int*)($base + 36)
   set $sum = ((unsigned long long)*(unsigned int*)($base + 40)) | (((unsigned long long)*(unsigned int*)($base + 44)) << 32)
   set $error = *(unsigned int*)($base + 48)
+  set $waiters = *(unsigned int*)($base + 100)
+  set $expected_wakes = *(unsigned int*)($base + 104)
+  set $observed_wakes = *(unsigned int*)($base + 108)
 
   printf "SystemCoreClock=%u Hz\n", $hz
   printf "event_hz=%u target_samples=%u\n", $event_hz, $target
@@ -73,7 +80,7 @@ commands
   if $case == 1
     printf "case=event_to_task\n"
     printf "metric=TIM2 ISR software timestamp -> latency task continuation\n"
-    printf "NOTE: this is a composite software ISR-to-task response measurement; it is NOT hardware event-to-ISR latency.\n"
+    printf "NOTE: legacy composite measurement uses a semaphore; it is not an event-flags benchmark.\n"
     printf "HardRT timing profile=none (no kernel timing hooks in this image)\n"
   else
     if $case == 2
@@ -93,10 +100,58 @@ commands
           printf "NOTE: diagnostic image substitutes a measurement-only PendSV handler; production HardRT scheduler code is unchanged.\n"
           printf "HardRT timing profile=none\n"
         else
-          printf "case=UNKNOWN (%u)\n", $case
+          if $case == 5
+            printf "case=event_isr_to_task\n"
+            printf "metric=hrt_event_set_from_isr entry -> event waiter continuation\n"
+            printf "NOTE: composite event wake latency includes event scan, ISR tail, PendSV/scheduler, context restore and hrt_event_wait return.\n"
+            printf "HardRT timing profile=none\n"
+          else
+            if $case == 6
+              printf "case=notify_isr_to_task\n"
+              printf "metric=hrt_task_notify_from_isr entry -> notification waiter continuation\n"
+              printf "NOTE: composite notification wake latency includes ISR tail, PendSV/scheduler, context restore and notification-wait return.\n"
+              printf "HardRT timing profile=none\n"
+            else
+              if $case == 7
+                printf "case=event_scan_none\n"
+                printf "metric=hrt_event_set_from_isr entry -> return; no event waiter satisfied\n"
+                printf "HardRT timing profile=none\n"
+              else
+                if $case == 8
+                  printf "case=event_scan_one\n"
+                  printf "metric=hrt_event_set_from_isr entry -> return; one event waiter satisfied\n"
+                  printf "HardRT timing profile=none\n"
+                else
+                  if $case == 9
+                    printf "case=event_scan_all\n"
+                    printf "metric=hrt_event_set_from_isr entry -> return; all event waiters satisfied\n"
+                    printf "HardRT timing profile=none\n"
+                  else
+                    if $case == 10
+                      printf "case=notify_isr_no_wake\n"
+                      printf "metric=hrt_task_notify_from_isr entry -> return; target is running and no wake occurs\n"
+                      printf "HardRT timing profile=none\n"
+                    else
+                      if $case == 11
+                        printf "case=notify_isr_wake\n"
+                        printf "metric=hrt_task_notify_from_isr entry -> return; blocked notification waiter becomes READY\n"
+                        printf "HardRT timing profile=none\n"
+                      else
+                        printf "case=UNKNOWN (%u)\n", $case
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
         end
       end
     end
+  end
+
+  if $case >= 5
+    printf "signal_waiters=%u expected_wakes_per_sample=%u observed_wakes=%u\n", $waiters, $expected_wakes, $observed_wakes
   end
 
   printf "\n[RESULT]\n"
