@@ -53,8 +53,8 @@ hrt_status_t hrt_init(const hrt_config_t *cfg) {
     }
 
     if (hrt__init_impl(&effective) != 0) {
-        /* The legacy implementation resets its core-owned structures before
-         * port configuration. Keep lifecycle UNINITIALIZED so a corrected
+        /* The implementation resets its core-owned structures before port
+         * configuration. Keep lifecycle UNINITIALIZED so a corrected
          * configuration can retry initialization safely. */
         return HRT_ERR_PORT_INIT;
     }
@@ -66,10 +66,23 @@ hrt_status_t hrt_init(const hrt_config_t *cfg) {
 int hrt_create_task(hrt_task_fn fn, void *arg,
                     uint32_t *stack_words, size_t n_words,
                     const hrt_task_attr_t *attr) {
-    if (g_kernel_state != HRT_KERNEL_INITIALIZED) {
+    if (g_kernel_state == HRT_KERNEL_UNINITIALIZED) {
         hrt_error(ERR_INVALID_STATE);
         return -1;
     }
+
+    if (g_kernel_state == HRT_KERNEL_RUNNING) {
+        /* Dynamic creation is permitted after scheduler start. Serialize the
+         * allocation and READY publication against tick/scheduler activity so
+         * EXITED-slot reclamation remains safe on both reference ports. Task
+         * creation itself does not force immediate preemption; the new READY
+         * task participates at the next scheduling point. */
+        hrt_port_crit_enter();
+        const int id = hrt__create_task_impl(fn, arg, stack_words, n_words, attr);
+        hrt_port_crit_exit();
+        return id;
+    }
+
     return hrt__create_task_impl(fn, arg, stack_words, n_words, attr);
 }
 
@@ -79,10 +92,6 @@ hrt_status_t hrt_start(void) {
         return HRT_ERR_INVALID_STATE;
     }
 
-    /* v0.5 deliberately uses a static-start topology: task creation ends at
-     * scheduler start. Dynamic post-start creation can be designed later with
-     * explicit synchronization/ID-generation semantics instead of occurring by
-     * accident through the startup API. */
     g_kernel_state = HRT_KERNEL_RUNNING;
     hrt__start_impl();
     return HRT_OK;
