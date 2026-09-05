@@ -251,8 +251,6 @@ static void test_sem_give_from_isr_sets_need_switch_and_wakes(void) {
     T_ASSERT_EQ_INT(1, g_isr_woke, "waiter should wake after give_from_isr");
 }
 
-
-
 /* ---- Case 6: counting semaphore accumulates and saturates ---- */
 static void test_sem_counting_accumulates_and_saturates(void) {
     hrt__test_reset_scheduler_state();
@@ -322,6 +320,10 @@ static void test_sem_counting_wake_is_handoff(void) {
     hrt__test_reset_scheduler_state();
     g_count_woke = 0;
     g_count_try_after = -99;
+    g_watchdog_tripped = 0;
+
+    hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5};
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg), "hrt_init ok (counting handoff)");
 
     hrt_sem_init_counting(&g_count_sem, 0, 5);
 
