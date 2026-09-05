@@ -4,10 +4,23 @@ project(hardrt_cm7_dwt_timing LANGUAGES C ASM)
 set(STM32CUBE_H7_ROOT "" CACHE STRING "STM32CubeH7 repository path")
 set(STM32_DEVICE "STM32H755xx" CACHE STRING "STM32 device define")
 set(STM32_CORE "CORE_CM7" CACHE STRING "Core define")
-set(HARDRT_TIMING_CASE "event_to_task" CACHE STRING "Timing case: event_to_task|sem_isr_ready|ready_to_task|scheduler_decision")
-set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS event_to_task sem_isr_ready ready_to_task scheduler_decision)
+set(HARDRT_TIMING_CASE "event_to_task" CACHE STRING "Timing case")
+set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS
+    event_to_task
+    sem_isr_ready
+    ready_to_task
+    scheduler_decision
+    event_isr_to_task
+    notify_isr_to_task
+    event_scan_none
+    event_scan_one
+    event_scan_all
+    notify_isr_no_wake
+    notify_isr_wake
+)
 set(HARDRT_TIMING_EVENT_HZ 1000 CACHE STRING "One-shot event rate used between samples")
 set(HARDRT_TIMING_TARGET_SAMPLES 10000 CACHE STRING "Samples collected before debugger breakpoint")
+set(HARDRT_TIMING_SIGNAL_WAITERS 1 CACHE STRING "Event waiters used by signal profiling cases (1..32)")
 
 if(STM32CUBE_H7_ROOT STREQUAL "")
     set(STM32CUBE_H7_ROOT "/home/dev/STM32Cube/Repository/STM32CubeH7")
@@ -15,6 +28,11 @@ if(STM32CUBE_H7_ROOT STREQUAL "")
 endif()
 if(NOT EXISTS "${STM32CUBE_H7_ROOT}")
     message(FATAL_ERROR "Provide a valid STM32CubeH7 path. ${STM32CUBE_H7_ROOT} does not exist.")
+endif()
+
+math(EXPR _HRT_TIMING_SIGNAL_WAITERS "${HARDRT_TIMING_SIGNAL_WAITERS}")
+if(_HRT_TIMING_SIGNAL_WAITERS LESS 1 OR _HRT_TIMING_SIGNAL_WAITERS GREATER 32)
+    message(FATAL_ERROR "HARDRT_TIMING_SIGNAL_WAITERS must be between 1 and 32")
 endif()
 
 if(HARDRT_TIMING_CASE STREQUAL "event_to_task")
@@ -25,6 +43,20 @@ elseif(HARDRT_TIMING_CASE STREQUAL "ready_to_task")
     set(HARDRT_TIMING_CASE_ID 3)
 elseif(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
     set(HARDRT_TIMING_CASE_ID 4)
+elseif(HARDRT_TIMING_CASE STREQUAL "event_isr_to_task")
+    set(HARDRT_TIMING_CASE_ID 5)
+elseif(HARDRT_TIMING_CASE STREQUAL "notify_isr_to_task")
+    set(HARDRT_TIMING_CASE_ID 6)
+elseif(HARDRT_TIMING_CASE STREQUAL "event_scan_none")
+    set(HARDRT_TIMING_CASE_ID 7)
+elseif(HARDRT_TIMING_CASE STREQUAL "event_scan_one")
+    set(HARDRT_TIMING_CASE_ID 8)
+elseif(HARDRT_TIMING_CASE STREQUAL "event_scan_all")
+    set(HARDRT_TIMING_CASE_ID 9)
+elseif(HARDRT_TIMING_CASE STREQUAL "notify_isr_no_wake")
+    set(HARDRT_TIMING_CASE_ID 10)
+elseif(HARDRT_TIMING_CASE STREQUAL "notify_isr_wake")
+    set(HARDRT_TIMING_CASE_ID 11)
 else()
     message(FATAL_ERROR "Unknown HARDRT_TIMING_CASE=${HARDRT_TIMING_CASE}")
 endif()
@@ -32,6 +64,7 @@ endif()
 message("-- HARDRT_TIMING_CASE           : ${HARDRT_TIMING_CASE}")
 message("-- HARDRT_TIMING_EVENT_HZ       : ${HARDRT_TIMING_EVENT_HZ}")
 message("-- HARDRT_TIMING_TARGET_SAMPLES : ${HARDRT_TIMING_TARGET_SAMPLES}")
+message("-- HARDRT_TIMING_SIGNAL_WAITERS : ${HARDRT_TIMING_SIGNAL_WAITERS}")
 
 set(STM32CUBE_INCLUDE_DIRS
     ${STM32CUBE_H7_ROOT}/Drivers/CMSIS/Core/Include
@@ -75,6 +108,7 @@ target_compile_definitions(${PROJECT_NAME}.elf PRIVATE
     HRT_TIMING_CASE_ID=${HARDRT_TIMING_CASE_ID}
     HRT_TIMING_EVENT_HZ=${HARDRT_TIMING_EVENT_HZ}
     HRT_TIMING_TARGET_SAMPLES=${HARDRT_TIMING_TARGET_SAMPLES}
+    HRT_TIMING_SIGNAL_WAITERS=${HARDRT_TIMING_SIGNAL_WAITERS}
 )
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
     ${MCU_OPTS} -Os -ffreestanding -fno-builtin -ffunction-sections -fdata-sections
