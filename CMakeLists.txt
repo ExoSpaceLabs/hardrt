@@ -14,8 +14,6 @@ option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable UBSan on POSIX tests" OFF)
 
-# Enable optional languages only when the selected build actually needs them.
-# This keeps the C kernel build independent of a host/cross C++ compiler.
 if(HARDRT_ENABLE_CPP)
   enable_language(CXX)
 endif()
@@ -23,9 +21,6 @@ if(HARDRT_PORT STREQUAL "cortex_m")
   enable_language(ASM)
 endif()
 
-# Private timing instrumentation. `none` is the production/default profile and
-# produces no timing hook code. Additional profiles are enabled only after their
-# concrete hook points exist and are validated.
 set(HARDRT_TIMING_PROFILE "none" CACHE STRING "Private timing profile: none|ipc")
 set_property(CACHE HARDRT_TIMING_PROFILE PROPERTY STRINGS none ipc)
 set(HARDRT_TIMING_HOOK_HEADER "" CACHE FILEPATH "Benchmark-provided timing hook header (required for active timing profiles)")
@@ -34,7 +29,6 @@ set(HARDRT_TIMING_PROFILE_ID 0)
 set(HARDRT_TIMING_ENABLED 0)
 set(HARDRT_TIMING_HOOK_HEADER_CMAKE "")
 if(HARDRT_TIMING_PROFILE STREQUAL "none")
-  # Production/default build: all hook macros resolve to no code.
 elseif(HARDRT_TIMING_PROFILE STREQUAL "ipc")
   if(HARDRT_TIMING_HOOK_HEADER STREQUAL "")
     message(FATAL_ERROR "HARDRT_TIMING_PROFILE=ipc requires -DHARDRT_TIMING_HOOK_HEADER=<header>")
@@ -150,9 +144,6 @@ set(LIBRARY_SOURCES
   "${SOURCE_CORE_DIR}/hardrt_notify.c"
 )
 
-# Keep the existing scheduler implementation private while a small lifecycle
-# facade owns the public checked init/create/start API. This avoids duplicating
-# scheduler internals merely to add state/configuration validation.
 set_source_files_properties("${SOURCE_CORE_DIR}/hardrt_core.c" PROPERTIES
   COMPILE_DEFINITIONS
     "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl"
@@ -268,6 +259,7 @@ if(HARDRT_BUILD_EXAMPLES)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/mutex_basic)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_counting)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/examples/event_notify)
   add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_external)
   if(HARDRT_ENABLE_CPP)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/two_tasks_cpp)
@@ -275,6 +267,7 @@ if(HARDRT_BUILD_EXAMPLES)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_basic_cpp)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/mutex_basic_cpp)
     add_subdirectory(${CMAKE_SOURCE_DIR}/examples/sem_counting_cpp)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/examples/event_notify_cpp)
   endif()
 endif()
 
