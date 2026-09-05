@@ -107,7 +107,7 @@ static void test_create_and_start_before_init_fail(void) {
     hrt__test_reset_scheduler_state();
 }
 
-static void test_running_state_rejects_restart_and_creation(void) {
+static void test_running_state_allows_creation_but_rejects_restart(void) {
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = external_cfg();
     T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
@@ -120,9 +120,9 @@ static void test_running_state_rejects_restart_and_creation(void) {
 
     T_ASSERT_EQ_INT(HRT_OK, hrt_start(),
                     "successful scheduler entry reports HRT_OK when test port returns");
-    T_ASSERT_EQ_INT(-1, hrt_create_task(inert_task, NULL,
-                                       g_stack_b, STACK_WORDS, &attr),
-                    "v0.5 rejects task creation after scheduler start");
+    T_ASSERT_TRUE(hrt_create_task(inert_task, NULL,
+                                  g_stack_b, STACK_WORDS, &attr) >= 0,
+                  "task creation remains supported after scheduler start");
     T_ASSERT_EQ_INT(HRT_ERR_INVALID_STATE, hrt_start(),
                     "second scheduler start is rejected");
 
@@ -135,7 +135,7 @@ static const test_case_t CASES[] = {
     {"Lifecycle: invalid configuration values", test_invalid_configuration_values},
     {"Lifecycle: port init failure remains retryable", test_port_init_failure_can_retry},
     {"Lifecycle: create/start before init fail", test_create_and_start_before_init_fail},
-    {"Lifecycle: RUNNING rejects restart and task creation", test_running_state_rejects_restart_and_creation},
+    {"Lifecycle: RUNNING allows creation but rejects restart", test_running_state_allows_creation_but_rejects_restart},
 };
 
 const test_case_t *get_tests_lifecycle(int *out_count) {
