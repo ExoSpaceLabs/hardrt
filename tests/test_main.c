@@ -45,6 +45,7 @@ int main(void) {
     const test_case_t *g = NULL;
 
     APPEND_GROUP(get_tests_identity);
+    APPEND_GROUP(get_tests_lifecycle);
     APPEND_GROUP(get_tests_sleep_stop);
     APPEND_GROUP(get_tests_rr_yield);
     APPEND_GROUP(get_tests_rr_sleep);

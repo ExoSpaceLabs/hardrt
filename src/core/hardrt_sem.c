@@ -61,15 +61,9 @@ int hrt_sem_try_take(hrt_sem_t *s) {
 }
 
 int hrt_sem_take(hrt_sem_t *s) {
+    const int me = hrt__current_running_app_task();
+    if (me < 0) return -1;
     if (hrt_sem_try_take(s) == 0) return 0;
-
-    const int me = hrt__get_current();
-#if HARDRT_DEBUG == 1
-    if (me < 0 || me >= HARDRT_APP_MAX_TASKS) {
-        hrt_error(ERR_INVALID_ID);
-        return -1;
-    }
-#endif
 
     hrt_port_crit_enter();
     if (s->count) {

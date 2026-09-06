@@ -106,7 +106,7 @@ static void test_global_rr_ignores_priority(void) {
     int c = hrt_create_task(global_rr_c, NULL, sc, 2048, &mid);
     T_ASSERT_TRUE(a >= 0 && b >= 0 && c >= 0, "created mixed-priority global RR tasks");
 
-    memset((void *)g_global_seq, 0, sizeof(g_global_seq));
+    for (int i = 0; i < GLOBAL_SEQ_TARGET; ++i) g_global_seq[i] = 0;
     g_global_seq_pos = 0;
     hrt_start();
 

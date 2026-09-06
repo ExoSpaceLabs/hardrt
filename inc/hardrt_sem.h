@@ -43,8 +43,9 @@ void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count);
 /**
  * @brief Take the semaphore, blocking until available.
  * @param s Semaphore to take.
- * @return 0 on success, -1 if waiter publication cannot be completed.
- * @note This is a task-context operation.
+ * @return 0 on success; -1 for invalid task context or if waiter publication
+ * cannot be completed. A rejected call does not consume an available token.
+ * @note This is a RUNNING-application-task operation.
  */
 int hrt_sem_take(hrt_sem_t *s);
 

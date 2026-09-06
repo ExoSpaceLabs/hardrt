@@ -69,6 +69,7 @@ uint32_t *_get_sp(int id);
 void _set_sp(int id, uint32_t *sp);
 
 int hrt__get_current(void);
+int hrt__current_running_app_task(void);
 void hrt__set_current(int id);
 void hrt__make_ready(int id);
 void hrt__requeue_noreset(int id);

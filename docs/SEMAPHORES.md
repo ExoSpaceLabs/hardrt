@@ -41,7 +41,7 @@ int hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 
 ### Blocking take
 
-`hrt_sem_take()` is a task-context operation. It first tries the fast path. When no token is available, it:
+`hrt_sem_take()` is a blocking RUNNING-application-task operation. Calls outside that context return `-1`, record `ERR_INVALID_TASK`, and do not consume an available token. If no token is available, the calling task joins the semaphore FIFO and becomes blocked.
 
 1. enters the port critical section;
 2. checks the count again;

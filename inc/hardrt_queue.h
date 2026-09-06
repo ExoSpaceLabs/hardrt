@@ -56,8 +56,9 @@ void hrt_queue_init(hrt_queue_t *q, void *storage, uint16_t capacity, size_t ite
  * @brief Send (enqueue) an item, blocking until space is available.
  * @param q Queue.
  * @param item Pointer to item to copy into the queue.
- * @return 0 on success, -1 if bounded waiter publication cannot be completed.
- * @note This is a task-context operation.
+ * @return 0 on success, -1 for invalid task context or if bounded waiter
+ * publication cannot be completed. A rejected context does not modify the queue.
+ * @note This is a RUNNING-application-task operation.
  */
 int hrt_queue_send(hrt_queue_t *q, const void *item);
 
@@ -82,8 +83,9 @@ int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_swit
  * @brief Receive (dequeue) an item, blocking until one is available.
  * @param q Queue.
  * @param out Pointer to storage where the received item will be copied.
- * @return 0 on success, -1 if bounded waiter publication cannot be completed.
- * @note This is a task-context operation.
+ * @return 0 on success, -1 for invalid task context or if bounded waiter
+ * publication cannot be completed. A rejected context does not modify the queue.
+ * @note This is a RUNNING-application-task operation.
  */
 int hrt_queue_recv(hrt_queue_t *q, void *out);
 

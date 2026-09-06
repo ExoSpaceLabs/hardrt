@@ -19,8 +19,8 @@ uint32_t hrt__test_wake_preempt_decisions(void);
 #endif
 
 static void reset_fixture(void) {
-    memset((void *)g_delays, 0, sizeof(g_delays));
-    memset((void *)g_wake_order, -1, sizeof(g_wake_order));
+    for (int i = 0; i < WORKERS; ++i) g_delays[i] = 0u;
+    for (int i = 0; i < 64; ++i) g_wake_order[i] = -1;
     g_wake_count = 0;
     g_repeat_target = 0;
     g_repeat_count = 0;

@@ -108,9 +108,10 @@ int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_swit
 int hrt_queue_send(hrt_queue_t *q, const void *item) {
     HRT_ASSERT(q);
     HRT_ASSERT(item);
+    const int me = hrt__current_running_app_task();
+    if (me < 0) return -1;
     for (;;) {
         if (hrt_queue_try_send(q, item) == 0) return 0;
-        const int me = hrt__get_current();
 
         hrt_port_crit_enter();
         if (q->count < q->capacity) {
@@ -176,9 +177,10 @@ int hrt_queue_try_recv_from_isr(hrt_queue_t *q, void *out, int *need_switch) {
 int hrt_queue_recv(hrt_queue_t *q, void *out) {
     HRT_ASSERT(q);
     HRT_ASSERT(out);
+    const int me = hrt__current_running_app_task();
+    if (me < 0) return -1;
     for (;;) {
         if (hrt_queue_try_recv(q, out) == 0) return 0;
-        const int me = hrt__get_current();
 
         hrt_port_crit_enter();
         if (q->count) {
