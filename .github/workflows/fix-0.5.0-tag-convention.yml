@@ -1,0 +1,112 @@
+name: Fix 0.5.0 tag convention
+
+on:
+  push:
+    branches:
+      - fix/0.5.0-tag-convention
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/0.5.0-tag-convention
+          fetch-depth: 0
+
+      - name: Restore established release convention
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=-1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing expected text in {path}: {old[:160]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          # HardRT historically tags releases as X.Y.Z (for example 0.3.1 and
+          # 0.4.0). Keep 0.5.0 on the same convention and make local evidence
+          # directories follow it as well, so there is no second naming scheme.
+          for path in (
+              'docs/QUALIFICATION.md',
+              'docs/STM32_MANUAL_TESTS.md',
+              'validation/stm32/README.md',
+              'validation/stm32/releases/README.md',
+              'scripts/stm32_manual_test_full.sh',
+          ):
+              p = Path(path)
+              text = p.read_text()
+              text = text.replace('validation/stm32/releases/vX.Y.Z/',
+                                  'validation/stm32/releases/X.Y.Z/')
+              text = text.replace('validation/stm32/releases/v0.5.0/',
+                                  'validation/stm32/releases/0.5.0/')
+              text = text.replace('validation/stm32/releases/v0.6.0/',
+                                  'validation/stm32/releases/0.6.0/')
+              text = text.replace('`vX.Y.Z`', '`X.Y.Z`')
+              text = text.replace('matching vX.Y.Z tag', 'matching X.Y.Z tag')
+              p.write_text(text)
+
+          replace('docs/QUALIFICATION.md',
+              'tag `v0.5.0` on `main`',
+              'tag `0.5.0` on `main`')
+          replace('docs/ROADMAP.md',
+              'tag `v0.5.0` on `main`',
+              'tag `0.5.0` on `main`')
+
+          replace('validation/stm32/releases/README.md',
+              'the corresponding repository tags are `v0.5.0`, `v0.6.0`, and so on.',
+              'the corresponding repository tags are `0.5.0`, `0.6.0`, and so on.')
+
+          # The documentation gate must enforce the established non-v tag
+          # convention rather than rejecting it.
+          p = Path('scripts/check-docs.py')
+          text = p.read_text()
+          replacements = {
+              'r"tag\\s+`0\\.5\\.0`": "release documentation uses the obsolete non-v-prefixed 0.5.0 tag"':
+                  'r"tag\\s+`v0\\.5\\.0`": "release documentation uses a v-prefixed 0.5.0 tag instead of the established 0.5.0 convention"',
+              'r"qualified\\s+`X\\.Y\\.Z`\\s+tag": "release documentation uses the obsolete non-v-prefixed release-tag convention"':
+                  'r"qualified\\s+`vX\\.Y\\.Z`\\s+tag": "release documentation uses a v-prefixed release-tag convention"',
+              'validation/stm32/releases/vX.Y.Z/': 'validation/stm32/releases/X.Y.Z/',
+              'local vX.Y.Z evidence-directory convention': 'local X.Y.Z evidence-directory convention',
+              '`vX.Y.Z` tag': '`X.Y.Z` tag',
+              'v-prefixed Git release-tag convention': 'non-v-prefixed Git release-tag convention',
+              'validation/stm32/releases/v0.5.0/': 'validation/stm32/releases/0.5.0/',
+              'local v-prefixed directory convention': 'local X.Y.Z directory convention',
+              'tags are `v0.5.0`': 'tags are `0.5.0`',
+              'v-prefixed Git tag convention': 'non-v-prefixed Git tag convention',
+              'tag `v0.5.0` on `main`': 'tag `0.5.0` on `main`',
+              "repository's exact v0.5.0 tag convention": "repository's exact 0.5.0 tag convention",
+              'repository `vX.Y.Z` release-tag convention': 'repository `X.Y.Z` release-tag convention',
+              'v-prefixed Git release-tag convention': 'non-v-prefixed Git release-tag convention',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"missing expected check-docs text: {old!r}")
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Verify correction
+        run: |
+          git diff --check
+          python3 scripts/check-docs.py
+          grep -RInE 'tag `v0\.5\.0`|`vX\.Y\.Z` tag|releases/vX\.Y\.Z|releases/v0\.5\.0' \
+            docs scripts validation && exit 1 || true
+          test -n "$(git status --porcelain)"
+
+      - name: Commit corrected convention
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs scripts validation
+          git commit -m "fix(hardrt): restore non-v release tag convention"
+          git push origin HEAD:fix/0.5.0-tag-convention
