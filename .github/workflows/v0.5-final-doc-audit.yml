@@ -1,0 +1,136 @@
+name: Apply v0.5 final documentation audit
+
+on:
+  push:
+    branches:
+      - fix/v0.5-final-doc-audit
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/v0.5-final-doc-audit
+          fetch-depth: 0
+
+      - name: Apply final audit alignment
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing expected text in {path}: {old[:140]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Release tag convention: repository tags are vX.Y.Z, matching the
+          # existing local evidence directory convention.
+          replace('validation/stm32/README.md',
+              '8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.\n\nThe `v` prefix in the local retention directory is not part of the Git tag. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.',
+              '8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `vX.Y.Z` tag on `main`.\n\nThe local retention directory mirrors the repository `vX.Y.Z` Git-tag convention. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.')
+
+          replace('validation/stm32/releases/README.md',
+              'The local directory uses a `v` prefix for readability and compatibility with the hardware runner\'s guidance. Git repository release tags do **not** use that prefix; the corresponding tags are `0.5.0`, `0.6.0`, and so on.',
+              'The local directory mirrors the Git release-tag convention; the corresponding repository tags are `v0.5.0`, `v0.6.0`, and so on.')
+          replace('validation/stm32/releases/README.md',
+              '6. publish the selected archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.',
+              '6. publish the selected archive as a GitHub Release asset from the `vX.Y.Z` tag on `main`.')
+
+          replace('docs/QUALIFICATION.md',
+              'The `v` prefix above is only the local evidence-directory convention. Repository release tags use `X.Y.Z` without a `v` prefix.',
+              'The local evidence directory mirrors the repository `vX.Y.Z` release-tag convention.')
+          replace('docs/QUALIFICATION.md',
+              'published as a GitHub Release artifact from the qualified `X.Y.Z` tag instead.',
+              'published as a GitHub Release artifact from the qualified `vX.Y.Z` tag instead.')
+          replace('docs/QUALIFICATION.md',
+              'tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag.',
+              'tag `v0.5.0` on `main`, and publish the qualification package and release binaries from that tag.')
+
+          replace('docs/STM32_MANUAL_TESTS.md',
+              'The `v` prefix is only the local evidence-directory convention. Git repository release tags use `X.Y.Z` without that prefix.',
+              'The local evidence directory mirrors the repository `vX.Y.Z` release-tag convention.')
+          replace('docs/STM32_MANUAL_TESTS.md',
+              'tagged `X.Y.Z`.',
+              'tagged `vX.Y.Z`.')
+
+          replace('docs/ROADMAP.md',
+              '6. tag `0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.',
+              '6. tag `v0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.')
+
+          replace('scripts/stm32_manual_test_full.sh',
+              'Timestamped development runs are gitignored; release evidence remains trackable under:\n  validation/stm32/releases/vX.Y.Z/\n',
+              'Timestamped development runs and local release packages are gitignored.\nA selected release package may be retained locally under:\n  validation/stm32/releases/vX.Y.Z/\nand published as a GitHub Release artifact from the matching vX.Y.Z tag.\n')
+
+          # Make the documentation gate enforce, rather than contradict, the
+          # chosen v-prefixed release-tag convention.
+          replace('scripts/check-docs.py',
+              '    r"tag\\s+`v0\\.5\\.0`": "release documentation uses the wrong v-prefixed 0.5.0 tag",\n    r"qualified\\s+`vX\\.Y\\.Z`\\s+tag": "release documentation confuses the local v-prefixed evidence directory with the Git tag",\n',
+              '    r"tag\\s+`0\\.5\\.0`": "release documentation uses the obsolete non-v-prefixed 0.5.0 tag",\n    r"qualified\\s+`X\\.Y\\.Z`\\s+tag": "release documentation uses the obsolete non-v-prefixed release-tag convention",\n')
+          replace('scripts/check-docs.py',
+              'if "`X.Y.Z` tag" not in validation:\n    fail("validation/stm32/README.md does not distinguish non-v-prefixed Git release tags")',
+              'if "`vX.Y.Z` tag" not in validation:\n    fail("validation/stm32/README.md does not document the v-prefixed Git release-tag convention")')
+          replace('scripts/check-docs.py',
+              'if "tags are `0.5.0`" not in release_validation:\n    fail("release qualification retention guidance does not distinguish the 0.5.0 Git tag from the local directory name")',
+              'if "tags are `v0.5.0`" not in release_validation:\n    fail("release qualification retention guidance does not document the v-prefixed Git tag convention")')
+          replace('scripts/check-docs.py',
+              'if "tag `0.5.0` on `main`" not in qualification:\n    fail("docs/QUALIFICATION.md does not state the repository\'s exact 0.5.0 tag convention")',
+              'if "tag `v0.5.0` on `main`" not in qualification:\n    fail("docs/QUALIFICATION.md does not state the repository\'s exact v0.5.0 tag convention")')
+          replace('scripts/check-docs.py',
+              'if "Git repository release tags use `X.Y.Z`" not in manual:\n    fail("STM32 manual documentation does not distinguish local evidence directories from Git tags")',
+              'if "repository `vX.Y.Z` release-tag convention" not in manual:\n    fail("STM32 manual documentation does not state the v-prefixed Git release-tag convention")')
+
+          # Strict CI semantics changed during the source audit; make prose match.
+          replace('docs/TESTS_POSIX.md',
+              'Strict warnings include `-Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow`. UBSan is applied',
+              'Strict warnings include `-Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow`, with `-Werror` promoting every warning to a build failure. UBSan is applied')
+
+          # C++ and top-level API prose must reflect the hardened blocking-call contract.
+          replace('cpp/hardrtpp.hpp',
+              '         * @return 0 after the semaphore has been acquired, or -1 if waiter publication fails.',
+              '         * @return 0 after acquisition, or -1 for invalid task context or waiter publication failure.')
+
+          replace('docs/CPP.md',
+              '`give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.',
+              '`take()` is a blocking operation and requires a current RUNNING application task; invalid no-current/non-running calls return `-1` without consuming an available token. `try_take()` remains non-blocking. `give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.')
+          replace('docs/CPP.md',
+              'All queue wrappers expose:\n\n- `send` and `recv`;\n- `try_send` and `try_recv`;',
+              'All queue wrappers expose:\n\n- `send` and `recv`;\n- `try_send` and `try_recv`;')
+          replace('docs/CPP.md',
+              'The C queue implementation copies objects as raw bytes with `memcpy`.',
+              '`send()` and `recv()` are blocking operations and require a current RUNNING application task; invalid no-current/non-running calls return `-1` without changing queue contents. The `try_*` operations remain non-blocking.\n\nThe C queue implementation copies objects as raw bytes with `memcpy`.')
+
+          replace('docs/API_C.md',
+              'Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.',
+              'Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Blocking `hrt_sem_take()` requires a current RUNNING application task; an invalid no-current/non-running call returns `-1` without consuming a token. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.')
+          replace('docs/API_C.md',
+              'Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking operations wait indefinitely. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.',
+              'Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking send/receive require a current RUNNING application task, wait indefinitely on full/empty state, and return `-1` without changing queue contents for invalid no-current/non-running callers. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.')
+
+          replace('RELEASE_NOTES.md',
+              '- Runtime task creation is supported after scheduler start and participates at the next scheduling point.\n',
+              '- Runtime task creation is supported after scheduler start and participates at the next scheduling point.\n- Task-control and blocking semaphore/queue calls now validate that a current RUNNING application task exists even in non-debug builds; rejected no-current/non-running calls do not consume semaphore tokens or modify queue contents.\n')
+          PY
+
+      - name: Verify audit changes
+        run: |
+          git diff --check
+          python3 scripts/check-docs.py
+          test -n "$(git status --porcelain)"
+
+      - name: Commit audited alignment
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_NOTES.md cpp docs scripts validation
+          git commit -m "fix(hardrt): align v0.5 release audit contracts"
+          git push origin HEAD:fix/v0.5-final-doc-audit
