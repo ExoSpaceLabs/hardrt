@@ -29,12 +29,12 @@ The core owns the outgoing READY-task transition exactly once before a successor
 Current `develop` semantics are:
 
 - blocked, sleeping, deleted, or returned tasks are not requeued;
-- explicit `hrt_yield()` rotates the current READY task to the tail once and refreshes its quantum;
-- RR quantum expiry rotates the task to the tail once and refreshes the next quantum;
+- explicit `hrt_yield()` rotates the current RUNNING task to the READY tail once and refreshes its quantum;
+- RR quantum expiry rotates the task to the READY tail once and refreshes the next quantum;
 - higher-priority asynchronous preemption preserves the interrupted task's queue precedence and remaining quantum;
 - ISR/tick code requests a switch but never directly enters application task context.
 
-Wake paths use one scheduler-aware decision. Under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a newly READY task requests immediate scheduling only when it has strictly higher priority than the current READY task, or when no normal READY task is running. Equal- and lower-priority wakes do not force a context switch solely because they became READY.
+Wake paths use one scheduler-aware decision. Under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a newly READY task requests immediate scheduling only when it has strictly higher priority than the current **RUNNING** application task, or when no normal application task is running. Equal- and lower-priority wakes do not force a context switch solely because they became READY.
 
 This rule is also the meaning of public ISR `need_switch` outputs. The ISR API itself requests the switch when required; applications do not call a second ISR-yield hook.
 
@@ -125,7 +125,7 @@ With `HRT_TICK_SYSTICK`, `hrt_init()` configures but does not activate the port 
 
 With `HRT_TICK_EXTERNAL`, HardRT never starts a timer. The application timer ISR calls public `hrt_tick_from_isr()`, which reaches the same core tick path. Calling that public API while `HRT_TICK_SYSTICK` is selected does not advance time and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
 
-Because the external timer is application-owned, applications are responsible for not invoking its HardRT tick path before `hrt_init()` has completed. HardRT itself no longer enables global interrupts as a side effect of `hrt_init()`.
+Because the external timer is application-owned, applications are responsible for not invoking its HardRT tick path before `hrt_init()` has completed. HardRT itself does not enable global interrupts as a side effect of `hrt_init()`.
 
 ## Context switching
 
