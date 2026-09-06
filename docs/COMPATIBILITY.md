@@ -30,11 +30,15 @@ ABI compatibility is **not guaranteed across pre-1.0 minor releases**. Public sy
 The installed CMake package name and canonical targets are intended to remain stable:
 
 ```cmake
-find_package(HardRT REQUIRED)
+find_package(HardRT 0.5.0 REQUIRED)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
 
 When C++ wrappers are enabled, `HardRT::hardrtpp` is the canonical C++ target. If these package names ever change, a documented migration path is required.
+
+For pre-1.0 releases, HardRT's generated CMake version file uses `SameMinorVersion`. This intentionally prevents a new minor release from silently satisfying a dependency written for an older minor line whose source or behavior may have changed. Patch releases within the same minor line may satisfy the requested package version according to CMake's normal version rules.
+
+Package resolution is therefore deliberately narrower than the stability of the canonical target names. A stable target name does not imply source, behavioral, or ABI compatibility across `0.X` minor lines.
 
 Kernel/port-private headers are not part of the compatibility surface and are not installed.
 
@@ -50,6 +54,7 @@ v0.5.0 is a pre-1.0 minor release and intentionally changes behavior relative to
 - live task-stack overlap is rejected.
 - event flags and per-task notifications add new public synchronization state and extend private TCB storage.
 - kernel/port implementation headers are outside the installed public API.
+- CMake package version matching is restricted to the `0.5.x` minor line; a consumer requiring `0.4.x` must migrate explicitly rather than accepting v0.5.0 implicitly.
 
 No ABI-compatibility claim is made between v0.4.0 and v0.5.0. Consumers should rebuild against the v0.5.0 headers and library together.
 
