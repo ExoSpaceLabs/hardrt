@@ -162,7 +162,7 @@ sem.give();
 sem.give_from_isr(need_switch);
 ```
 
-`give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.
+`take()` is a blocking operation and requires a current RUNNING application task; invalid no-current/non-running calls return `-1` without consuming an available token. `try_take()` remains non-blocking. `give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.
 
 ## Mutexes
 
@@ -234,6 +234,8 @@ All queue wrappers expose:
 - `try_send` and `try_recv`;
 - `try_send_from_isr` and `try_recv_from_isr`;
 - `native_handle`.
+
+`send()` and `recv()` are blocking operations and require a current RUNNING application task; invalid no-current/non-running calls return `-1` without changing queue contents. The `try_*` operations remain non-blocking.
 
 The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>`, `StaticQueue<T, Capacity>`, and therefore the `Queue<T, Capacity>` alias enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
 

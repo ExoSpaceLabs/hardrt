@@ -138,7 +138,7 @@ int  hrt_sem_give(hrt_sem_t *sem);
 int  hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 ```
 
-Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.
+Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Blocking `hrt_sem_take()` requires a current RUNNING application task; an invalid no-current/non-running call returns `-1` without consuming a token. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.
 
 See [SEMAPHORES.md](SEMAPHORES.md).
 
@@ -175,7 +175,7 @@ int      hrt_queue_try_recv_from_isr(hrt_queue_t *queue,
 uint16_t hrt_queue_count(const hrt_queue_t *queue);
 ```
 
-Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking operations wait indefinitely. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.
+Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking send/receive require a current RUNNING application task, wait indefinitely on full/empty state, and return `-1` without changing queue contents for invalid no-current/non-running callers. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.
 
 See [QUEUES.md](QUEUES.md).
 

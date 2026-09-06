@@ -38,8 +38,10 @@ Modes:
 The board probe is a prerequisite and is always run.
 
 Development evidence is written under validation/stm32/.
-Timestamped development runs are gitignored; release evidence remains trackable under:
+Timestamped development runs and local release packages are gitignored.
+A selected release package may be retained locally under:
   validation/stm32/releases/vX.Y.Z/
+and published as a GitHub Release artifact from the matching vX.Y.Z tag.
 
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
