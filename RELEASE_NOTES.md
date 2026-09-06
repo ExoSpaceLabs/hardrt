@@ -16,7 +16,7 @@ HardRT v0.5.0 is a pre-1.0 minor release focused on scheduler/lifecycle correctn
 - Static intrusive READY and sleeper structures with explicit task/slot-state invariants.
 - STM32H755 event/notification functional validation and DWT timing/profiling cases.
 - Deterministic hosted event/notification stress coverage under priority, global RR, and priority-RR policies.
-- Documentation compile/link-drift checks, repository-local link/path validation, and Doxygen CI.
+- Documentation compile/link-drift checks, repository-wide tracked-Markdown link/path validation, and Doxygen CI.
 - Explicit pre-1.0 compatibility/versioning policy in `docs/COMPATIBILITY.md`.
 
 ## Changed
@@ -55,6 +55,10 @@ The Cortex-M port now has explicit/validated behavior for:
 - PendSV scheduler/context transitions;
 - semaphore, queue, event, and notification ISR wake paths.
 
+### CMake package matching
+
+The generated package-version file now uses `SameMinorVersion` for the pre-1.0 line. A v0.5.x package may satisfy a compatible v0.5 request, but v0.5.0 will not silently satisfy a consumer that requested HardRT 0.4.x. This matches the documented policy that pre-1.0 minor releases may intentionally change source behavior or public layouts.
+
 ## Event-flag semantics
 
 - Public bit width is `uint32_t`.
@@ -85,6 +89,7 @@ Applications moving from v0.4.0 should review these behavior changes:
 5. Applications must not reuse or partially overlap a live task stack.
 6. A task must still release owned mutexes before return/deletion; automatic mutex owner-death recovery is not provided in v0.5.0.
 7. Consumers should rebuild HardRT and application objects together because public concrete synchronization-object layouts are not ABI-stable across pre-1.0 minor releases.
+8. CMake consumers pinned to the 0.4 minor line must explicitly migrate their package requirement to 0.5 after reviewing these changes.
 
 ## Compatibility
 
