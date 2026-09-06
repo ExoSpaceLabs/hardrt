@@ -1,110 +1,155 @@
-# Cross-Compilation
+# Cross-compilation and STM32H755 development
 
-To compile the library for a different architecture, follow these instructions:
+HardRT ships a GNU Arm Embedded CMake toolchain and STM32H755 validation examples. The library itself does not vendor STM32CubeH7; board examples consume CMSIS/HAL headers from a separate STM32CubeH7 checkout.
 
-## ARM BARE-METAL
+## Prerequisites
 
-### Prerequisites
-
-#### Project Preparation:
-Navigate to `Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates/gcc/` from the `STM32CubeH7` repository and move the 
-device-specific system, startup, and linker files to the dedicated folder.
-
-Install GCC:
-Debian/Ubuntu names shown; use equivalent names for other distributions.
+On Debian/Ubuntu:
 
 ```bash
-
-sudo apt-get install gcc-arm-none-eabi gdb-multiarch openocd stlink-tools
-
+sudo apt-get update
+sudo apt-get install -y \
+  cmake ninja-build make \
+  gcc-arm-none-eabi gdb-multiarch \
+  openocd stlink-tools
 ```
 
-# Use the following command to build the project:
-```bash
+For the supplied NUCLEO-H755ZI-Q examples, obtain STM32CubeH7 separately and keep the checkout path available, for example:
 
-cmake -S . -B build-mcu \
-  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake \
+```text
+/home/dev/STM32Cube/Repository/STM32CubeH7
+```
+
+The validation scripts expect at least:
+
+```text
+Drivers/CMSIS/Core/Include
+Drivers/CMSIS/Device/ST/STM32H7xx/Include
+Drivers/STM32H7xx_HAL_Driver/Inc
+```
+
+Do not copy or move STM32Cube files into the HardRT source tree.
+
+## Cross-build the HardRT library
+
+From the repository root:
+
+```bash
+cmake -S . -B build-cortex_m -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
   -DHARDRT_PORT=cortex_m \
-  -DHARDRT_BUILD_EXAMPLES=OFF
-  
+  -DHARDRT_BUILD_TESTS=OFF \
+  -DHARDRT_BUILD_EXAMPLES=OFF \
+  -DHARDRT_ENABLE_CPP=OFF \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
 
-cmake --build build-mcu -j
-cmake --install build-mcu --prefix "$PWD/install"
+cmake --build build-cortex_m --parallel
+cmake --install build-cortex_m --prefix "$PWD/install-cortex_m"
 ```
 
-> **NOTE:** This example builds for `cortex-m7`. If building for a different processor, update it accordingly. 
+Enable the optional C++17 wrapper target with `-DHARDRT_ENABLE_CPP=ON` when `arm-none-eabi-g++` is available.
 
-### Flashing the STM32
+## Cross-build the STM32H755 validation examples
 
-Provide st-link access to USB:
+The CI-equivalent helper builds the Cortex-M library and the complete STM32H755 example matrix without flashing hardware:
+
+```bash
+export STM32CUBE_H7_ROOT=/path/to/STM32CubeH7
+./scripts/build-stm32-examples-ci.sh
+```
+
+CI runs this on Ubuntu 22.04 with `gcc-arm-none-eabi`. It covers the C/C++ board examples, scheduler/IPC fixtures, signal timing builders, and tick/sleeper benchmark configurations.
+
+## Build an individual H755 example
+
+The repository provides helpers for the physical examples. For example:
+
+```bash
+STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
+  ./scripts/build-lib-stm32h7xx-demo.sh
+```
+
+The common helper installs HardRT first and then builds the application against the installed CMake package. Individual example scripts select the required application and configuration.
+
+## ST-Link permissions
+
+If your distribution does not already provide suitable udev rules, a simple development rule is:
+
 ```bash
 cat <<'RULE' | sudo tee /etc/udev/rules.d/99-stlink.rules
-# STMicroelectronics ST-LINK/V2 & V3
 ATTRS{idVendor}=="0483", MODE:="0666"
 RULE
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
-Probe the existence of the board:
+
+Confirm the probe is visible:
+
 ```bash
 lsusb | grep -i st
-
 ```
-Query the package manager for the location of the configuration scripts.
+
+## Flash and debug
+
+The repository contains OpenOCD configurations for the NUCLEO-H755ZI-Q. A clean flash of the demo image can be performed with:
 
 ```bash
-dpkg -L openocd | grep '/scripts$'
-
-```
-# Check for ST file existence.
-ls $(dpkg -L openocd | grep '/scripts$')/interface/stlink.cfg
-ls $(dpkg -L openocd | grep '/scripts$')/target/stm32h7x_dual_bank.cfg
-```
-If these files are present, the board can be flashed.
-Run the following openocd command to flash the board:
-```bash
-
-openocd -s /usr/share/openocd/scripts -f scripts/openocd_h755_clean.cfg -c "init; reset halt; \
+openocd -s /usr/share/openocd/scripts \
+  -f scripts/openocd_h755_clean.cfg \
+  -c "init; reset halt; \
       stm32h7x mass_erase 0; \
       stm32h7x mass_erase 1; \
       program examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf verify; \
       reset halt; shutdown"
-
 ```
-If no errors occur, debugging is possible using gdb and two terminals:
 
-Terminal A:
+Start a debug server with:
+
 ```bash
-
-openocd -s /usr/share/openocd/scripts -f scripts/openocd_h755.cfg -c "init; reset halt"
+openocd -s /usr/share/openocd/scripts \
+  -f scripts/openocd_h755.cfg \
+  -c "init; reset halt"
 ```
-This command launches the board in debug mode. gdb can then be used to debug for ticks.
 
-Terminal B:
+Then connect GDB in another terminal:
+
 ```bash
 gdb-multiarch examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf
-
 ```
-Inside (gdb):
-```bash 
+
+Inside GDB:
+
+```gdb
 target extended-remote :3333
 monitor reset halt
-b SysTick_Handler # PendSV_Handler
-c
-
+continue
 ```
-Alternatively, run a gdb script that prepares all required breakpoints and outputs. See example scripts under
-scripts/gdb/.
 
-Command:
+Repository GDB scripts under `scripts/gdb/` provide deterministic validation/measurement procedures for the supplied fixtures.
+
+## Complete physical qualification
+
+Do not assemble release evidence by manually running individual examples. The supported human-facing qualification entry point is:
+
 ```bash
-
-gdb-multiarch -q examples/hardrt_h755_demo/build-cortex_m/hardrt_cm7_demo.elf -batch -x scripts/gdb/tasks.gdb
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
-This example script sets breakpoints for taskA and taskB with additional information like ticks and execution count.
 
+It owns board probing, build/flash cycles, functional validation, timing collection, and evidence packaging. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
 
-### Include HardRT in a project:
-#### CMake
+## Using HardRT from another CMake project
 
-#### Others
+After installing a target-specific HardRT build:
+
+```cmake
+find_package(HardRT 0.5.0 REQUIRED)
+target_link_libraries(my_firmware PRIVATE HardRT::hardrt)
+```
+
+When wrappers were enabled in the installed package:
+
+```cmake
+target_link_libraries(my_firmware PRIVATE HardRT::hardrtpp)
+```
+
+The application remains responsible for MCU startup code, linker script, clock/peripheral initialization, and any vendor HAL/CMSIS integration required by its board.
