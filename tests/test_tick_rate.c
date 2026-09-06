@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "test_common.h"
 
+#include <signal.h>
 #include <time.h>
 
 extern volatile hrt_err g_error;
@@ -64,6 +65,30 @@ static void test_internal_mode_diagnoses_external_tick_api(void) {
                     "external tick API misuse records tick-source mismatch");
 }
 
+static void test_reset_drains_pending_tick_signal(void) {
+    hrt__test_reset_scheduler_state();
+    hrt_config_t cfg = {.tick_hz = 1000,
+                        .policy = HRT_SCHED_PRIORITY_RR,
+                        .default_slice = 5,
+                        .tick_src = HRT_TICK_SYSTICK};
+    T_ASSERT_EQ_INT(0, hrt_init(&cfg), "init pending-tick reset fixture");
+
+    hrt__test_block_sigalrm();
+    T_ASSERT_EQ_INT(0, raise(SIGALRM), "queue a blocked SIGALRM before reset");
+
+    sigset_t pending;
+    T_ASSERT_EQ_INT(0, sigpending(&pending), "query pending signals before reset");
+    T_ASSERT_EQ_INT(1, sigismember(&pending, SIGALRM),
+                    "SIGALRM is pending while blocked");
+
+    hrt__test_reset_scheduler_state();
+
+    T_ASSERT_EQ_INT(0, sigpending(&pending), "query pending signals after reset");
+    T_ASSERT_EQ_INT(0, sigismember(&pending, SIGALRM),
+                    "reset consumes stale pending SIGALRM");
+    hrt__test_unblock_sigalrm();
+}
+
 static void test_tick_rate_200hz_sleep_accuracy(void) {
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = {.tick_hz = 200, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5};
@@ -90,6 +115,7 @@ static const test_case_t CASES[] = {
     {"Internal tick remains dormant until scheduler start", test_internal_tick_dormant_until_start},
     {"Internal tick rejects unrepresentable host period", test_unrepresentable_host_tick_rejected},
     {"Internal mode diagnoses external tick API misuse", test_internal_mode_diagnoses_external_tick_api},
+    {"POSIX reset drains pending tick signal", test_reset_drains_pending_tick_signal},
     {"Tick rate configurability (200 Hz)", test_tick_rate_200hz_sleep_accuracy},
 };
 

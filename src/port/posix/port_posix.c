@@ -35,10 +35,33 @@ static volatile sig_atomic_t g_test_fail_next_prepare = 0;
 
 void hrt__test_stop_scheduler(void) { g_test_stop = 1; }
 void hrt__test_reset_scheduler_state(void) {
+    /* A periodic SIGALRM may already be pending when the previous hosted
+     * scheduler run is stopped. Resetting core queues/TCBs while that signal
+     * can still be delivered creates a race between hrt_init()/task creation
+     * and hrt__tick_isr(). Block, disarm, and consume any pending tick before
+     * resetting either port or kernel test state. */
+    sigset_t alarm_set;
+    sigset_t old_mask;
+    sigemptyset(&alarm_set);
+    sigaddset(&alarm_set, SIGALRM);
+    sigprocmask(SIG_BLOCK, &alarm_set, &old_mask);
+
+    const struct itimerval stopped = {0};
+    (void)setitimer(ITIMER_REAL, &stopped, NULL);
+
+    const struct timespec no_wait = {0, 0};
+    while (sigtimedwait(&alarm_set, NULL, &no_wait) == SIGALRM) {
+        /* Standard signals coalesce, but drain defensively until none remain. */
+    }
+
     g_test_stop = 0;
     g_switch_pending = 1;
     g_test_fail_next_prepare = 0;
+    g_crit_depth = 0;
+    memset(g_ctxs, 0, sizeof(g_ctxs));
     hrt__test_reset_kernel_state();
+
+    sigprocmask(SIG_SETMASK, &old_mask, NULL);
 }
 void hrt__test_idle_counter_reset(void) { g_idle_counter = 0; }
 unsigned long long hrt__test_idle_counter_value(void) { return g_idle_counter; }
