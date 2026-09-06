@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(hardrt_installed_consumer LANGUAGES C CXX)
 
-find_package(HardRT 0.4.0 REQUIRED)
+find_package(HardRT 0.5.0 REQUIRED)
 
 add_executable(hardrt_installed_consumer main.c second_tu.c)
 target_link_libraries(hardrt_installed_consumer PRIVATE HardRT::hardrt)
