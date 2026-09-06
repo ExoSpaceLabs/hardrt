@@ -1,6 +1,6 @@
 # HardRT Porting Guide
 
-This guide describes the port interface used by the current HardRT implementation on the `develop` branch. The authoritative non-installed declaration surface is [`src/internal/hardrt_port_contract.h`](../src/internal/hardrt_port_contract.h).
+This guide describes the port interface used by HardRT v0.5. The authoritative non-installed declaration surface is [`src/internal/hardrt_port_contract.h`](../src/internal/hardrt_port_contract.h).
 
 HardRT separates the portable scheduler and synchronization code from architecture-specific tick, critical-section, stack, idle, and context-switch operations.
 
@@ -26,7 +26,7 @@ HardRT separates the portable scheduler and synchronization code from architectu
 
 The core owns the outgoing READY-task transition exactly once before a successor is selected. A port must not separately enqueue, rotate, or refresh a task merely because it is performing the architecture-specific context switch.
 
-Current `develop` semantics are:
+The v0.5 semantics are:
 
 - blocked, sleeping, deleted, or returned tasks are not requeued;
 - explicit `hrt_yield()` rotates the current RUNNING task to the READY tail once and refreshes its quantum;

@@ -84,6 +84,16 @@ stale_patterns = {
     r"promote_stm32_qualification\.sh": "removed/nonexistent qualification promotion script is still documented",
     r"Event flags and task notifications[^\n]*not implemented yet": "events/notifications still described as unimplemented",
     r"Event flags and task notifications[^\n]*remain planned": "events/notifications still described as planned",
+    r"tag\s+`v0\.5\.0`": "release documentation uses the wrong v-prefixed 0.5.0 tag",
+    r"qualified\s+`vX\.Y\.Z`\s+tag": "release documentation confuses the local v-prefixed evidence directory with the Git tag",
+    r"current\s+`develop`\s+behavior": "release documentation is branch-relative instead of version-relative",
+    r"on\s+the\s+`develop`\s+branch": "release documentation describes the public contract as develop-only",
+    r"implemented\s+on\s+`develop`": "release documentation describes the public contract as develop-only",
+    r"true\s+global\s+round-robin\s+on\s+`develop`": "scheduler documentation is branch-relative instead of version-relative",
+    r"final\s+v0\.5\.0\s+release\s+candidate\s+must\s+repeat": "documentation still describes final v0.5 qualification as a pending repository state",
+    r"release\s+candidate\s+must\s+therefore\s+be\s+qualified": "documentation still describes final v0.5 qualification as a pending repository state",
+    r"Remaining\s+v0\.5\.0\s+release\s+gates": "roadmap still presents completed v0.5 engineering gates as pending",
+    r"Humanity has already invented enough": "release documentation contains conversational/editorial text",
 }
 for pattern, description in stale_patterns.items():
     if re.search(pattern, combined, flags=re.IGNORECASE):
@@ -96,14 +106,40 @@ if "do not commit generated qualification evidence" not in validation.lower():
     fail("validation/stm32/README.md does not forbid committing generated qualification evidence")
 if "GitHub Release asset" not in validation:
     fail("validation/stm32/README.md does not direct release evidence to a GitHub Release asset")
+if "validation/stm32/releases/vX.Y.Z/" not in validation:
+    fail("validation/stm32/README.md does not preserve the runner's local vX.Y.Z evidence-directory convention")
+if "`X.Y.Z` tag" not in validation:
+    fail("validation/stm32/README.md does not distinguish non-v-prefixed Git release tags")
 
 release_validation = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
 if "gitignored" not in release_validation.lower():
     fail("release qualification retention guidance does not state that local evidence is gitignored")
+if "validation/stm32/releases/v0.5.0/" not in release_validation:
+    fail("release qualification retention guidance does not document the local v-prefixed directory convention")
+if "tags are `0.5.0`" not in release_validation:
+    fail("release qualification retention guidance does not distinguish the 0.5.0 Git tag from the local directory name")
+
+qualification = (ROOT / "docs/QUALIFICATION.md").read_text(encoding="utf-8")
+if "tag `0.5.0` on `main`" not in qualification:
+    fail("docs/QUALIFICATION.md does not state the repository's exact 0.5.0 tag convention")
+if "validation/stm32/releases/vX.Y.Z/" not in qualification:
+    fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
+
+manual = (ROOT / "docs/STM32_MANUAL_TESTS.md").read_text(encoding="utf-8")
+if "validation/stm32/releases/vX.Y.Z/" not in manual:
+    fail("STM32 manual documentation does not match the runner's local evidence-directory convention")
+if "Git repository release tags use `X.Y.Z`" not in manual:
+    fail("STM32 manual documentation does not distinguish local evidence directories from Git tags")
 
 signal_readme = (ROOT / "examples/hardrt_h755_dwt_timing/README.md").read_text(encoding="utf-8")
 if "HARDRT_CFG_MAX_TASKS=N+1" in signal_readme:
     fail("timing README still documents the invalid one-waiter N+1 capacity rule")
+
+events = (ROOT / "docs/EVENTS_NOTIFICATIONS.md").read_text(encoding="utf-8")
+if "pending remains set while the decremented value is still non-zero" not in events:
+    fail("task-notification take semantics do not document residual pending state")
+if "pending notification whose value is zero" not in events:
+    fail("task-notification documentation omits the zero-valued pending take edge case")
 
 cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 if "project(${LIB_NAME} VERSION 0.5.0 LANGUAGES C)" not in cmake:
@@ -114,6 +150,12 @@ if "COMPATIBILITY SameMinorVersion" not in cmake:
 installed_consumer = (ROOT / "tests/installed_consumer/CMakeLists.txt").read_text(encoding="utf-8")
 if "find_package(HardRT 0.5.0 REQUIRED)" not in installed_consumer:
     fail("installed-package consumer is not validating the v0.5.0 package contract")
+
+cpp_header = (ROOT / "cpp/hardrtpp.hpp").read_text(encoding="utf-8")
+if 'Version string (e.g., "0.4.0")' in cpp_header:
+    fail("C++ public header still advertises the 0.4.0 version-string example")
+if 'Version string (e.g., "0.5.0")' not in cpp_header:
+    fail("C++ public header does not advertise the current 0.5.0 version-string example")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)

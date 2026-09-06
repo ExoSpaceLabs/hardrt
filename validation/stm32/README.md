@@ -27,17 +27,20 @@ A filtered run is useful during development but is **not** complete release evid
 
 ## Release evidence handling
 
+A release candidate must already be on `develop`; do not qualify a temporary feature or release branch.
+
 For a release candidate:
 
-1. freeze the source SHA after hosted/cross-build CI is green;
-2. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
-3. require board probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
-4. inspect the report and raw logs;
-5. retain the selected package locally under `validation/stm32/releases/vX.Y.Z/` if desired;
-6. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
-7. publish the selected qualification archive as a GitHub Release asset from the tag that points to the qualified source commit.
+1. merge all release-facing changes into `develop` and remove temporary branches;
+2. freeze the `develop` SHA after hosted/cross-build CI is green;
+3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
+4. require board probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
+5. inspect the report and raw logs;
+6. retain the selected package locally under `validation/stm32/releases/vX.Y.Z/` if desired;
+7. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
+8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.
 
-Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
+The `v` prefix in the local retention directory is not part of the Git tag. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
 
 ## Functional hardware matrix
 

@@ -24,7 +24,9 @@ This is the only human-facing hardware qualification command. It owns build, fla
 
 The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
 
-## Evidence location and release handling
+## Release branch and evidence handling
+
+The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources and should be removed after their PRs are merged.
 
 Development runs are written under:
 
@@ -38,9 +40,11 @@ For a release candidate, retain the selected passing package locally under:
 validation/stm32/releases/vX.Y.Z/
 ```
 
+The `v` prefix is only the local evidence-directory convention. Git repository release tags use `X.Y.Z` without that prefix.
+
 Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
 
-The selected package is instead published as a GitHub Release artifact from the qualified `vX.Y.Z` tag. The source commit tagged for release must be the same source tree that produced the passing hardware report.
+The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `X.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
 
 ## Common requirements
 
@@ -140,21 +144,7 @@ This measures production `hrt_tick_from_isr()` behavior. The intrusive delta sle
 
 ## Accepted development evidence
 
-### Scheduler/lifecycle baseline
-
-Run `20260905T134123Z_80f2042f` on SHA `80f2042f2c64053a9ea888666474c5dad5f72797` passed 11/11 functional contracts and 22/22 historical benchmarks.
-
-### Event/notification development baseline
-
-Run `20260905T161136Z_aa39e9bb` on SHA `aa39e9bb5f12f8ada229441a13e83d91c0dbeae6` passed:
-
-```text
-Functional: 13 / 13 PASS
-Historical benchmarks: 22 / 22 PASS
-Overall: PASS
-```
-
-That run proves the event/notification functional hardware contracts but predates the subsequently integrated 16-image signal timing matrix, so it is not final v0.5.0 release evidence.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from the exact `develop` source SHA that is tagged.
 
 ## Human LED acceptance
 

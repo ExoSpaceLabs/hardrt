@@ -1,6 +1,6 @@
 # Scheduler contract
 
-This page documents the scheduler semantics implemented on `develop` for the v0.5 line. It intentionally distinguishes the current development contract from behavior shipped in v0.4.0.
+This page documents the scheduler semantics implemented by HardRT v0.5. It distinguishes the v0.5 contract from behavior shipped in v0.4.0.
 
 Priority `0` is the highest priority. Priority values affect the two priority-based policies and are intentionally ignored by global round-robin.
 
@@ -49,7 +49,7 @@ The validator also checks that low-A's observed remaining quantum matches the ex
 
 ### `HRT_SCHED_RR`
 
-`HRT_SCHED_RR` is true global round-robin on `develop`.
+`HRT_SCHED_RR` is true global round-robin in v0.5.
 
 - All READY application tasks share one intrusive FIFO regardless of priority.
 - Task priority does not affect selection, wake order, or rotation under this policy.
@@ -174,7 +174,7 @@ flowchart TD
 
 Tick processing may make sleeping tasks READY and may expire the RUNNING task's RR quantum. It requests scheduling only when the scheduler-aware wake rule or quantum-expiry rule requires it. Tick/ISR code never runs application task context directly.
 
-Internal SysTick and application-owned external tick sources reach the same core tick semantics; their final hardware qualification matrix is tracked in #56.
+Internal SysTick and application-owned external tick sources reach the same core tick semantics. Their hardware qualification contract is defined in [QUALIFICATION.md](QUALIFICATION.md) and [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md).
 
 ## Port requirements
 

@@ -2,6 +2,12 @@
 
 HardRT separates development measurements from release qualification evidence while using one human-facing STM32 runner for both functional validation and hardware benchmarking.
 
+## Release branch policy
+
+A release candidate is qualified from `develop`, not from a temporary feature or release branch. All release-facing source, documentation, version, and package changes must first be merged into `develop`. The exact `develop` SHA that passes hosted/cross-build CI and physical qualification is then promoted unchanged to `main` and tagged there.
+
+Temporary feature branches are deleted after their PRs are merged. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+
 ## Single STM32 runner
 
 Use:
@@ -34,7 +40,9 @@ A selected release package may be retained locally under:
 validation/stm32/releases/vX.Y.Z/
 ```
 
-These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `vX.Y.Z` tag instead.
+The `v` prefix above is only the local evidence-directory convention. Repository release tags use `X.Y.Z` without a `v` prefix.
+
+These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `X.Y.Z` tag instead.
 
 The source tree tagged for release must therefore be the same source tree that generated the passing report.
 
@@ -105,9 +113,9 @@ These measurements characterize bounded implementation behavior. They are not fo
 
 ## Development evidence
 
-The first complete event/notification functional H755 development run passed 13/13 functional contracts and 22/22 historical benchmarks. Later development evidence at `aa39e9bb5f12f8ada229441a13e83d91c0dbeae6` likewise passed the 13 functional contracts and historical benchmark baseline. These runs predate the consolidated 16-image signal timing matrix and are not final release evidence.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was consolidated. They are development evidence, not substitutes for the exact-SHA release qualification run.
 
-Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Final v0.5.0 signal-profile numbers belong to the selected release evidence artifact produced from the frozen SHA.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected GitHub Release qualification artifact produced from the frozen SHA.
 
 ## What belongs on hardware
 
@@ -125,9 +133,9 @@ Physical qualification focuses on paths affected by real Cortex-M execution:
 
 Pure argument/data-structure edge cases remain primarily hosted tests unless they interact with a target-specific path.
 
-## Final v0.5.0 release evidence
+## v0.5.0 release evidence contract
 
-Before the hardware run, all release-facing source/docs/version changes must be complete and hosted CI must pass on one frozen SHA.
+Before the hardware run, all release-facing source/docs/version changes must be complete on `develop` and hosted CI must pass on one frozen `develop` SHA.
 
 The final STM32 package must then be generated from that exact SHA and record at minimum:
 
@@ -144,7 +152,7 @@ The final STM32 package must then be generated from that exact SHA and record at
 - tick/sleeper scaling metadata;
 - raw build/OpenOCD/GDB logs.
 
-After that run passes, do not modify the qualified source tree. Promote the same source commit through `develop` and `main`, tag `v0.5.0` on `main`, and publish the qualification package and release binaries from that tag.
+After that run passes, do not modify `develop`. Fast-forward `main` to the exact qualified `develop` SHA, tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag. Any later tracked change requires a new candidate SHA and a new qualification run.
 
 ## Human observation
 

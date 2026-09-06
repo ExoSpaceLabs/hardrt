@@ -52,7 +52,7 @@ After initialization, the mutex is unlocked, its owner is `HRT_MUTEX_NO_OWNER`, 
 - appends a contending task to the FIFO waiter queue and marks it blocked;
 - rejects recursive acquisition by the current owner.
 
-When a blocked task resumes after direct handoff, it already owns the mutex.
+When a blocked task resumes after direct handoff, it already owns the mutex. The normal success result is `0`. The function returns `-1` for invalid task context, recursive acquisition, or if bounded waiter publication cannot be completed.
 
 There is no timed-lock variant in v0.5.
 

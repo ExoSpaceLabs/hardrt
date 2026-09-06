@@ -1,18 +1,18 @@
 # Documentation Summary
 
-This documentation set describes the HardRT v0.5 development contract and preserves historical notes where v0.4.0 behavior differs. Planned roadmap items are not part of the current contract until implementation, tests, and user documentation agree.
+This documentation set describes the HardRT v0.5 release contract and preserves historical notes where v0.4.0 behavior differs. Planned roadmap items are not part of the current contract until implementation, tests, and user documentation agree.
 
-## Current v0.5 qualification status
+## v0.5 qualification contract
 
-The scheduler/lifecycle hardening phase and the first event/notification functional hardware pass are accepted development evidence. The final v0.5.0 release candidate must repeat the complete unfiltered STM32H755 suite on the exact frozen RC SHA.
-
-The single hardware entry point is:
+The v0.5 release matrix is **13 functional contracts and 38 benchmark images**, including the event/notification timing matrix. The supported hardware qualification entry point is:
 
 ```bash
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The current runner contains **13 functional contracts and 38 benchmark images**, including the v0.5 event/notification timing matrix. Broader 1.0-quality WCET/interference work remains separate and does not turn measured maxima into universal guarantees.
+A release candidate is qualified only after all release-facing changes are merged into `develop`. The unfiltered hardware run must use the exact frozen `develop` SHA that will later be promoted unchanged to `main` and tagged. Generated qualification evidence remains outside the tracked source tree and is published with the GitHub Release.
+
+Broader 1.0-quality WCET/interference work remains separate and does not turn measured maxima into universal guarantees.
 
 ## Main documents
 

@@ -1,6 +1,6 @@
 # Semaphores
 
-HardRT provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering. This page describes the current `develop` behavior; v0.4.0 used a less selective wake/reschedule rule.
+HardRT v0.5 provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering. v0.4.0 used a less selective wake/reschedule rule.
 
 ## Modes
 
@@ -41,7 +41,7 @@ int hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 
 ### Blocking take
 
-`hrt_sem_take()` first tries the fast path. When no token is available, it:
+`hrt_sem_take()` is a task-context operation. It first tries the fast path. When no token is available, it:
 
 1. enters the port critical section;
 2. checks the count again;
@@ -150,6 +150,7 @@ A semaphore does not carry payload data. When every produced item must be retain
 ## Current constraints
 
 - FIFO waiter ordering.
+- Blocking take is task-context-only.
 - No timeout operations.
 - No cancellation API for a blocked waiter.
 - No priority ordering of waiter queues.

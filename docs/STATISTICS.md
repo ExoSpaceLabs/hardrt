@@ -39,9 +39,9 @@ pendsv_software=562 / 577 / 608 cycles
 pendsv_to_task=779 / 800 / 1365 cycles
 ```
 
-## Event/notification development baseline
+## Event/notification timing matrix
 
-Physical feature validation later passed all 13 v0.5 functional contracts plus the historical 22 benchmarks. The final runner subsequently integrated a dedicated **16-image event/notification timing matrix**.
+Physical feature validation established the 13 v0.5 functional contracts plus the historical 22 benchmarks. The final runner adds a dedicated **16-image event/notification timing matrix**.
 
 The signal metrics are:
 
@@ -57,7 +57,7 @@ The signal metrics are:
 
 The production event/notification code remains uninstrumented internally; the profiling images use direct application-side DWT timestamps with `HARDRT_TIMING_PROFILE=none`.
 
-**Final v0.5.0 signal numbers are intentionally not hard-coded into this source file before qualification.** They belong to the selected hardware qualification artifact generated from the frozen release SHA. This avoids modifying the source tree after the physical run merely to copy measured values into documentation and thereby invalidating the qualified SHA.
+**Release-specific v0.5.0 signal numbers are intentionally not hard-coded into this tracked source file.** They belong to the selected hardware qualification artifact generated from the frozen release SHA. Keeping result data in the release artifact avoids modifying the source tree after physical qualification merely to copy measured values into documentation.
 
 ## Tick/sleeper scaling
 

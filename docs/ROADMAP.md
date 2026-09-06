@@ -29,7 +29,7 @@ The long-term qualification model requires:
 
 ## v0.5.0 implementation complete
 
-The v0.5 line now includes:
+The v0.5 line includes:
 
 - explicit `UNINITIALIZED -> INITIALIZED -> RUNNING` lifecycle;
 - separate slot ownership and task execution state;
@@ -54,20 +54,22 @@ The v0.5 line now includes:
 - documentation-originated C/C++ compile probes, link/path validation, and Doxygen CI;
 - project/release metadata for 0.5.0.
 
-Development H755 evidence has already passed the event/notification functional contracts. The final release matrix is **13 functional contracts + 38 benchmark images**.
+The v0.5 physical release matrix is **13 functional contracts + 38 benchmark images**.
 
-## Remaining v0.5.0 release gates
+## v0.5.0 release procedure
 
-The implementation/release content is now intended to be frozen before physical RC qualification. Remaining release work is procedural:
+`develop` is the only release-candidate branch. Temporary feature/release branches must be merged by PR and removed before release qualification.
 
-1. all hosted Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs pass on one frozen commit;
-2. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
-3. retain the generated qualification package outside the tracked source tree and publish it as a release artifact;
-4. reconcile/close the completed v0.5 milestone issues;
-5. promote the same qualified source commit through `develop` and `main`;
-6. tag `v0.5.0` on `main`, publish release artifacts, and remove temporary branches.
+The release procedure preserves one exact qualified source commit:
 
-No additional feature work should be inserted between final physical qualification and the tag. Humanity has already invented enough ways to invalidate a test result.
+1. merge all release-facing source, documentation, version and package changes into `develop`;
+2. require Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs to pass on one frozen `develop` commit;
+3. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact `develop` commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
+4. retain the generated qualification package outside the tracked source tree and publish it as a release artifact;
+5. fast-forward `main` to the same qualified `develop` commit without changing its tree;
+6. tag `0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.
+
+No tracked source or documentation change belongs between final physical qualification and the release tag unless the new `develop` SHA is deliberately requalified.
 
 ## Post-v0.5 synchronization work
 

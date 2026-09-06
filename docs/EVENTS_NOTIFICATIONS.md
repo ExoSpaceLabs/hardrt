@@ -96,7 +96,9 @@ Notifications sent before the task waits are therefore preserved.
 
 ### Take
 
-`hrt_task_notify_take(clear_count_on_exit)` is the counting-notification convenience operation. It blocks until the notification value is non-zero, returns the pre-consumption value, and consumes the pending state. If `clear_count_on_exit` is non-zero, the stored value becomes zero; otherwise it is decremented by one. Increment saturation prevents count rollover from silently becoming zero.
+`hrt_task_notify_take(clear_count_on_exit)` is the counting-notification convenience operation. It blocks until the notification value is non-zero and returns the pre-consumption value. If `clear_count_on_exit` is non-zero, the stored value becomes zero and pending is cleared. Otherwise the stored value is decremented by one; pending remains set while the decremented value is still non-zero and is cleared when the value reaches zero. Increment saturation prevents count rollover from silently becoming zero.
+
+A successful producer may create a pending notification whose value is zero, for example `HRT_NOTIFY_OVERWRITE` with `value == 0`. That pending state is meaningful to `HRT_NOTIFY_NO_OVERWRITE`, but it does not satisfy counting `take()` until a later update makes the stored value non-zero.
 
 ### ISR behavior
 
