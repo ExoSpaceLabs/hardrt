@@ -176,4 +176,4 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```
 
-The generated package version uses CMake `SameMajorVersion`, but HardRT is pre-1.0 and does not infer ABI stability from that setting. See [COMPATIBILITY.md](COMPATIBILITY.md).
+The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.5.x package may satisfy a compatible 0.5 request, but v0.5.0 must not silently satisfy a `find_package(HardRT 0.4...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
