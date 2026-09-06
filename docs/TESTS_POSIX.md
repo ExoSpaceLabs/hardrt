@@ -61,7 +61,7 @@ HARDRT_STRICT=ON
 HARDRT_SANITIZE=ON
 ```
 
-Strict warnings include `-Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow`. UBSan is applied to the actual HardRT production library and the test executable with:
+Strict warnings include `-Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow`, with `-Werror` promoting every warning to a build failure. UBSan is applied to the actual HardRT production library and the test executable with:
 
 ```text
 -fsanitize=undefined -fno-omit-frame-pointer

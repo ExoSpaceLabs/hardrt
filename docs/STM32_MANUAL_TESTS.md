@@ -40,11 +40,11 @@ For a release candidate, retain the selected passing package locally under:
 validation/stm32/releases/vX.Y.Z/
 ```
 
-The `v` prefix is only the local evidence-directory convention. Git repository release tags use `X.Y.Z` without that prefix.
+The local evidence directory mirrors the repository `vX.Y.Z` release-tag convention.
 
 Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
 
-The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `X.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
+The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `vX.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
 
 ## Common requirements
 

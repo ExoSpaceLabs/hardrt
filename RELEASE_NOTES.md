@@ -44,6 +44,7 @@ ISR producers pend a context switch through the port mechanism rather than execu
 - A returned/deleted task enters EXITED and may later have its slot reclaimed.
 - Live task stacks may not overlap.
 - Runtime task creation is supported after scheduler start and participates at the next scheduling point.
+- Task-control and blocking semaphore/queue calls now validate that a current RUNNING application task exists even in non-debug builds; rejected no-current/non-running calls do not consume semaphore tokens or modify queue contents.
 
 ### Cortex-M contract
 

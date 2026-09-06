@@ -219,7 +219,7 @@ namespace hardrt {
 
         /**
          * @brief Take the semaphore, blocking if no token is available.
-         * @return 0 after the semaphore has been acquired, or -1 if waiter publication fails.
+         * @return 0 after acquisition, or -1 for invalid task context or waiter publication failure.
          */
         int take() {
             return hrt_sem_take(&_sem);
