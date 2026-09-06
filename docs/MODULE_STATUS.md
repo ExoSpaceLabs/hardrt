@@ -43,25 +43,14 @@ HardRT 0.5.0 public/runtime components:
 
 Generic IPC timeout variants remain outside v0.5.
 
-## Validation status
+## v0.5 validation contract
 
-The first event/notification development hardware pass at SHA `6f4ef62a8a0d13a0632537c6e65a50cbd315d656` completed:
-
-```text
-Board probe:           PASS
-Functional contracts:  13 / 13 PASS
-Historical benchmarks: 22 / 22 PASS
-Overall:                PASS
-```
-
-The current v0.5 runner has since consolidated the 16 signal timing images into the same physical entry point, producing a final matrix of **13 functional contracts + 38 benchmark images**.
-
-The release candidate must therefore be qualified with exactly:
+The v0.5 physical release matrix contains **13 functional contracts + 38 benchmark images**, including the 16 event/notification timing images. Release candidates use the single unfiltered hardware entry point:
 
 ```bash
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-on the final frozen SHA. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md).
+The release-tagged source SHA must be the exact source SHA used for the passing physical run. Generated result data is retained outside the tracked source tree and published with the GitHub Release. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
 
 Broader 1.0 hard-real-time work such as bounded mutex priority inversion, analytical critical-section/WCET bounds, queue-copy scaling, richer interference analysis, and machine-readable timing evidence remains separate.

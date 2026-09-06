@@ -35,9 +35,9 @@ For a release candidate:
 4. inspect the report and raw logs;
 5. retain the selected package locally under `validation/stm32/releases/vX.Y.Z/` if desired;
 6. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
-7. publish the selected qualification archive as a GitHub Release asset from the tag that points to the qualified source commit.
+7. publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag that points to the qualified source commit.
 
-Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
+The `v` prefix in the local retention directory is not part of the Git tag. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
 
 ## Functional hardware matrix
 

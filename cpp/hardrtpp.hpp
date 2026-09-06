@@ -159,7 +159,7 @@ namespace hardrt {
 
         /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.4.0").
+         * @return Version string (e.g., "0.5.0").
          */
         static const char* version_string() {
             return hrt_version_string();
@@ -219,7 +219,7 @@ namespace hardrt {
 
         /**
          * @brief Take the semaphore, blocking if no token is available.
-         * @return 0 after the semaphore has been acquired.
+         * @return 0 after the semaphore has been acquired, or -1 if waiter publication fails.
          */
         int take() {
             return hrt_sem_take(&_sem);

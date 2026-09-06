@@ -9,9 +9,10 @@ extern "C" {
 #include "hardrt.h"
 
 /**
- * @brief Binary semaphore type (count is 0 or 1).
+ * @brief Statically allocated binary/counting semaphore.
  * @details Waiters are queued FIFO; scheduler policy decides whether a wake
- * preempts the currently running task.
+ * preempts the currently running task. max_count == 1 gives binary semantics;
+ * larger values give counting semantics.
  */
 typedef struct {
     volatile uint8_t count;      /**< Current token count (0..max_count). */
@@ -23,7 +24,7 @@ typedef struct {
 /**
  * @brief Initialize binary semaphore.
  * @param s Semaphore object to initialize.
- * @param init Initial count: 0 (empty) or 1 (available).
+ * @param init Initial count: 0 (empty) or 1 (available); non-zero values are clamped to 1.
  */
 static inline void hrt_sem_init(hrt_sem_t *s, const unsigned init) {
     s->max_count = 1u;
@@ -35,14 +36,15 @@ static inline void hrt_sem_init(hrt_sem_t *s, const unsigned init) {
  * @brief Initialize counting semaphore.
  * @param s Semaphore object to initialize.
  * @param init Initial token count (clamped to max_count).
- * @param max_count Maximum token count (must be >= 1; 1 preserves binary semantics).
+ * @param max_count Maximum token count; zero is normalized to 1.
  */
 void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count);
 
 /**
  * @brief Take the semaphore, blocking until available.
  * @param s Semaphore to take.
- * @return 0 on success.
+ * @return 0 on success, -1 if waiter publication cannot be completed.
+ * @note This is a task-context operation.
  */
 int hrt_sem_take(hrt_sem_t *s);
 
