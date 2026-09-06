@@ -58,16 +58,18 @@ The v0.5 physical release matrix is **13 functional contracts + 38 benchmark ima
 
 ## v0.5.0 release procedure
 
+`develop` is the only release-candidate branch. Temporary feature/release branches must be merged by PR and removed before release qualification.
+
 The release procedure preserves one exact qualified source commit:
 
-1. complete all release-facing source, documentation, version and package changes;
-2. require Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs to pass on one frozen commit;
-3. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
+1. merge all release-facing source, documentation, version and package changes into `develop`;
+2. require Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs to pass on one frozen `develop` commit;
+3. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact `develop` commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
 4. retain the generated qualification package outside the tracked source tree and publish it as a release artifact;
-5. promote the same qualified source commit through `develop` and `main` without changing its tree;
-6. tag `0.5.0` on `main`, publish release artifacts, and remove temporary branches.
+5. fast-forward `main` to the same qualified `develop` commit without changing its tree;
+6. tag `0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.
 
-No tracked source or documentation change belongs between final physical qualification and the release tag unless the new source SHA is deliberately requalified.
+No tracked source or documentation change belongs between final physical qualification and the release tag unless the new `develop` SHA is deliberately requalified.
 
 ## Post-v0.5 synchronization work
 

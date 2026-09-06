@@ -24,7 +24,9 @@ This is the only human-facing hardware qualification command. It owns build, fla
 
 The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
 
-## Evidence location and release handling
+## Release branch and evidence handling
+
+The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources and should be removed after their PRs are merged.
 
 Development runs are written under:
 
@@ -42,7 +44,7 @@ The `v` prefix is only the local evidence-directory convention. Git repository r
 
 Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
 
-The selected package is instead published as a GitHub Release artifact from the qualified `X.Y.Z` tag. The source commit tagged for release must be the same source tree that produced the passing hardware report.
+The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `X.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
 
 ## Common requirements
 
@@ -142,7 +144,7 @@ This measures production `hrt_tick_from_isr()` behavior. The intrusive delta sle
 
 ## Accepted development evidence
 
-Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from the exact source SHA that is tagged.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from the exact `develop` source SHA that is tagged.
 
 ## Human LED acceptance
 

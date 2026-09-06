@@ -41,7 +41,8 @@ static inline void hrt_mutex_init(hrt_mutex_t *m) {
  * MUST be called from a task context (current ID >= 0).
  *
  * @param m Pointer to the mutex.
- * @return 0 on success, -1 on error (bad context or recursive lock attempt).
+ * @return 0 on success, -1 on bad context, recursive lock attempt, or if
+ * bounded waiter publication cannot be completed.
  */
 int hrt_mutex_lock(hrt_mutex_t *m);
 

@@ -52,7 +52,9 @@ int hrt_task_notify_wait(uint32_t clear_on_entry,
  *
  * Blocks until the calling task's notification value is non-zero. Returns the
  * pre-consumption value. If clear_count_on_exit is non-zero, the stored value
- * becomes zero; otherwise it is decremented by one.
+ * becomes zero and pending clears. Otherwise the value is decremented by one;
+ * pending remains set while the residual value is non-zero. A pending
+ * notification whose value is zero does not satisfy this counting wait.
  *
  * @return The value observed before consumption, or 0 for invalid task context.
  */

@@ -52,7 +52,7 @@ int hrt_queue_recv(hrt_queue_t *queue, void *out);
 - A full sender joins the TX waiter FIFO and becomes `HRT_BLOCKED`.
 - An empty receiver joins the RX waiter FIFO and becomes `HRT_BLOCKED`.
 
-Blocking send/receive are task-context operations. There are currently no timeout variants.
+Blocking send/receive are task-context operations. There are currently no timeout variants. They return `0` on normal completion. They may return `-1` only when bounded waiter publication cannot be completed; that indicates inconsistent/exhausted waiter state rather than the normal full/empty blocking path.
 
 ### Non-blocking
 

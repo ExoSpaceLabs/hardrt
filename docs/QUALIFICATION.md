@@ -2,6 +2,12 @@
 
 HardRT separates development measurements from release qualification evidence while using one human-facing STM32 runner for both functional validation and hardware benchmarking.
 
+## Release branch policy
+
+A release candidate is qualified from `develop`, not from a temporary feature or release branch. All release-facing source, documentation, version, and package changes must first be merged into `develop`. The exact `develop` SHA that passes hosted/cross-build CI and physical qualification is then promoted unchanged to `main` and tagged there.
+
+Temporary feature branches are deleted after their PRs are merged. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+
 ## Single STM32 runner
 
 Use:
@@ -129,7 +135,7 @@ Pure argument/data-structure edge cases remain primarily hosted tests unless the
 
 ## v0.5.0 release evidence contract
 
-Before the hardware run, all release-facing source/docs/version changes must be complete and hosted CI must pass on one frozen SHA.
+Before the hardware run, all release-facing source/docs/version changes must be complete on `develop` and hosted CI must pass on one frozen `develop` SHA.
 
 The final STM32 package must then be generated from that exact SHA and record at minimum:
 
@@ -146,7 +152,7 @@ The final STM32 package must then be generated from that exact SHA and record at
 - tick/sleeper scaling metadata;
 - raw build/OpenOCD/GDB logs.
 
-After that run passes, do not modify the qualified source tree. Promote the same source commit through `develop` and `main`, tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag.
+After that run passes, do not modify `develop`. Fast-forward `main` to the exact qualified `develop` SHA, tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag. Any later tracked change requires a new candidate SHA and a new qualification run.
 
 ## Human observation
 
