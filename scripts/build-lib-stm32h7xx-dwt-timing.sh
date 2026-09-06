@@ -40,7 +40,8 @@ Cases:
 
 All new event/notification cases use direct application-side DWT timestamps and
 HARDRT_TIMING_PROFILE=none. Event scan builds size HARDRT_CFG_MAX_TASKS to
-waiters + one controller task so the requested waiter count is actually present.
+waiters + one controller task, clamped to the default four-priority-class
+configuration minimum. Only the requested waiter count is registered and timed.
 USAGE
 }
 
@@ -70,8 +71,17 @@ case "$CASE" in
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
     ;;
   event_scan_none|event_scan_one|event_scan_all)
+    # One controller task is required in addition to the requested event waiters.
+    # The default HardRT configuration has four priority classes and CMake
+    # requires HARDRT_CFG_MAX_TASKS >= HARDRT_CFG_MAX_PRIO. Keep that production
+    # default valid for the one-waiter profile while registering/timing exactly
+    # WAITERS entries; event_set scans event->wait_count, not spare task slots.
+    SIGNAL_TASK_CAPACITY=$((WAITERS + 1))
+    if (( SIGNAL_TASK_CAPACITY < 4 )); then
+      SIGNAL_TASK_CAPACITY=4
+    fi
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
-    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_CFG_MAX_TASKS=$((WAITERS + 1))")
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_CFG_MAX_TASKS=$SIGNAL_TASK_CAPACITY")
     ;;
   sem_isr_ready)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=ipc")
@@ -99,6 +109,9 @@ echo "[INFO] Timing case    : $CASE"
 echo "[INFO] Event rate     : $EVENT_HZ Hz"
 echo "[INFO] Target samples : $SAMPLES"
 echo "[INFO] Signal waiters : $WAITERS"
+if [[ "$CASE" == event_scan_none || "$CASE" == event_scan_one || "$CASE" == event_scan_all ]]; then
+  echo "[INFO] Signal capacity: $SIGNAL_TASK_CAPACITY application tasks"
+fi
 
 "$ROOT_DIR/scripts/build-lib-stm32h7xx.sh" \
   --hardrt "$ROOT_DIR" \
