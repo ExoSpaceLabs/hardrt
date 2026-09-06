@@ -1,12 +1,17 @@
-# HardRT demo H755
+# HardRT H755 Demo
 
-This example application shows how HardRT can be used on the stm32h755 project.
+This NUCLEO-H755ZI-Q / CM7 example provides a minimal two-task HardRT application on STM32H755.
 
-The RTOS runs two tasks:
-- TaskA at every 5s
-- TaskB at every 10s
+- Task A runs every 5 seconds.
+- Task B runs every 10 seconds.
 
-To build refer to [CROSSCOMPILE.md](../../docs/CROSSCOMPILE.md) document. Which will also 
-describe how to run example scripts.
+The example is used by the physical validation suite to verify scheduler/task progress on the Cortex-M port.
 
-> NOTE: if HARDRT_DEBUG are disabled only tasks.gdb can be executed.
+Build it with:
+
+```bash
+STM32CUBE_H7_ROOT=/path/to/STM32CubeH7 \
+  ./scripts/build-lib-stm32h7xx-demo.sh
+```
+
+For toolchain, OpenOCD, and debugging setup, see [CROSSCOMPILE.md](../../docs/CROSSCOMPILE.md). For release qualification, use the consolidated [`stm32_manual_test_full.sh`](../../scripts/stm32_manual_test_full.sh) runner.
