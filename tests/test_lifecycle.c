@@ -1,4 +1,6 @@
 #include "test_common.h"
+#include "hardrt_sem.h"
+#include "hardrt_queue.h"
 
 #define STACK_WORDS 1024
 
@@ -118,6 +120,70 @@ static void test_create_and_start_before_init_fail(void) {
     hrt__test_reset_scheduler_state();
 }
 
+static void test_task_only_calls_reject_non_task_context(void) {
+    hrt__test_reset_scheduler_state();
+    hrt_config_t cfg = external_cfg();
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "init task-context rejection fixture");
+
+    hrt_sem_t sem;
+    hrt_sem_init(&sem, 1u);
+    g_error = NONE;
+    T_ASSERT_EQ_INT(-1, hrt_sem_take(&sem),
+                    "blocking semaphore take rejects non-task context");
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "semaphore context rejection records task diagnostic");
+    T_ASSERT_EQ_INT(0, hrt_sem_try_take(&sem),
+                    "rejected blocking take does not consume available token");
+
+    hrt_queue_t queue;
+    uint32_t storage[1] = {0u};
+    uint32_t value = 42u;
+    uint32_t out = 0u;
+    hrt_queue_init(&queue, storage, 1u, sizeof(value));
+
+    g_error = NONE;
+    T_ASSERT_EQ_INT(-1, hrt_queue_send(&queue, &value),
+                    "blocking queue send rejects non-task context");
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "queue-send context rejection records task diagnostic");
+    T_ASSERT_EQ_INT(0, hrt_queue_count(&queue),
+                    "rejected blocking send leaves queue unchanged");
+    T_ASSERT_EQ_INT(0, hrt_queue_try_send(&queue, &value),
+                    "non-blocking queue send remains usable outside task context");
+
+    g_error = NONE;
+    T_ASSERT_EQ_INT(-1, hrt_queue_recv(&queue, &out),
+                    "blocking queue receive rejects non-task context");
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "queue-receive context rejection records task diagnostic");
+    T_ASSERT_EQ_INT(1, hrt_queue_count(&queue),
+                    "rejected blocking receive leaves queued item intact");
+    T_ASSERT_EQ_INT(0, hrt_queue_try_recv(&queue, &out),
+                    "non-blocking queue receive remains usable outside task context");
+    T_ASSERT_EQ_UINT(value, out,
+                     "non-blocking receive returns the preserved item");
+
+    g_error = NONE;
+    hrt_sleep(1u);
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "positive sleep rejects non-task context safely");
+    g_error = NONE;
+    hrt_sleep(0u);
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "zero sleep rejects non-task context safely");
+    g_error = NONE;
+    hrt_yield();
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "yield rejects non-task context safely");
+    g_error = NONE;
+    hrt_task_delete();
+    T_ASSERT_EQ_INT(ERR_INVALID_TASK, g_error,
+                    "task delete rejects non-task context safely");
+
+    hrt__test_reset_scheduler_state();
+}
+
 static void test_running_state_allows_creation_but_rejects_restart(void) {
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = external_cfg();
@@ -146,6 +212,7 @@ static const test_case_t CASES[] = {
     {"Lifecycle: invalid configuration values", test_invalid_configuration_values},
     {"Lifecycle: port init failure remains retryable", test_port_init_failure_can_retry},
     {"Lifecycle: create/start before init fail", test_create_and_start_before_init_fail},
+    {"Lifecycle: task-only calls reject non-task context", test_task_only_calls_reject_non_task_context},
     {"Lifecycle: RUNNING allows creation but rejects restart", test_running_state_allows_creation_but_rejects_restart},
 };
 

@@ -146,7 +146,7 @@ set(LIBRARY_SOURCES
 
 set_source_files_properties("${SOURCE_CORE_DIR}/hardrt_core.c" PROPERTIES
   COMPILE_DEFINITIONS
-    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl"
+    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl;hrt_sleep=hrt__sleep_impl;hrt_yield=hrt__yield_impl;hrt_task_delete=hrt__task_delete_impl"
 )
 
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
@@ -173,9 +173,9 @@ target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
 
 if(HARDRT_PORT STREQUAL "posix" AND HARDRT_STRICT)
-  message(STATUS "HARDRT_STRICT enabled (POSIX warnings on)")
+  message(STATUS "HARDRT_STRICT enabled (POSIX warnings are errors)")
   set(HARDRT_STRICT_WARNINGS
-    -Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow
+    -Wall -Wextra -Wpedantic -Wconversion -Wcast-qual -Wshadow -Werror
   )
   add_compile_options(${HARDRT_STRICT_WARNINGS})
 endif()

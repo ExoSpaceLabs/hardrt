@@ -173,6 +173,18 @@ static void t_waiter(void *arg) {
     for(;;) { hrt_yield(); hrt_sleep(1000); }
 }
 
+static void t_fifo_giver(void *arg) {
+    (void)arg;
+    hrt_sleep(10);
+    int v = 100;
+    hrt_queue_send(&g_q_block, &v);
+    hrt_sleep(10);
+    hrt_queue_send(&g_q_block, &v);
+    hrt_sleep(10);
+    hrt_queue_send(&g_q_block, &v);
+    for (;;) { hrt_yield(); hrt_sleep(1000); }
+}
+
 static void test_queue_fifo_waiters(void) {
     hrt__test_reset_scheduler_state();
     g_fifo_count = 0;
@@ -193,18 +205,7 @@ static void test_queue_fifo_waiters(void) {
     hrt_create_task(t_waiter, (void*)3, s3, 1024, &a);
 
     /* Giver task */
-    auto void giver(void* arg) {
-        (void)arg;
-        hrt_sleep(10);
-        int v = 100;
-        hrt_queue_send(&g_q_block, &v);
-        hrt_sleep(10);
-        hrt_queue_send(&g_q_block, &v);
-        hrt_sleep(10);
-        hrt_queue_send(&g_q_block, &v);
-        for(;;) { hrt_yield(); hrt_sleep(1000); }
-    }
-    hrt_create_task(giver, NULL, s4, 1024, &a);
+    hrt_create_task(t_fifo_giver, NULL, s4, 1024, &a);
     hrt_create_task(watchdog_task, (void *) (uintptr_t) 300, swd, 1024, &a);
 
     hrt_start();

@@ -10,6 +10,9 @@ int hrt__create_task_impl(hrt_task_fn fn, void *arg,
                           uint32_t *stack_words, size_t n_words,
                           const hrt_task_attr_t *attr);
 void hrt__start_impl(void);
+void hrt__sleep_impl(uint32_t ms);
+void hrt__yield_impl(void);
+void hrt__task_delete_impl(void);
 
 typedef enum {
     HRT_KERNEL_UNINITIALIZED = 0,
@@ -31,6 +34,22 @@ static int valid_tick_source(const hrt_tick_source_t source) {
 
 static int valid_tick_hz(const uint32_t tick_hz) {
     return tick_hz >= HRT_TICK_HZ_MIN && tick_hz <= HRT_TICK_HZ_MAX;
+}
+
+int hrt__current_running_app_task(void) {
+    const int id = hrt__get_current();
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS) {
+        hrt_error(ERR_INVALID_TASK);
+        return -1;
+    }
+
+    const _hrt_tcb_t *task = hrt__tcb(id);
+    if (task == NULL || task->slot_state != HRT_SLOT_USED ||
+        task->state != HRT_RUNNING) {
+        hrt_error(ERR_INVALID_TASK);
+        return -1;
+    }
+    return id;
 }
 
 hrt_status_t hrt_init(const hrt_config_t *cfg) {
@@ -89,6 +108,21 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     }
 
     return hrt__create_task_impl(fn, arg, stack_words, n_words, attr);
+}
+
+void hrt_sleep(const uint32_t ms) {
+    if (hrt__current_running_app_task() < 0) return;
+    hrt__sleep_impl(ms);
+}
+
+void hrt_yield(void) {
+    if (hrt__current_running_app_task() < 0) return;
+    hrt__yield_impl();
+}
+
+void hrt_task_delete(void) {
+    if (hrt__current_running_app_task() < 0) return;
+    hrt__task_delete_impl();
 }
 
 hrt_status_t hrt_start(void) {

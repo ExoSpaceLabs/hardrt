@@ -168,8 +168,10 @@ static void event_multi_setter(void *arg) {
 static void test_event_multi_waiter_common_snapshot_fifo(void) {
     hrt__test_reset_scheduler_state();
     hrt_event_init(&g_event_multi);
-    memset((void *)g_event_multi_match, 0, sizeof(g_event_multi_match));
-    memset((void *)g_event_multi_order, 0, sizeof(g_event_multi_order));
+    for (int i = 0; i < 2; ++i) {
+        g_event_multi_match[i] = 0u;
+        g_event_multi_order[i] = 0;
+    }
     g_event_multi_count = 0;
     g_event_watchdog = 0;
 

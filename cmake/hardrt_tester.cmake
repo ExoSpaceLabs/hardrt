@@ -6,13 +6,12 @@ if(HARDRT_PORT STREQUAL "posix")
   target_compile_definitions(${LIB_NAME} PRIVATE HARDRT_TEST_HOOKS)
   find_package(Threads REQUIRED)
 
-  add_executable(hardrt_tests
-          ${CMAKE_CURRENT_LIST_DIR}/../tests/test_main.c
-          )
+  add_executable(hardrt_tests)
   set_target_properties(hardrt_tests PROPERTIES LINKER_LANGUAGE C)
   target_sources(hardrt_tests PRIVATE
           ${CMAKE_SOURCE_DIR}/tests/test_main.c
           ${CMAKE_SOURCE_DIR}/tests/test_identity.c
+          ${CMAKE_SOURCE_DIR}/tests/test_lifecycle.c
           ${CMAKE_SOURCE_DIR}/tests/test_sleep_stop.c
           ${CMAKE_SOURCE_DIR}/tests/test_rr_yield.c
           ${CMAKE_SOURCE_DIR}/tests/test_rr_sleep.c

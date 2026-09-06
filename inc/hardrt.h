@@ -231,18 +231,20 @@ hrt_status_t hrt_start(void);
  *
  * A zero duration is an immediate scheduling point equivalent to hrt_yield()
  * and does not enter the sleep queue or wait for a tick. Positive durations
- * shorter than one tick round up to one tick.
+ * shorter than one tick round up to one tick. Calls outside the current
+ * RUNNING application task are rejected as safe no-ops with ERR_INVALID_TASK.
  */
 void hrt_sleep(uint32_t ms);
 
-/** Voluntarily yield the processor. */
+/** Voluntarily yield the processor. Non-task context is rejected safely. */
 void hrt_yield(void);
 
 /**
  * Permanently remove the current task from scheduling.
  *
  * The task enters the internal EXITED state. Its TCB slot remains occupied
- * until reclaimed by a later task creation.
+ * until reclaimed by a later task creation. Calls outside the current RUNNING
+ * application task are rejected as safe no-ops with ERR_INVALID_TASK.
  */
 void hrt_task_delete(void);
 

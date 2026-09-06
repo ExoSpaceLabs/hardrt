@@ -109,7 +109,7 @@ uint32_t hrt_now_ms(void);
 
 Positive sleep durations are converted with ceiling division so a positive sub-tick delay sleeps for one tick. In v0.5, `hrt_sleep(0)` is an immediate scheduling point equivalent to a yield for scheduling purposes; it does not enter the sleep queue.
 
-`hrt_task_delete()` moves the current non-idle task to EXITED and yields. Task trampolines perform the same transition automatically when task entry returns.
+`hrt_task_delete()` moves the current task to EXITED and schedules another task. The exited slot remains owned until later reclamation. A naturally returning task follows the same path through the port trampoline. `hrt_sleep()`, `hrt_yield()`, and `hrt_task_delete()` require the current RUNNING application-task context; calls outside that context are safe no-ops that record `ERR_INVALID_TASK`.
 
 `hrt_tick_now()` returns the wrapping 32-bit tick count. `hrt_now_ms()` uses a 64-bit intermediate when converting ticks to milliseconds.
 
