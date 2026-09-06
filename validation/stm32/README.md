@@ -36,11 +36,11 @@ For a release candidate:
 3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
 4. require board probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
 5. inspect the report and raw logs;
-6. retain the selected package locally under `validation/stm32/releases/vX.Y.Z/` if desired;
+6. retain the selected package locally under `validation/stm32/releases/X.Y.Z/` if desired;
 7. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
-8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `vX.Y.Z` tag on `main`.
+8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.
 
-The local retention directory mirrors the repository `vX.Y.Z` Git-tag convention. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
+The local retention directory mirrors the repository `X.Y.Z` Git-tag convention. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
 
 ## Functional hardware matrix
 

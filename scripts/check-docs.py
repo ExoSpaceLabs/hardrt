@@ -84,8 +84,8 @@ stale_patterns = {
     r"promote_stm32_qualification\.sh": "removed/nonexistent qualification promotion script is still documented",
     r"Event flags and task notifications[^\n]*not implemented yet": "events/notifications still described as unimplemented",
     r"Event flags and task notifications[^\n]*remain planned": "events/notifications still described as planned",
-    r"tag\s+`0\.5\.0`": "release documentation uses the obsolete non-v-prefixed 0.5.0 tag",
-    r"qualified\s+`X\.Y\.Z`\s+tag": "release documentation uses the obsolete non-v-prefixed release-tag convention",
+    r"tag\s+`v0\.5\.0`": "release documentation uses a v-prefixed 0.5.0 tag instead of the established 0.5.0 convention",
+    r"qualified\s+`vX\.Y\.Z`\s+tag": "release documentation uses a v-prefixed release-tag convention",
     r"current\s+`develop`\s+behavior": "release documentation is branch-relative instead of version-relative",
     r"on\s+the\s+`develop`\s+branch": "release documentation describes the public contract as develop-only",
     r"implemented\s+on\s+`develop`": "release documentation describes the public contract as develop-only",
@@ -106,30 +106,30 @@ if "do not commit generated qualification evidence" not in validation.lower():
     fail("validation/stm32/README.md does not forbid committing generated qualification evidence")
 if "GitHub Release asset" not in validation:
     fail("validation/stm32/README.md does not direct release evidence to a GitHub Release asset")
-if "validation/stm32/releases/vX.Y.Z/" not in validation:
-    fail("validation/stm32/README.md does not preserve the runner's local vX.Y.Z evidence-directory convention")
-if "`vX.Y.Z` tag" not in validation:
-    fail("validation/stm32/README.md does not document the v-prefixed Git release-tag convention")
+if "validation/stm32/releases/X.Y.Z/" not in validation:
+    fail("validation/stm32/README.md does not preserve the runner's local X.Y.Z evidence-directory convention")
+if "`X.Y.Z` tag" not in validation:
+    fail("validation/stm32/README.md does not document the non-v-prefixed Git release-tag convention")
 
 release_validation = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
 if "gitignored" not in release_validation.lower():
     fail("release qualification retention guidance does not state that local evidence is gitignored")
-if "validation/stm32/releases/v0.5.0/" not in release_validation:
-    fail("release qualification retention guidance does not document the local v-prefixed directory convention")
-if "tags are `v0.5.0`" not in release_validation:
-    fail("release qualification retention guidance does not document the v-prefixed Git tag convention")
+if "validation/stm32/releases/0.5.0/" not in release_validation:
+    fail("release qualification retention guidance does not document the local X.Y.Z directory convention")
+if "tags are `0.5.0`" not in release_validation:
+    fail("release qualification retention guidance does not document the non-v-prefixed Git tag convention")
 
 qualification = (ROOT / "docs/QUALIFICATION.md").read_text(encoding="utf-8")
-if "tag `v0.5.0` on `main`" not in qualification:
-    fail("docs/QUALIFICATION.md does not state the repository's exact v0.5.0 tag convention")
-if "validation/stm32/releases/vX.Y.Z/" not in qualification:
+if "tag `0.5.0` on `main`" not in qualification:
+    fail("docs/QUALIFICATION.md does not state the repository's exact 0.5.0 tag convention")
+if "validation/stm32/releases/X.Y.Z/" not in qualification:
     fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
 
 manual = (ROOT / "docs/STM32_MANUAL_TESTS.md").read_text(encoding="utf-8")
-if "validation/stm32/releases/vX.Y.Z/" not in manual:
+if "validation/stm32/releases/X.Y.Z/" not in manual:
     fail("STM32 manual documentation does not match the runner's local evidence-directory convention")
-if "repository `vX.Y.Z` release-tag convention" not in manual:
-    fail("STM32 manual documentation does not state the v-prefixed Git release-tag convention")
+if "repository `X.Y.Z` release-tag convention" not in manual:
+    fail("STM32 manual documentation does not state the non-v-prefixed Git release-tag convention")
 
 signal_readme = (ROOT / "examples/hardrt_h755_dwt_timing/README.md").read_text(encoding="utf-8")
 if "HARDRT_CFG_MAX_TASKS=N+1" in signal_readme:

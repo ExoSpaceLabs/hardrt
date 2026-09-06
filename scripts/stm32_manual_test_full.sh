@@ -40,8 +40,8 @@ The board probe is a prerequisite and is always run.
 Development evidence is written under validation/stm32/.
 Timestamped development runs and local release packages are gitignored.
 A selected release package may be retained locally under:
-  validation/stm32/releases/vX.Y.Z/
-and published as a GitHub Release artifact from the matching vX.Y.Z tag.
+  validation/stm32/releases/X.Y.Z/
+and published as a GitHub Release artifact from the matching X.Y.Z tag.
 
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
@@ -783,7 +783,7 @@ echo "Overall    : $OVERALL"
 echo "Report     : $REPORT"
 echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_MODE" ]]; then
-  echo "Release evidence: manually copy/move this full run to validation/stm32/releases/vX.Y.Z/."
+  echo "Release evidence: manually copy/move this full run to validation/stm32/releases/X.Y.Z/."
 else
   echo "Filtered run: useful evidence, but not complete release qualification evidence."
 fi
