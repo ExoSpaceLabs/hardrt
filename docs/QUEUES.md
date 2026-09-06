@@ -65,9 +65,9 @@ Both functions return `0` on success and `-1` when the operation cannot be compl
 
 A successful task-context operation wakes at most one opposite-side waiter. The wake then uses the same scheduler-aware rule as semaphores, mutex handoff, and sleep expiry:
 
-- under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a strictly higher-priority waiter preempts the current READY task;
+- under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, a strictly higher-priority waiter preempts the current **RUNNING** application task;
 - an equal- or lower-priority waiter does not force a context switch solely because it woke;
-- if no normal task is running, or the recorded current task is not READY, the wake requests scheduling.
+- if no normal application task is running, or the recorded current task is not RUNNING, the wake requests scheduling.
 
 A required task-context preemption is not treated as an explicit yield, so the interrupted task retains its queue precedence and any unused RR quantum.
 
