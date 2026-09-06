@@ -37,12 +37,12 @@ validation/stm32/<UTC>_<short-sha>/
 A selected release package may be retained locally under:
 
 ```text
-validation/stm32/releases/vX.Y.Z/
+validation/stm32/releases/X.Y.Z/
 ```
 
-The local evidence directory mirrors the repository `vX.Y.Z` release-tag convention.
+The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
 
-These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `vX.Y.Z` tag instead.
+These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `X.Y.Z` tag instead.
 
 The source tree tagged for release must therefore be the same source tree that generated the passing report.
 
@@ -152,7 +152,7 @@ The final STM32 package must then be generated from that exact SHA and record at
 - tick/sleeper scaling metadata;
 - raw build/OpenOCD/GDB logs.
 
-After that run passes, do not modify `develop`. Fast-forward `main` to the exact qualified `develop` SHA, tag `v0.5.0` on `main`, and publish the qualification package and release binaries from that tag. Any later tracked change requires a new candidate SHA and a new qualification run.
+After that run passes, do not modify `develop`. Fast-forward `main` to the exact qualified `develop` SHA, tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag. Any later tracked change requires a new candidate SHA and a new qualification run.
 
 ## Human observation
 

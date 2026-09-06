@@ -67,7 +67,7 @@ The release procedure preserves one exact qualified source commit:
 3. run `scripts/stm32_manual_test_full.sh` unfiltered on that exact `develop` commit and require board probe + 13/13 functional + 38/38 benchmark PASS;
 4. retain the generated qualification package outside the tracked source tree and publish it as a release artifact;
 5. fast-forward `main` to the same qualified `develop` commit without changing its tree;
-6. tag `v0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.
+6. tag `0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.
 
 No tracked source or documentation change belongs between final physical qualification and the release tag unless the new `develop` SHA is deliberately requalified.
 
