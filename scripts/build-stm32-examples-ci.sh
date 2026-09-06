@@ -145,4 +145,14 @@ READY_BUILD="$ROOT_DIR/build-cortex_m-timing-ready-ci"; READY_INSTALL="$ROOT_DIR
 configure_timing_library "$READY_BUILD" "$READY_INSTALL" "$READY_HOOK_HEADER"
 build_app hardrt_h755_dwt_ready_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$READY_INSTALL" -DHARDRT_TIMING_CASE=ready_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 
+# Exercise the same human-facing helper used by the qualification runner. The
+# one-waiter profile previously escaped CI because the app was compiled against
+# the ordinary eight-task library while the manual helper rebuilt HardRT with
+# waiters + controller (=2), violating the default four-priority-class contract.
+# One representative scan case is enough to validate the helper's capacity
+# calculation; the three scan-case application branches are compiled above.
+STM32CUBE_H7_ROOT="$STM32CUBE_H7_ROOT" GENERATOR="$GENERATOR" JOBS="$JOBS" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-dwt-timing.sh" \
+  --case event_scan_none --waiters 1 --samples 8 --no-flash
+
 echo "[STM32 CI] All STM32H755 examples cross-built successfully."
