@@ -5,11 +5,6 @@
 #include <pthread.h>
 #include <sched.h>
 
-#ifdef HARDRT_TEST_HOOKS
-void hrt__test_block_sigalrm(void);
-void hrt__test_unblock_sigalrm(void);
-#endif
-
 static void test_tick_from_isr_before_init_safe_noop(void) {
     /* Calling before init should not crash and should not advance tick */
     uint32_t before = hrt_tick_now();
@@ -19,7 +14,7 @@ static void test_tick_from_isr_before_init_safe_noop(void) {
 }
 
 static void test_external_tick_advances_only_on_manual_calls(void) {
-    /* Configure EXTERNAL; no auto SIGALRM tick should run on POSIX */
+    /* Configure EXTERNAL; HardRT must not create an internal timer source. */
     hrt_config_t cfg = {0};
     cfg.tick_hz = 1000;
     cfg.policy = HRT_SCHED_PRIORITY_RR;
@@ -143,9 +138,8 @@ static void test_external_tick_wakes_recorded_sleeping_current(void) {
 }
 
 static void test_systick_mode_ignores_manual_tick_from_isr(void) {
-    /* In SYSTICK mode, POSIX port runs SIGALRM; to assert manual calls are ignored,
-       block SIGALRM around the calls and check the tick doesn't advance from manual calls. */
-
+    /* The internal timer is not activated until hrt_start(). Before scheduler
+       start, manual external-tick calls must still be rejected in SYSTICK mode. */
     hrt__test_reset_scheduler_state();
     hrt_config_t cfg = {0};
     cfg.tick_hz = 1000;
@@ -155,15 +149,9 @@ static void test_systick_mode_ignores_manual_tick_from_isr(void) {
     int rc = hrt_init(&cfg);
     T_ASSERT_EQ_INT(0, rc, "hrt_init systick mode");
 
-#ifdef HARDRT_TEST_HOOKS
-    hrt__test_block_sigalrm();
-#endif
     uint32_t before = hrt_tick_now();
     for (int i = 0; i < 10; ++i) hrt_tick_from_isr();
     uint32_t after = hrt_tick_now();
-#ifdef HARDRT_TEST_HOOKS
-    hrt__test_unblock_sigalrm();
-#endif
     T_ASSERT_EQ_INT((int)before, (int)after, "manual tick_from_isr ignored in SYSTICK mode");
 }
 
