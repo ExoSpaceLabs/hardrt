@@ -30,7 +30,7 @@ ABI compatibility is **not guaranteed across pre-1.0 minor releases**. Public sy
 The installed CMake package name and canonical targets are intended to remain stable:
 
 ```cmake
-find_package(HardRT 0.5.0 REQUIRED)
+find_package(HardRT 0.5 REQUIRED)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
 
@@ -57,6 +57,27 @@ v0.5.0 is a pre-1.0 minor release and intentionally changes behavior relative to
 - CMake package version matching is restricted to the `0.5.x` minor line; a consumer requiring `0.4.x` must migrate explicitly rather than accepting v0.5.0 implicitly.
 
 No ABI-compatibility claim is made between v0.4.0 and v0.5.0. Consumers should rebuild against the v0.5.0 headers and library together.
+
+## v0.5.1 corrective patch boundary
+
+v0.5.1 corrects the hosted POSIX execution backend that was intended for v0.5.0 but did not ship in that release. The published v0.5.0 tag remains immutable.
+
+The correction is intentionally below the public C/C++ API boundary:
+
+- public function signatures and public object layouts are unchanged from v0.5.0;
+- scheduler policy, READY ordering, blocking semantics, wake decisions, and task lifecycle remain owned by the common core;
+- the POSIX backend replaces `ucontext` execution with one pthread per application task plus a hosted timer thread;
+- CPU-bound hosted tasks can now be asynchronously parked so a scheduler-selected task can run without requiring the interrupted task to call a HardRT API first;
+- the application-provided HardRT task-stack buffer remains part of the public task-creation/lifetime contract, but on POSIX it is not the native pthread execution stack. The host pthread stack is separately allocated by the pthread implementation and is configured to at least the port's host minimum;
+- POSIX builds now export the platform thread dependency through `HardRT::hardrt`; installed CMake consumers do not need to add `Threads::Threads` themselves.
+
+Accordingly, v0.5.1 is intended to remain source/API and ABI compatible with v0.5.0 at the HardRT public interface. The hosted POSIX runtime behavior is deliberately corrected: code that relied on a CPU-bound task preventing scheduler progress was relying on a defect, not a supported contract.
+
+### Hosted POSIX process-level constraints
+
+The hosted backend is a Linux functional/scheduler validation port, not a hard-real-time target. It currently reserves process-wide `SIGALRM` for task preemption and `SIGUSR2` for task/timer wake-resume handling. Applications embedding the POSIX port must not independently install incompatible handlers or use those signals for unrelated process-level protocols while HardRT is active.
+
+The pthread backend also consumes host resources proportional to configured live tasks: one pthread per live application task, plus the scheduler/controller thread and, for an internal tick source, one timer pthread. These host resources are implementation details and are not part of the Cortex-M memory model.
 
 ## 1.0 intent
 
