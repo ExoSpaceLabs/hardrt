@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.5.0 LANGUAGES C)
+project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)
 
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
@@ -171,6 +171,11 @@ target_include_directories(${LIB_NAME}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
+
+if(HARDRT_PORT STREQUAL "posix")
+  find_package(Threads REQUIRED)
+  target_link_libraries(${LIB_NAME} PUBLIC Threads::Threads)
+endif()
 
 if(HARDRT_PORT STREQUAL "posix" AND HARDRT_STRICT)
   message(STATUS "HARDRT_STRICT enabled (POSIX warnings are errors)")
