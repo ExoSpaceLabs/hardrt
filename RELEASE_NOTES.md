@@ -37,6 +37,10 @@ The POSIX suite now contains an explicit asynchronous-preemption regression: a l
 - `HardRT::hardrt` exports `Threads::Threads` transitively for source-tree and installed-package consumers.
 - Installed `HardRTConfig.cmake` resolves the Threads dependency before importing HardRT targets.
 - The hosted POSIX port is documented and validated as a pthread-capable Linux environment rather than a generic timing model for all POSIX systems.
+- A permanent `.github/workflows/release.yml` workflow now owns tag-driven release publication.
+- Release builds validate `X.Y.Z` tag/version alignment and require `main`, `develop`, and the tag SHA to agree.
+- Release publication builds POSIX and Cortex-M install trees, validates an installed POSIX consumer, creates reproducible archives, generates `SHA256SUMS`, extracts the matching section from `RELEASE_NOTES.md`, retains an Actions artifact, and publishes the GitHub Release.
+- Linux CI still validates tag package assembly but no longer publishes release assets itself.
 
 A consumer remains:
 
@@ -88,7 +92,7 @@ The v0.5.1 release is gated on:
 - null and Cortex-M contract builds;
 - STM32H755 cross-build validation;
 - documentation/API compile probes and Doxygen;
-- a fresh full STM32H755 physical qualification run from the exact frozen release-candidate `develop` SHA.
+- a fresh full STM32H755 physical qualification run from the frozen release-candidate `develop` source.
 
 The physical gate uses the canonical unfiltered runner:
 
@@ -96,7 +100,7 @@ The physical gate uses the canonical unfiltered runner:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-Release evidence requires board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The source SHA that generates that evidence must be promoted unchanged to `main` and tagged `0.5.1`; any tracked change after the run requires a new candidate SHA and a new full qualification run.
+Release evidence requires board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The commit that generates that evidence is the hardware-qualified source SHA. Normally that SHA is promoted/tagged unchanged. A later release commit is permitted only for release automation/documentation, must pass `scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>`, and must retain green hosted/cross-build/documentation CI. Any target/build-affecting post-qualification change requires a new full STM32H755 hardware run.
 
 The existing v0.5.0 physical STM32 timing campaign remains historical evidence. It is not reinterpreted or reused as v0.5.1 physical qualification.
 
