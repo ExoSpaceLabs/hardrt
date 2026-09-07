@@ -395,14 +395,18 @@ void hrt_port_yield_to_scheduler(void) {
     sigset_t old;
     (void)pthread_sigmask(SIG_BLOCK, &g_preempt_set, &old);
 
+    const _hrt_tcb_t *t = hrt__tcb(cur);
+    const int exiting = t != NULL && t->state == HRT_EXITED;
+    if (exiting) {
+        /* Publish port-side non-executability before the core can reclaim this slot. */
+        atomic_store_explicit(&ctx->alive, 0, memory_order_release);
+    }
+
     atomic_store_explicit(&ctx->park_kind, HRT_POSIX_PARK_GATE, memory_order_release);
     atomic_store_explicit(&g_active_task, -1, memory_order_release);
     if (g_scheduler_gate_initialized) (void)sem_post(&g_scheduler_gate);
 
-    const _hrt_tcb_t *t = hrt__tcb(cur);
-    if (t != NULL && t->state == HRT_EXITED) {
-        pthread_exit(NULL);
-    }
+    if (exiting) pthread_exit(NULL);
 
     sem_wait_nointr(&ctx->run_gate);
     atomic_store_explicit(&ctx->park_kind, HRT_POSIX_PARK_NONE, memory_order_release);
@@ -421,6 +425,15 @@ static void resume_task(const int id) {
     } else {
         (void)sem_post(&ctx->run_gate);
     }
+}
+
+static void wait_for_task_park(void) {
+    /* A semaphore post is only a notification. The authoritative handoff is active_task == -1. */
+    while (atomic_load_explicit(&g_active_task, memory_order_acquire) >= 0) {
+        sem_wait_nointr(&g_scheduler_gate);
+    }
+    /* Coalesce duplicate tick/yield notifications so they cannot pre-dispatch a future run gate. */
+    drain_sem(&g_scheduler_gate);
 }
 
 void hrt_port_enter_scheduler(void) {
@@ -469,9 +482,9 @@ void hrt_port_enter_scheduler(void) {
 
         if (atomic_load_explicit(&g_active_task, memory_order_acquire) < 0) {
             hrt_port_idle_wait();
-            (void)sem_trywait(&g_scheduler_gate);
+            drain_sem(&g_scheduler_gate);
         } else {
-            sem_wait_nointr(&g_scheduler_gate);
+            wait_for_task_park();
         }
 
 #ifdef HARDRT_TEST_HOOKS
