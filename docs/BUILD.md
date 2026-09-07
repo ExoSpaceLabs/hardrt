@@ -1,9 +1,9 @@
 # Build and Install
 
-HardRT 0.5.0 is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
+HardRT 0.5.1 is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
 
 ```cmake
-project(hardrt VERSION 0.5.0 LANGUAGES C)
+project(hardrt VERSION 0.5.1 LANGUAGES C)
 ```
 
 ## Requirements
@@ -11,6 +11,7 @@ project(hardrt VERSION 0.5.0 LANGUAGES C)
 - CMake 3.16 or newer
 - a C11 compiler
 - a C++17 compiler only with `HARDRT_ENABLE_CPP=ON`
+- a pthread-capable Linux environment for the hosted POSIX port
 - GNU Arm Embedded (`arm-none-eabi-gcc`) for the supplied Cortex-M toolchain
 - `arm-none-eabi-g++` only for Cortex-M builds that enable the C++ wrapper
 
@@ -35,7 +36,13 @@ Enable the optional C++ wrappers with:
 -DHARDRT_ENABLE_CPP=ON
 ```
 
-The POSIX port uses Linux/glibc `ucontext` and signals. It is a functional/scheduler environment, not a Cortex-M timing model.
+The POSIX port is a Linux hosted functional/scheduler-validation environment. HardRT application tasks execute in pthreads; the common HardRT core remains authoritative for task state and scheduling. Targeted POSIX signals are used to park/resume hosted tasks so CPU-bound task code can be preempted without first calling a HardRT API. This is not a Cortex-M timing model and it is excluded from hard-real-time timing claims.
+
+A POSIX build resolves CMake's `Threads` package and publishes `Threads::Threads` through `HardRT::hardrt`. Source-tree and installed-package consumers therefore receive the required thread dependency transitively.
+
+The hosted port currently reserves process-wide `SIGALRM` and `SIGUSR2` while HardRT is active. Applications using the hosted port must not install incompatible handlers or repurpose those signals concurrently.
+
+The `stack_mem`/`stack_words` supplied to `hrt_create_task()` remain application-owned and participate in HardRT's lifetime and overlap validation. On POSIX they are not used as the native pthread execution stack; the host pthread owns a separate execution stack. Native Cortex-M task-stack semantics are unchanged.
 
 ## Tests
 
@@ -47,7 +54,7 @@ cmake --build build-tests --target hardrt_tests -j
 ctest --test-dir build-tests --output-on-failure
 ```
 
-Runtime tests are created only for the POSIX port. See [TESTS_POSIX.md](TESTS_POSIX.md).
+Runtime tests are created only for the POSIX port. The hosted suite includes a regression in which a low-priority task executes a CPU-bound infinite loop without entering HardRT while a higher-priority sleeping task must still wake and run. See [TESTS_POSIX.md](TESTS_POSIX.md).
 
 ## Main CMake options
 
@@ -114,7 +121,7 @@ UBSan uses:
 -fsanitize=undefined -fno-omit-frame-pointer
 ```
 
-AddressSanitizer is deliberately excluded because the POSIX port uses `ucontext`.
+UBSan is the sanitizer lane enabled by `HARDRT_SANITIZE` and exercised by the release CI. AddressSanitizer is not currently part of the release gate; no ASan compatibility claim is made for the pthread/signal hosted runtime until it has dedicated validation.
 
 ## Null port
 
@@ -163,7 +170,7 @@ Kernel/port-private headers are not installed.
 C:
 
 ```cmake
-find_package(HardRT 0.5.0 REQUIRED)
+find_package(HardRT 0.5 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
@@ -171,9 +178,26 @@ target_link_libraries(app PRIVATE HardRT::hardrt)
 C++ when the package was built with wrappers enabled:
 
 ```cmake
-find_package(HardRT 0.5.0 REQUIRED)
+find_package(HardRT 0.5 REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```
 
-The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.5.x package may satisfy a compatible 0.5 request, but v0.5.0 must not silently satisfy a `find_package(HardRT 0.4...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
+POSIX consumers must not add a duplicate private pthread workaround. `HardRT::hardrt` exposes the thread dependency as part of the package contract.
+
+The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.5.x package may satisfy a compatible 0.5 request, but a 0.5.x package must not silently satisfy a `find_package(HardRT 0.4...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
+
+## v0.5.1 corrective-patch gate
+
+Before publishing v0.5.1, CI must demonstrate at least:
+
+- POSIX C and optional C++ builds succeed on the supported Linux matrix;
+- the hosted runtime suite passes, including asynchronous CPU-bound preemption;
+- strict-warning + UBSan validation passes;
+- installed POSIX consumers resolve and link the transitive thread dependency through `find_package(HardRT)`;
+- null and Cortex-M build contracts remain unchanged;
+- Cortex-M and STM32H755 cross-builds remain green;
+- bundled POSIX examples build and self-test successfully;
+- documentation/API compile probes and Doxygen remain green.
+
+The v0.5.1 patch changes the hosted POSIX execution implementation. It does not require re-running the v0.5.0 physical STM32 timing campaign solely to reinterpret existing measurements; any Cortex-M code-generation or behavioral regression still blocks the release through the normal cross-build and qualification policy.
