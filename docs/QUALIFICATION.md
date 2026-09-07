@@ -4,9 +4,38 @@ HardRT separates development measurements from release qualification evidence wh
 
 ## Release branch policy
 
-A release candidate is qualified from `develop`, not from a temporary feature or release branch. All release-facing source, documentation, version, and package changes must first be merged into `develop`. The exact `develop` SHA that passes hosted/cross-build CI and physical qualification is then promoted unchanged to `main` and tagged there.
+A release candidate is qualified from `develop`, not from a temporary feature or release branch. All target-affecting source, build, version, package, and test changes must be merged into `develop` before physical qualification.
 
-Temporary feature branches are deleted after their PRs are merged. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+The physically qualified `develop` SHA is the **hardware-qualified source SHA**. Normally that exact SHA is promoted to `main` and tagged. A later release commit is permitted only when every post-qualification change is release-automation or documentation-only and therefore cannot affect the compiled HardRT library or STM32 qualification binaries. This narrow exception exists so release infrastructure can be standardized without invalidating already-completed hardware evidence.
+
+Before using that exception, run:
+
+```bash
+python3 scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>
+```
+
+The guard permits only tracked Markdown/documentation, GitHub workflow files, and the dedicated release/documentation helper scripts. Any other changed path fails the check and requires a new full hardware qualification run.
+
+At tag time `main` and `develop` must resolve to the same release commit. Temporary feature/release branches are deleted after completion. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+
+## Tag-driven release publication
+
+Release tags use the non-v-prefixed `X.Y.Z` convention. The permanent `.github/workflows/release.yml` workflow owns release publication when such a tag is pushed.
+
+The workflow:
+
+- validates the `X.Y.Z` tag against the CMake project version;
+- requires the tag SHA to be the current `main` SHA;
+- requires `main` and `develop` to be aligned;
+- builds/install-packages POSIX and Cortex-M variants;
+- validates an installed POSIX CMake consumer;
+- creates reproducible POSIX, Cortex-M, and combined bundle archives;
+- generates SHA-256 checksums;
+- extracts the matching version section from `RELEASE_NOTES.md`;
+- retains the generated package set as a GitHub Actions artifact;
+- creates/updates the GitHub Release and publishes the generated software artifacts.
+
+Physical qualification evidence is generated outside CI by the hardware runner and is attached to the corresponding GitHub Release separately. CI must never synthesize or reinterpret physical evidence.
 
 ## Single STM32 runner
 
@@ -42,9 +71,9 @@ validation/stm32/releases/X.Y.Z/
 
 The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
 
-These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification because that would change the SHA that was physically tested. The selected passing package is published as a GitHub Release artifact from the qualified `X.Y.Z` tag instead.
+These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification. The selected passing package is published as a GitHub Release artifact for the corresponding `X.Y.Z` release.
 
-The source tree tagged for release must therefore be the same source tree that generated the passing report.
+The hardware evidence records the hardware-qualified source SHA. If the final tag points to a later commit under the release-automation-only exception, the qualification record and release issue must preserve both SHAs and the qualification-diff guard must pass.
 
 ## Current v0.5 matrix
 
@@ -113,9 +142,9 @@ These measurements characterize bounded implementation behavior. They are not fo
 
 ## Development evidence
 
-Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was consolidated. They are development evidence, not substitutes for the exact-SHA release qualification run.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was consolidated. They are development evidence, not substitutes for a release qualification run.
 
-Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected GitHub Release qualification artifact produced from the frozen SHA.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected GitHub Release qualification artifact produced from the hardware-qualified source SHA.
 
 ## What belongs on hardware
 
@@ -137,19 +166,21 @@ Pure argument/data-structure edge cases remain primarily hosted tests unless the
 
 HardRT 0.5.1 corrects the hosted POSIX execution backend, but it is still a new release source tree. The published 0.5.0 STM32 package remains historical evidence and is not reused as physical qualification for 0.5.1.
 
-Before tagging 0.5.1:
+For 0.5.1:
 
-1. merge every 0.5.1 source, documentation, version, package, and test change into `develop`;
-2. freeze one `develop` SHA and require all hosted/cross-build release CI to pass on that exact candidate;
-3. run the default unfiltered STM32 qualification command on that same SHA;
+1. merge every target/build-affecting 0.5.1 source, version, package, and test change into `develop`;
+2. freeze one `develop` SHA and require all hosted/cross-build release CI to pass on that candidate;
+3. run the default unfiltered STM32 qualification command on that SHA;
 4. require board/OpenOCD probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
 5. retain the generated qualification package outside the tracked source tree;
-6. make no tracked change after the hardware run;
-7. promote the exact qualified SHA unchanged to `main`, tag `0.5.1`, and publish release binaries plus qualification evidence from that tag.
+6. if no tracked changes follow, promote/tag that exact SHA;
+7. if only release automation/documentation must change, apply those changes, run `scripts/check_release_qualification_diff.py` against the hardware-qualified SHA, require hosted/cross-build/documentation CI to remain green, and record both SHAs in the release tracker;
+8. align `main` and `develop`, create tag `0.5.1`, and let `.github/workflows/release.yml` publish the generated software artifacts;
+9. attach the retained physical qualification package and checksum to the GitHub Release.
 
-The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. The release policy qualifies an exact source tree, not a hand-picked subset of changed files. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
+The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
 
-Any tracked change after the passing physical run creates a new release-candidate SHA and requires a new full qualification run.
+Any post-qualification change outside the release-automation/documentation whitelist changes the qualified product and requires a new full qualification run.
 
 ## v0.5.0 release evidence contract
 
