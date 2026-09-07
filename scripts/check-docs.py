@@ -54,10 +54,13 @@ for source in MARKDOWN:
             fail(f"{source.relative_to(ROOT)}: missing link target: {target}")
 
 required_paths = [
+    ".github/workflows/release.yml",
     "scripts/run-all-examples.sh",
     "scripts/stm32_manual_test_full.sh",
     "scripts/build-stm32-examples-ci.sh",
     "scripts/build-lib-stm32h7xx-dwt-timing.sh",
+    "scripts/extract_release_notes.py",
+    "scripts/check_release_qualification_diff.py",
     "examples/two_tasks/CMakeLists.txt",
     "examples/event_notify/CMakeLists.txt",
     "examples/event_notify_cpp/CMakeLists.txt",
@@ -96,7 +99,7 @@ stale_patterns = {
     r"Humanity has already invented enough": "release documentation contains conversational/editorial text",
     r"slice\s*==\s*0[^\n.]*creates\s+a\s+cooperative\s+task": "zero timeslice is still documented as globally cooperative",
     r"transfers\s+task\s+context\s+only\s+when\s+the\s+running\s+task\s+reaches\s+a\s+HardRT\s+scheduling\s+point": "POSIX documentation still describes the removed cooperative execution model",
-    r"does\s+not\s+require\s+re-running\s+the\s+v0\.5\.0\s+physical\s+STM32\s+timing\s+campaign": "0.5.1 documentation contradicts the exact-SHA hardware qualification policy",
+    r"does\s+not\s+require\s+re-running\s+the\s+v0\.5\.0\s+physical\s+STM32\s+timing\s+campaign": "0.5.1 documentation contradicts the hardware qualification policy",
 }
 for pattern, description in stale_patterns.items():
     if re.search(pattern, combined, flags=re.IGNORECASE):
@@ -133,6 +136,10 @@ if "default unfiltered STM32 qualification command" not in qualification:
     fail("docs/QUALIFICATION.md does not require a full unfiltered 0.5.1 hardware run")
 if "validation/stm32/releases/X.Y.Z/" not in qualification:
     fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
+if "check_release_qualification_diff.py" not in qualification:
+    fail("docs/QUALIFICATION.md does not define the post-qualification release-only diff guard")
+if "hardware-qualified source SHA" not in qualification:
+    fail("docs/QUALIFICATION.md does not distinguish hardware evidence SHA from a release-only follow-up commit")
 
 manual = (ROOT / "docs/STM32_MANUAL_TESTS.md").read_text(encoding="utf-8")
 if "validation/stm32/releases/X.Y.Z/" not in manual:
@@ -165,12 +172,16 @@ if "`stack_words` pointer and `n_words` count" not in build_doc:
     fail("build documentation does not use the actual hrt_create_task stack parameter names")
 if "fresh **unfiltered** STM32H755 release-candidate run" not in build_doc:
     fail("build documentation does not require fresh full physical qualification for 0.5.1")
+if ".github/workflows/release.yml" not in build_doc:
+    fail("build documentation does not describe tag-driven release publication")
 
 release_notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 if "`stack_mem`" in release_notes:
     fail("release notes name a nonexistent hrt_create_task stack_mem parameter")
 if "fresh full STM32H755 physical qualification run" not in release_notes:
-    fail("0.5.1 release notes omit the required exact-SHA physical qualification gate")
+    fail("0.5.1 release notes omit the required physical qualification gate")
+if "scripts/check_release_qualification_diff.py" not in release_notes:
+    fail("0.5.1 release notes omit the release-only post-qualification diff guard")
 if "humanity" in release_notes.lower():
     fail("release notes contain conversational/editorial text")
 
@@ -199,6 +210,21 @@ if 'Version string (e.g., "0.4.0")' in cpp_header:
     fail("C++ public header still advertises the 0.4.0 version-string example")
 if 'Version string (e.g., "0.5.1")' not in cpp_header:
     fail("C++ public header does not advertise the current 0.5.1 version-string example")
+
+release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+for required in (
+    "tags:",
+    "Validate release tag and branch alignment",
+    "scripts/extract_release_notes.py",
+    "SHA256SUMS",
+    "softprops/action-gh-release@v2",
+):
+    if required not in release_workflow:
+        fail(f"release workflow is missing required contract: {required}")
+
+linux_workflow = (ROOT / ".github/workflows/ci_posix.yml").read_text(encoding="utf-8")
+if "softprops/action-gh-release" in linux_workflow:
+    fail("Linux CI still publishes GitHub Release assets; release.yml must be the single publisher")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)
