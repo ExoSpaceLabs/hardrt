@@ -173,7 +173,7 @@ typedef struct {
     uint16_t timeslice;
 } hrt_task_attr_t;
 
-/** Return the semantic version string, for example "0.5.0". */
+/** Return the semantic version string, for example "0.5.1". */
 const char *hrt_version_string(void);
 
 /** Return the version encoded as 0xMMmmpp. */
