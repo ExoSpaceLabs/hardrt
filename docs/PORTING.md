@@ -15,12 +15,12 @@ HardRT separates the portable scheduler and synchronization code from architectu
 ## Current execution model
 
 - The core owns task state and scheduling decisions.
-- A port owns stack-frame construction and context transfer.
+- A native port owns stack-frame construction and context transfer. A hosted port may map HardRT tasks onto host execution objects as long as the common core remains the sole scheduling authority.
 - `hrt_init()` initializes all core state and the idle representation before the port configures its tick mechanism.
 - Tick configuration during `hrt_init()` must remain inactive. A port activates its internal periodic tick only when `hrt_start()` crosses the scheduler-start boundary.
 - Tick handlers update kernel state and request rescheduling; they do not directly run application task code.
 - Blocking APIs transfer control back to the scheduler from task context.
-- Kernel runtime storage is static.
+- Kernel runtime storage is static. A hosted port may additionally consume operating-system execution resources; those resources are port implementation details and must be documented separately.
 
 ## Scheduler ownership and READY transitions
 
@@ -52,7 +52,7 @@ For `HRT_TICK_SYSTICK`, this hook configures the port-owned timer and context-sw
 
 Caller: `hrt_start()`. This hook owns the ordered scheduler-start boundary. Architecture state required before task execution must be completed first; the configured internal periodic tick is then activated, the first scheduling decision is requested, and task execution is allowed to begin.
 
-On Cortex-M, startup is briefly protected with interrupts masked while FP context support is configured, the initial PendSV is pended, and SysTick is armed. Interrupts are enabled only after that sequence is complete. POSIX arms `SIGALRM` only after selecting the first valid current task and then enters the hosted scheduler loop. The null port returns without executing tasks.
+On Cortex-M, startup is briefly protected with interrupts masked while FP context support is configured, the initial PendSV is pended, and SysTick is armed. Interrupts are enabled only after that sequence is complete. On the v0.5.1 hosted POSIX port, scheduler entry starts the internal timer pthread when selected, makes the first common-core scheduling decision, dispatches the corresponding task pthread, and then remains in the controller/scheduler loop. The null port returns without executing tasks.
 
 ### `hrt_port_yield_to_scheduler()`
 
@@ -60,7 +60,7 @@ Caller: task-context sleep, yield, delete, and blocking synchronization paths. T
 
 ### `hrt__pend_context_switch()`
 
-Caller: task paths and supported ISR/tick paths after scheduler startup. It must be non-blocking, ISR-safe for the configured kernel-aware interrupt range, and safe to invoke repeatedly. Cortex-M sets `PENDSVSET`; POSIX sets its pending scheduler flag. It requests a switch but does not directly run a task from ISR context.
+Caller: task paths and supported ISR/tick paths after scheduler startup. It must be non-blocking, ISR-safe for the configured kernel-aware interrupt range, and safe to invoke repeatedly. Cortex-M sets `PENDSVSET`; POSIX records a pending scheduler request and, when required, interrupts the currently running hosted task so the controller can regain ownership. It requests a switch but does not make the ISR/signal context the scheduler owner.
 
 The initial scheduler handoff is owned by `hrt_port_enter_scheduler()` rather than by a separate core-side pend before port startup. This prevents the first Cortex-M PendSV from running before architecture startup state is ready.
 
@@ -70,7 +70,9 @@ Caller: scheduler/idle context. Cortex-M executes `WFI`; POSIX uses a short slee
 
 ### `hrt_port_prepare_task_stack(int id, void (*tramp)(void), uint32_t *stack_base, size_t words)`
 
-Caller: `hrt_create_task()` before the task becomes READY. It builds or records the initial execution context. The stack remains application-owned for the task lifetime. The operation must not block. It returns zero only when the context is fully usable; a negative return causes task creation to roll the slot back to `HRT_UNUSED`.
+Caller: `hrt_create_task()` before the task becomes READY. It builds or records the initial execution context. The supplied stack storage remains application-owned for the HardRT task lifetime and participates in the common-core live-stack contract. The operation must not block. It returns zero only when the execution context is fully usable; a negative return causes task creation to roll the slot back to `HRT_UNUSED`.
+
+On native Cortex-M, the supplied storage is the task execution stack. On the v0.5.1 hosted POSIX port, the storage remains part of HardRT's public task/lifetime validation but is not the native pthread execution stack. The host pthread owns a separate stack whose sizing and allocation are host-port implementation details. New ports must document which model they implement rather than silently changing the meaning of application-owned stack storage.
 
 ### `hrt__task_trampoline()`
 
@@ -88,6 +90,8 @@ HARDRT_MAX_SYSCALL_IRQ_PRIO = 5
 ```
 
 Any IRQ calling HardRT ISR APIs must obey the configured syscall-priority ceiling. The duration of these masked regions is part of the hard-real-time qualification work in #53.
+
+The public `hrt_tick_from_isr()` path enters the same port critical-section contract before mutating common tick/scheduler state. On Cortex-M this nests through the existing BASEPRI-preserving implementation and does not widen the set of IRQ priorities permitted to call HardRT. On hosted POSIX it serializes an application-owned external-tick caller with the controller and task-side kernel paths.
 
 ### `hrt_port_sp_valid(uintptr_t sp)`
 
@@ -121,9 +125,11 @@ The current reference ports also require private TCB/context helpers for task tr
 
 With `HRT_TICK_SYSTICK`, `hrt_init()` configures but does not activate the port timer. `hrt_start()` crosses the activation boundary through `hrt_port_enter_scheduler()`. Once active, the timer handler calls private `hrt__tick_isr()`. That increments time, wakes expired sleepers, accounts for RR slices, and requests a reschedule when required. A tick handler never directly switches application context.
 
+On hosted POSIX, an internal monotonic timer pthread requests ticks. The controller processes those requests only after it has regained exclusive hosted scheduler ownership; the timer pthread is not allowed to run the common scheduler concurrently with an application task.
+
 ### Application-owned external tick
 
-With `HRT_TICK_EXTERNAL`, HardRT never starts a timer. The application timer ISR calls public `hrt_tick_from_isr()`, which reaches the same core tick path. Calling that public API while `HRT_TICK_SYSTICK` is selected does not advance time and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
+With `HRT_TICK_EXTERNAL`, HardRT never starts a timer. The application timer ISR calls public `hrt_tick_from_isr()`, which reaches the same core tick path through the port critical-section contract. Calling that public API while `HRT_TICK_SYSTICK` is selected does not advance time and records `ERR_TICK_SOURCE_MISMATCH` through the kernel diagnostic path.
 
 Because the external timer is application-owned, applications are responsible for not invoking its HardRT tick path before `hrt_init()` has completed. HardRT itself does not enable global interrupts as a side effect of `hrt_init()`.
 
@@ -135,9 +141,19 @@ The reference Cortex-M port uses PSP task stacks, PendSV, hardware exception fra
 
 The physically qualified PRIORITY_RR ordering is `low-A -> ISR/wake -> high -> low-A -> low-B`, with the interrupted low-A retaining its unused quantum across the higher-priority dispatch.
 
-### POSIX
+### Hosted POSIX
 
-The POSIX port uses `ucontext` and `SIGALRM`. `hrt_init()` installs/configures the signal source but leaves the interval timer disarmed. Scheduler entry arms it only after selecting a valid current task. The signal handler performs tick accounting and requests scheduling but never calls `swapcontext()`. A task returns to the hosted scheduler only at a HardRT scheduling point, so this port is functional/cooperative rather than a timing-accurate Cortex-M model.
+The v0.5.1 POSIX port is intentionally a Linux hosted execution backend, not a generic native-port template and not a hard-real-time target.
+
+- each live HardRT application task is represented by one pthread;
+- the thread running `hrt_start()` remains the hosted scheduler/controller;
+- an internal monotonic timer uses a separate pthread;
+- targeted process signals park/resume the selected application pthread so CPU-bound task code cannot indefinitely retain execution merely because it does not call a HardRT API;
+- the common core still owns all READY/RUNNING/BLOCKED/SLEEP/EXITED transitions and scheduling policy;
+- a scheduling/tick request does not permit the timer thread or signal handler to execute application scheduling policy concurrently with the active task;
+- the host operating system determines actual pthread and signal latency, so POSIX results are semantic/regression evidence, not Cortex-M WCET evidence.
+
+The implementation currently reserves process-wide `SIGALRM` for the hosted preemption/park mechanism and `SIGUSR2` for wake/resume handling. An embedding process must not install incompatible handlers or use these signals for unrelated protocols while HardRT is active. Signal configurability and handler restoration are host-integration concerns, not part of the v0.5.1 public API.
 
 ## Validation checklist
 
@@ -149,12 +165,15 @@ Before adding a port, verify at least:
 - [ ] scheduler entry activates the internal tick and performs the first dispatch in a defined order;
 - [ ] internal and external tick modes advance time exactly once per tick;
 - [ ] wrong-source use of `hrt_tick_from_isr()` is observable and cannot double-count a port-owned tick;
-- [ ] no task context switch occurs directly in a hardware tick handler;
+- [ ] no task context switch occurs directly in a hardware tick handler or hosted signal handler;
 - [ ] task-context yield reaches the scheduler safely and rotates exactly once;
+- [ ] an asynchronously preempted task cannot continue executing concurrently with its scheduler-selected successor;
+- [ ] duplicate/stale hosted wake notifications cannot create an extra task-dispatch token;
+- [ ] task exit publishes port-side non-executability before the common core can reclaim the application slot;
 - [ ] higher-priority preemption does not rotate the interrupted task behind equal-priority peers;
 - [ ] nested critical sections preserve prior protection state;
 - [ ] ISR-facing APIs are called only from supported interrupt priorities;
-- [ ] initial stacks satisfy the target ABI and alignment requirements;
+- [ ] initial native stacks satisfy the target ABI and alignment requirements;
 - [ ] task return reaches `hrt_task_delete()`;
 - [ ] idle does not enter an application ready queue;
 - [ ] repeated wake, yield, block, and delete operations preserve unique READY membership.
