@@ -38,7 +38,7 @@ static inline void hrt_mutex_init(hrt_mutex_t *m) {
 /**
  * @brief Block until the mutex is acquired.
  *
- * MUST be called from a task context (current ID >= 0).
+ * MUST be called by the current RUNNING application task.
  *
  * @param m Pointer to the mutex.
  * @return 0 on success, -1 on bad context, recursive lock attempt, or if
@@ -49,7 +49,7 @@ int hrt_mutex_lock(hrt_mutex_t *m);
 /**
  * @brief Attempt to acquire the mutex without blocking.
  *
- * MUST be called from a task context (current ID >= 0).
+ * MUST be called by the current RUNNING application task.
  *
  * @param m Pointer to the mutex.
  * @return 0 on success, -1 on failure (already locked or invalid context).
@@ -59,7 +59,7 @@ int hrt_mutex_try_lock(hrt_mutex_t *m);
 /**
  * @brief Release a mutex held by the current caller.
  *
- * MUST be called from a task context (current ID >= 0).
+ * MUST be called by the current RUNNING application task.
  *
  * @param m Pointer to the mutex.
  * @return 0 on success, -1 on failure (not locked, or not the owner).
