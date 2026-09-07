@@ -37,10 +37,11 @@ namespace hardrt {
          * @param fn     Pointer to the task function.
          * @param arg    User argument passed to the task function.
          * @param prio   Task priority.
-         * @param slice  Timeslice in ticks; zero creates a cooperative task.
+         * @param slice  Timeslice in ticks; zero disables tick-driven RR rotation.
          * @return Non-negative task ID on success, or a negative error code.
          * @note Because an explicit attribute object is passed to the C API, a
-         *       zero slice does not request the system default.
+         *       zero slice does not request the system default. It also does not
+         *       disable higher-priority asynchronous preemption.
          */
         template <size_t StackWords = 1024, int Tag = 0>
         static int create(const hrt_task_fn fn, void* arg, const hrt_prio_t prio, const uint16_t slice = 0) {
@@ -59,7 +60,7 @@ namespace hardrt {
          * @param stack  Pointer to the beginning of the stack array (uint32_t).
          * @param words  Size of the stack in 32-bit words.
          * @param prio   Task priority.
-         * @param slice  Timeslice in ticks; zero creates a cooperative task.
+         * @param slice  Timeslice in ticks; zero disables tick-driven RR rotation.
          * @return Non-negative task ID on success, or a negative error code.
          */
         static int create_with_stack(const hrt_task_fn fn, void* arg, uint32_t* stack, const size_t words,
@@ -159,7 +160,7 @@ namespace hardrt {
 
         /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.5.0").
+         * @return Version string (e.g., "0.5.1").
          */
         static const char* version_string() {
             return hrt_version_string();
