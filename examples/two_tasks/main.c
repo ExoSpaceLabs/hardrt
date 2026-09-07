@@ -2,9 +2,9 @@
 #include <stdio.h>
 
 /*
- * POSIX is the hosted functional port. SIGALRM advances HardRT tick accounting,
- * while task context handoff occurs at HardRT scheduling points such as sleep,
- * yield, blocking IPC, task return, or task deletion.
+ * POSIX is the hosted functional port. A monotonic timer pthread requests
+ * HardRT ticks, while targeted signals allow the scheduler/controller to park
+ * a CPU-bound task asynchronously when another task must run.
  */
 
 static uint32_t stack_a[2048];
