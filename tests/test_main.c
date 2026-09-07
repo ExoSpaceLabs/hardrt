@@ -2,6 +2,7 @@
 #include "test_common.h"
 
 const test_case_t *get_tests_preemption_contract(int *out_count);
+const test_case_t *get_tests_posix_async_preemption(int *out_count);
 const test_case_t *get_tests_queue_wake_policy(int *out_count);
 const test_case_t *get_tests_queue_barging(int *out_count);
 const test_case_t *get_tests_waitq_overflow(int *out_count);
@@ -52,6 +53,7 @@ int main(void) {
     APPEND_GROUP(get_tests_sleep_queue);
     APPEND_GROUP(get_tests_priority);
     APPEND_GROUP(get_tests_preemption_contract);
+    APPEND_GROUP(get_tests_posix_async_preemption);
     APPEND_GROUP(get_tests_queue_wake_policy);
     APPEND_GROUP(get_tests_queue_barging);
     APPEND_GROUP(get_tests_waitq_overflow);
