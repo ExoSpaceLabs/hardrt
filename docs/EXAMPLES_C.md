@@ -1,6 +1,6 @@
 # Examples
 
-HardRT 0.5.0 bundles POSIX/null examples plus STM32H755 qualification applications.
+HardRT 0.5.1 bundles POSIX/null examples plus STM32H755 qualification applications.
 
 ## Bundled portable examples
 
@@ -55,7 +55,9 @@ cmake --build build-posix --target two_tasks -j
 ./build-posix/examples/two_tasks/two_tasks
 ```
 
-The POSIX port uses Linux/glibc `ucontext`. Tick accounting is signal-driven, but task contexts hand control back to the scheduler only at HardRT scheduling points.
+The POSIX port is a Linux hosted scheduler-validation backend. Each HardRT task executes in a pthread, while the common HardRT scheduler decides which task is RUNNING. Internal ticks are requested by a monotonic timer pthread, and targeted signals allow a CPU-bound task to be parked asynchronously when the scheduler must run another task.
+
+The application-provided HardRT stack remains part of the task-lifetime and overlap contract but is not the native pthread stack on POSIX. The hosted port currently reserves process-wide `SIGALRM` and `SIGUSR2`; it is not a Cortex-M timing model.
 
 ## Scheduler example
 
@@ -90,7 +92,7 @@ int main(void) {
 }
 ```
 
-A timeslice is measured in ticks. `hrt_sleep(0)` is an immediate scheduling point in v0.5.0.
+A timeslice is measured in ticks. `hrt_sleep(0)` is an immediate scheduling point in v0.5.x.
 
 ## Event flags
 
@@ -141,7 +143,7 @@ See [CPP.md](CPP.md) and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).
 
 ## Mutexes
 
-Mutexes are owner-tracked, non-recursive, FIFO/direct-handoff, and task-context-only. v0.5.0 provides no timed lock, priority inheritance, or automatic owner-death recovery. Tasks must release owned mutexes before return/deletion.
+Mutexes are owner-tracked, non-recursive, FIFO/direct-handoff, and task-context-only. v0.5.1 provides no timed lock, priority inheritance, or automatic owner-death recovery. Tasks must release owned mutexes before return/deletion.
 
 ## External tick example
 
