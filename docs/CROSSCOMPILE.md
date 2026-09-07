@@ -142,7 +142,7 @@ It owns board probing, build/flash cycles, functional validation, timing collect
 After installing a target-specific HardRT build:
 
 ```cmake
-find_package(HardRT 0.5.0 REQUIRED)
+find_package(HardRT 0.5 REQUIRED)
 target_link_libraries(my_firmware PRIVATE HardRT::hardrt)
 ```
 
