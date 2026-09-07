@@ -477,7 +477,10 @@ void hrt_port_enter_scheduler(void) {
             }
         } else {
             const int cur = hrt__get_current();
-            if (cur >= 0 && cur < HARDRT_APP_MAX_TASKS) resume_task(cur);
+            if (cur >= 0 && cur < HARDRT_APP_MAX_TASKS) {
+                const _hrt_tcb_t *t = hrt__tcb(cur);
+                if (t != NULL && t->state == HRT_RUNNING) resume_task(cur);
+            }
         }
 
         if (atomic_load_explicit(&g_active_task, memory_order_acquire) < 0) {
