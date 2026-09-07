@@ -42,7 +42,7 @@ A POSIX build resolves CMake's `Threads` package and publishes `Threads::Threads
 
 The hosted port currently reserves process-wide `SIGALRM` and `SIGUSR2` while HardRT is active. Applications using the hosted port must not install incompatible handlers or repurpose those signals concurrently.
 
-The `stack_mem`/`stack_words` supplied to `hrt_create_task()` remain application-owned and participate in HardRT's lifetime and overlap validation. On POSIX they are not used as the native pthread execution stack; the host pthread owns a separate execution stack. Native Cortex-M task-stack semantics are unchanged.
+The `stack_words` pointer and `n_words` count supplied to `hrt_create_task()` remain application-owned and participate in HardRT's lifetime and overlap validation. On POSIX that storage is not used as the native pthread execution stack; the host pthread owns a separate execution stack. Native Cortex-M task-stack semantics are unchanged.
 
 ## Tests
 
@@ -200,4 +200,10 @@ Before publishing v0.5.1, CI must demonstrate at least:
 - bundled POSIX examples build and self-test successfully;
 - documentation/API compile probes and Doxygen remain green.
 
-The v0.5.1 patch changes the hosted POSIX execution implementation. It does not require re-running the v0.5.0 physical STM32 timing campaign solely to reinterpret existing measurements; any Cortex-M code-generation or behavioral regression still blocks the release through the normal cross-build and qualification policy.
+The published v0.5.0 hardware evidence remains historical evidence and is not reinterpreted as v0.5.1 qualification. Under [QUALIFICATION.md](QUALIFICATION.md), v0.5.1 must also pass a fresh **unfiltered** STM32H755 release-candidate run from the exact frozen `develop` SHA that will be promoted unchanged to `main` and tagged `0.5.1`:
+
+```bash
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
+```
+
+The release run requires board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. No tracked source or documentation change may be made after that physical run without producing a new candidate SHA and repeating qualification.
