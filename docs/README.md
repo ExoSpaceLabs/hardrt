@@ -10,7 +10,9 @@ The v0.5 release matrix is **13 functional contracts and 38 benchmark images**, 
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-A release candidate is qualified only after all release-facing changes are merged into `develop`. The unfiltered hardware run must use the exact frozen `develop` SHA that will later be promoted unchanged to `main` and tagged. Generated qualification evidence remains outside the tracked source tree and is published with the GitHub Release.
+All target/build-affecting changes must be merged into `develop` before the unfiltered hardware run. The resulting SHA is the hardware-qualified source SHA. Normally it is promoted/tagged unchanged; a later commit is allowed only for release automation/documentation and must pass `scripts/check_release_qualification_diff.py` against the qualified SHA. Generated qualification evidence remains outside the tracked source tree and is published with the GitHub Release.
+
+Tagged releases are published by the permanent `.github/workflows/release.yml` workflow, which validates version/branch alignment, builds POSIX and Cortex-M packages, generates checksums, extracts version-specific release notes, and publishes the generated software artifacts.
 
 Broader 1.0-quality WCET/interference work remains separate and does not turn measured maxima into universal guarantees.
 
