@@ -1,3 +1,100 @@
+# HardRT v0.5.1 Release Notes
+
+HardRT v0.5.1 is a corrective patch for the hosted POSIX execution backend. The published v0.5.0 tag remains immutable. The patch completes the POSIX preemption work that was intended for v0.5.0 without changing the public C/C++ API, public synchronization-object layouts, or Cortex-M scheduling policy.
+
+## Corrected
+
+### Hosted POSIX preemption
+
+The POSIX backend no longer uses `ucontext`. Each live HardRT application task executes in a pthread while the thread running `hrt_start()` remains the hosted scheduler/controller.
+
+A monotonic timer pthread requests internal ticks. Targeted POSIX signals asynchronously park/resume the currently selected application pthread so a CPU-bound task that never calls a HardRT API cannot indefinitely prevent a scheduler-selected task from executing.
+
+The common HardRT core remains authoritative for:
+
+- READY/RUNNING/BLOCKED/SLEEP/EXITED state;
+- priority and round-robin policy;
+- wake/preemption decisions;
+- sleeper/timeslice accounting;
+- task lifecycle and slot ownership.
+
+The hosted port performs execution transfer only; it does not duplicate scheduling policy.
+
+### Tick serialization
+
+`hrt_tick_from_isr()` now enters the existing port critical-section contract before it mutates common tick/scheduler state. This permits an application-owned external tick on the hosted POSIX port to serialize correctly with the scheduler/controller and task-side kernel paths.
+
+On Cortex-M this nests through the existing BASEPRI-preserving critical-section implementation. It does not change the documented kernel-aware ISR priority ceiling or make higher-priority IRQs eligible to call HardRT APIs.
+
+### Hosted regression coverage
+
+The POSIX suite now contains an explicit asynchronous-preemption regression: a low-priority task spins indefinitely without entering a HardRT API while a higher-priority sleeping task must wake and execute. This directly covers the failure mode of the former cooperative hosted execution model.
+
+## Package and build changes
+
+- Project/package version is `0.5.1`.
+- POSIX builds resolve CMake's `Threads` package.
+- `HardRT::hardrt` exports `Threads::Threads` transitively for source-tree and installed-package consumers.
+- Installed `HardRTConfig.cmake` resolves the Threads dependency before importing HardRT targets.
+- The hosted POSIX port is documented and validated as a pthread-capable Linux environment rather than a generic timing model for all POSIX systems.
+
+A consumer remains:
+
+```cmake
+find_package(HardRT 0.5 REQUIRED)
+add_executable(app main.c)
+target_link_libraries(app PRIVATE HardRT::hardrt)
+```
+
+No consumer-side pthread workaround is required.
+
+## Compatibility
+
+v0.5.1 is intended to be source/API and ABI compatible with v0.5.0 at the HardRT public interface:
+
+- public C/C++ function signatures are unchanged;
+- public synchronization-object layouts are unchanged;
+- scheduler behavior documented for v0.5.0 remains the common-core contract;
+- Cortex-M task-stack and context-switch semantics are unchanged.
+
+Hosted POSIX runtime behavior is deliberately corrected. Code that depended on a CPU-bound hosted task retaining execution until it voluntarily entered HardRT was depending on a defect rather than a supported scheduler contract.
+
+### Hosted stack semantics
+
+The application-owned `stack_mem`/`stack_words` supplied to `hrt_create_task()` remain part of HardRT's task-lifetime and live-stack-overlap contract. On POSIX that storage is no longer the native execution stack: the pthread implementation owns a separate host stack. Native Cortex-M task stacks continue to use the application-provided storage directly.
+
+### Process-level signal ownership
+
+The v0.5.1 hosted backend currently reserves process-wide:
+
+- `SIGALRM` for asynchronous task preemption/parking;
+- `SIGUSR2` for hosted wake/resume handling.
+
+Applications embedding the POSIX backend must not install incompatible handlers or use those signals for unrelated process-level protocols while HardRT is active. Configurable signal selection and handler restoration are follow-up host-integration improvements, not additions to the v0.5.1 public API.
+
+### Host resource model
+
+The hosted implementation consumes one pthread per live application task, the scheduler/controller thread that called `hrt_start()`, and one additional timer pthread when HardRT owns the internal tick. These resources are host-port implementation details and do not alter the static kernel storage or Cortex-M memory model.
+
+## Validation gate
+
+The v0.5.1 release is gated on:
+
+- POSIX C/C++ builds across the supported Linux matrix;
+- the complete hosted runtime suite, including asynchronous CPU-bound preemption;
+- strict-warning + UBSan validation;
+- installed CMake consumer validation with transitive thread linkage;
+- bundled POSIX examples;
+- null and Cortex-M contract builds;
+- STM32H755 cross-build validation;
+- documentation/API compile probes and Doxygen.
+
+These release notes describe the intended v0.5.1 contract. Publication requires the above CI gates to be green; documentation alone is not treated as validation evidence, despite humanity's recurring attempts to make it so.
+
+The existing v0.5.0 physical STM32 timing campaign is not reinterpreted by this hosted-port patch. Any Cortex-M source or behavior regression still blocks release through the normal cross-build and qualification policy.
+
+---
+
 # HardRT v0.5.0 Release Notes
 
 HardRT v0.5.0 is a pre-1.0 minor release focused on scheduler/lifecycle correctness, deterministic wake behavior, Cortex-M qualification, and the new event-flag/task-notification synchronization surface.
