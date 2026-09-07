@@ -61,7 +61,7 @@ Hosted POSIX runtime behavior is deliberately corrected. Code that depended on a
 
 ### Hosted stack semantics
 
-The application-owned `stack_mem`/`stack_words` supplied to `hrt_create_task()` remain part of HardRT's task-lifetime and live-stack-overlap contract. On POSIX that storage is no longer the native execution stack: the pthread implementation owns a separate host stack. Native Cortex-M task stacks continue to use the application-provided storage directly.
+The application-owned `stack_words` pointer and `n_words` count supplied to `hrt_create_task()` remain part of HardRT's task-lifetime and live-stack-overlap contract. On POSIX that storage is no longer the native execution stack: the pthread implementation owns a separate host stack. Native Cortex-M task stacks continue to use the application-provided storage directly.
 
 ### Process-level signal ownership
 
@@ -87,11 +87,18 @@ The v0.5.1 release is gated on:
 - bundled POSIX examples;
 - null and Cortex-M contract builds;
 - STM32H755 cross-build validation;
-- documentation/API compile probes and Doxygen.
+- documentation/API compile probes and Doxygen;
+- a fresh full STM32H755 physical qualification run from the exact frozen release-candidate `develop` SHA.
 
-These release notes describe the intended v0.5.1 contract. Publication requires the above CI gates to be green; documentation alone is not treated as validation evidence, despite humanity's recurring attempts to make it so.
+The physical gate uses the canonical unfiltered runner:
 
-The existing v0.5.0 physical STM32 timing campaign is not reinterpreted by this hosted-port patch. Any Cortex-M source or behavior regression still blocks release through the normal cross-build and qualification policy.
+```bash
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
+```
+
+Release evidence requires board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The source SHA that generates that evidence must be promoted unchanged to `main` and tagged `0.5.1`; any tracked change after the run requires a new candidate SHA and a new full qualification run.
+
+The existing v0.5.0 physical STM32 timing campaign remains historical evidence. It is not reinterpreted or reused as v0.5.1 physical qualification.
 
 ---
 
