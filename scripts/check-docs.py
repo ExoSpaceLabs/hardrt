@@ -94,6 +94,9 @@ stale_patterns = {
     r"release\s+candidate\s+must\s+therefore\s+be\s+qualified": "documentation still describes final v0.5 qualification as a pending repository state",
     r"Remaining\s+v0\.5\.0\s+release\s+gates": "roadmap still presents completed v0.5 engineering gates as pending",
     r"Humanity has already invented enough": "release documentation contains conversational/editorial text",
+    r"slice\s*==\s*0[^\n.]*creates\s+a\s+cooperative\s+task": "zero timeslice is still documented as globally cooperative",
+    r"transfers\s+task\s+context\s+only\s+when\s+the\s+running\s+task\s+reaches\s+a\s+HardRT\s+scheduling\s+point": "POSIX documentation still describes the removed cooperative execution model",
+    r"does\s+not\s+require\s+re-running\s+the\s+v0\.5\.0\s+physical\s+STM32\s+timing\s+campaign": "0.5.1 documentation contradicts the exact-SHA hardware qualification policy",
 }
 for pattern, description in stale_patterns.items():
     if re.search(pattern, combined, flags=re.IGNORECASE):
@@ -120,8 +123,14 @@ if "tags are `0.5.0`" not in release_validation:
     fail("release qualification retention guidance does not document the non-v-prefixed Git tag convention")
 
 qualification = (ROOT / "docs/QUALIFICATION.md").read_text(encoding="utf-8")
-if "tag `0.5.0` on `main`" not in qualification:
-    fail("docs/QUALIFICATION.md does not state the repository's exact 0.5.0 tag convention")
+if "tag `0.5.0` was created on `main`" not in qualification:
+    fail("docs/QUALIFICATION.md does not preserve the repository's historical 0.5.0 tag convention")
+if "## v0.5.1 corrective release evidence contract" not in qualification:
+    fail("docs/QUALIFICATION.md does not define the 0.5.1 corrective-release evidence contract")
+if "tag `0.5.1`" not in qualification:
+    fail("docs/QUALIFICATION.md does not state the exact 0.5.1 release-tag convention")
+if "default unfiltered STM32 qualification command" not in qualification:
+    fail("docs/QUALIFICATION.md does not require a full unfiltered 0.5.1 hardware run")
 if "validation/stm32/releases/X.Y.Z/" not in qualification:
     fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
 
@@ -141,6 +150,34 @@ if "pending remains set while the decremented value is still non-zero" not in ev
 if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
+intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
+if "HardRT 0.5.1 provides:" not in intro:
+    fail("introduction does not describe the current 0.5.1 feature contract")
+if "maps HardRT application tasks to pthreads" not in intro:
+    fail("introduction does not describe the corrected pthread-backed POSIX model")
+
+cpp_doc = (ROOT / "docs/CPP.md").read_text(encoding="utf-8")
+if "does not disable scheduler-policy preemption" not in cpp_doc:
+    fail("C++ wrapper documentation does not distinguish zero timeslice from disabling preemption")
+
+build_doc = (ROOT / "docs/BUILD.md").read_text(encoding="utf-8")
+if "`stack_words` pointer and `n_words` count" not in build_doc:
+    fail("build documentation does not use the actual hrt_create_task stack parameter names")
+if "fresh **unfiltered** STM32H755 release-candidate run" not in build_doc:
+    fail("build documentation does not require fresh full physical qualification for 0.5.1")
+
+release_notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+if "`stack_mem`" in release_notes:
+    fail("release notes name a nonexistent hrt_create_task stack_mem parameter")
+if "fresh full STM32H755 physical qualification run" not in release_notes:
+    fail("0.5.1 release notes omit the required exact-SHA physical qualification gate")
+if "humanity" in release_notes.lower():
+    fail("release notes contain conversational/editorial text")
+
+documentation = (ROOT / "docs/DOCUMENTATION.md").read_text(encoding="utf-8")
+if "configures/builds HardRT 0.5.1" not in documentation:
+    fail("documentation-gate description is not aligned to HardRT 0.5.1")
+
 cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 if "project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)" not in cmake:
     fail("CMake project version is not 0.5.1")
@@ -152,6 +189,10 @@ if "COMPATIBILITY SameMinorVersion" not in cmake:
 installed_consumer = (ROOT / "tests/installed_consumer/CMakeLists.txt").read_text(encoding="utf-8")
 if "find_package(HardRT 0.5.0 REQUIRED)" not in installed_consumer:
     fail("installed-package consumer is not validating 0.5.0 -> 0.5.1 patch compatibility")
+
+c_header = (ROOT / "inc/hardrt.h").read_text(encoding="utf-8")
+if 'semantic version string, for example "0.5.1"' not in c_header:
+    fail("C public header does not advertise the current 0.5.1 version-string example")
 
 cpp_header = (ROOT / "cpp/hardrtpp.hpp").read_text(encoding="utf-8")
 if 'Version string (e.g., "0.4.0")' in cpp_header:
