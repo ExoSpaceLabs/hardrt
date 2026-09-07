@@ -12,7 +12,7 @@ on:
       - develop
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -218,7 +218,7 @@ jobs:
         run: |
           BUILD_TYPE=${{ matrix.build_type }} ./scripts/build-stm32-examples-ci.sh
 
-      - name: Install (POSIX + Cortex-M) and create tarballs (tag builds, 22.04 only)
+      - name: Validate release package assembly (tag builds, 22.04 only)
         if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
         run: |
           set -euxo pipefail
@@ -233,21 +233,15 @@ jobs:
 
           mkdir -p bundle/posix bundle/cortex_m
           cp -a install-posix/* bundle/posix/
-          cp -a install-cortex_m/* bundle/cortex_m/
+          cp -a install-cortexm/* bundle/cortex_m/
           tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
 
           ls -la packages
 
-      - name: Upload package artifact (tag builds, 22.04 only)
+      - name: Retain CI package assembly (tag builds, 22.04 only)
         if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: hardrt-tarballs-${{ github.ref_name }}
+          name: hardrt-ci-tarballs-${{ github.ref_name }}
           path: packages/*.tar.gz
           if-no-files-found: error
-
-      - name: Upload to GitHub Release (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && success() && github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: packages/*.tar.gz
