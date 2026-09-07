@@ -186,6 +186,15 @@ static void cleanup_task_threads(void) {
 }
 
 #ifdef HARDRT_TEST_HOOKS
+static void drain_pending_preempt_signal(void) {
+    sigset_t old_mask;
+    const struct timespec no_wait = {0, 0};
+
+    (void)pthread_sigmask(SIG_BLOCK, &g_preempt_set, &old_mask);
+    while (sigtimedwait(&g_preempt_set, NULL, &no_wait) == HRT_POSIX_PREEMPT_SIGNAL) {}
+    (void)pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
+}
+
 void hrt__test_stop_scheduler(void) {
     atomic_store_explicit(&g_stop_requested, 1, memory_order_release);
     if (caller_is_active_task()) return;
@@ -195,6 +204,7 @@ void hrt__test_stop_scheduler(void) {
 void hrt__test_reset_scheduler_state(void) {
     stop_tick_thread();
     cleanup_task_threads();
+    drain_pending_preempt_signal();
 
     if (g_scheduler_gate_initialized) drain_sem(&g_scheduler_gate);
     atomic_store_explicit(&g_stop_requested, 0, memory_order_release);
@@ -491,7 +501,17 @@ void hrt_port_enter_scheduler(void) {
         }
 
 #ifdef HARDRT_TEST_HOOKS
-        if (atomic_load_explicit(&g_stop_requested, memory_order_acquire) != 0) break;
+        if (atomic_load_explicit(&g_stop_requested, memory_order_acquire) != 0) {
+            /* Honor the final task-side scheduling point before returning to a
+             * hosted test. This keeps the core state consistent with the
+             * normal scheduler-entry contract without dispatching a successor. */
+            hrt_port_crit_enter();
+            if (atomic_exchange_explicit(&g_switch_pending, 0, memory_order_acq_rel) != 0) {
+                hrt__on_scheduler_entry();
+            }
+            hrt_port_crit_exit();
+            break;
+        }
 #endif
 
         hrt_port_crit_enter();
