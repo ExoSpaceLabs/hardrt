@@ -133,11 +133,31 @@ Physical qualification focuses on paths affected by real Cortex-M execution:
 
 Pure argument/data-structure edge cases remain primarily hosted tests unless they interact with a target-specific path.
 
+## v0.5.1 corrective release evidence contract
+
+HardRT 0.5.1 corrects the hosted POSIX execution backend, but it is still a new release source tree. The published 0.5.0 STM32 package remains historical evidence and is not reused as physical qualification for 0.5.1.
+
+Before tagging 0.5.1:
+
+1. merge every 0.5.1 source, documentation, version, package, and test change into `develop`;
+2. freeze one `develop` SHA and require all hosted/cross-build release CI to pass on that exact candidate;
+3. run the default unfiltered STM32 qualification command on that same SHA;
+4. require board/OpenOCD probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
+5. retain the generated qualification package outside the tracked source tree;
+6. make no tracked change after the hardware run;
+7. promote the exact qualified SHA unchanged to `main`, tag `0.5.1`, and publish release binaries plus qualification evidence from that tag.
+
+The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. The release policy qualifies an exact source tree, not a hand-picked subset of changed files. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
+
+Any tracked change after the passing physical run creates a new release-candidate SHA and requires a new full qualification run.
+
 ## v0.5.0 release evidence contract
 
-Before the hardware run, all release-facing source/docs/version changes must be complete on `develop` and hosted CI must pass on one frozen `develop` SHA.
+The following records the policy used for the already-published 0.5.0 release.
 
-The final STM32 package must then be generated from that exact SHA and record at minimum:
+Before the hardware run, all release-facing source/docs/version changes had to be complete on `develop` and hosted CI had to pass on one frozen `develop` SHA.
+
+The final STM32 package then had to be generated from that exact SHA and record at minimum:
 
 - clean tracked HardRT source and exact SHA;
 - clean/pinned STM32CubeH7 checkout and SHA;
@@ -152,7 +172,7 @@ The final STM32 package must then be generated from that exact SHA and record at
 - tick/sleeper scaling metadata;
 - raw build/OpenOCD/GDB logs.
 
-After that run passes, do not modify `develop`. Fast-forward `main` to the exact qualified `develop` SHA, tag `0.5.0` on `main`, and publish the qualification package and release binaries from that tag. Any later tracked change requires a new candidate SHA and a new qualification run.
+After that run passed, `main` was fast-forwarded to the exact qualified `develop` SHA, tag `0.5.0` was created on `main`, and the qualification package and release binaries were published from that tag. Any later tracked change belongs to a later candidate and must be qualified under that release's policy.
 
 ## Human observation
 

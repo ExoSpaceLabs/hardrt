@@ -107,8 +107,8 @@ The return value is the non-negative task ID returned by `hrt_create_task()`, or
 
 The `slice` argument is passed through an explicit `hrt_task_attr_t`:
 
-- `slice > 0` configures that many ticks per slice;
-- `slice == 0` creates a cooperative task.
+- `slice > 0` configures that many ticks per round-robin slice when the active policy uses RR rotation;
+- `slice == 0` disables tick-driven RR rotation for that task, but does not disable scheduler-policy preemption.
 
 It does not request the system default slice. To use the C default-attribute path, call `hrt_create_task()` with `attr == nullptr` directly.
 

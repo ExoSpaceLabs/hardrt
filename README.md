@@ -187,7 +187,7 @@ The release-grade physical entry point for NUCLEO-H755ZI-Q / CM7 is:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The v0.5.0 hardware qualification matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters. v0.5.1 changes the hosted POSIX backend and does not reinterpret those Cortex-M measurements.
+The v0.5 hardware qualification matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters. The published v0.5.0 hardware package remains historical evidence. v0.5.1 must pass a fresh unfiltered full run on the exact frozen `develop` SHA that is later promoted unchanged to `main` and tagged `0.5.1`.
 
 See [QUALIFICATION.md](docs/QUALIFICATION.md), [STM32_MANUAL_TESTS.md](docs/STM32_MANUAL_TESTS.md), and [STATISTICS.md](docs/STATISTICS.md).
 

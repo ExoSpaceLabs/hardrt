@@ -66,7 +66,7 @@ The correction is intentionally below the public C/C++ API boundary:
 
 - public function signatures and public object layouts are unchanged from v0.5.0;
 - scheduler policy, READY ordering, blocking semantics, wake decisions, and task lifecycle remain owned by the common core;
-- the POSIX backend replaces `ucontext` execution with one pthread per application task plus a hosted timer thread;
+- the POSIX backend replaces `ucontext` execution with one pthread per application task and, when HardRT owns the internal tick, one hosted timer pthread;
 - CPU-bound hosted tasks can now be asynchronously parked so a scheduler-selected task can run without requiring the interrupted task to call a HardRT API first;
 - the application-provided HardRT task-stack buffer remains part of the public task-creation/lifetime contract, but on POSIX it is not the native pthread execution stack. The host pthread stack is separately allocated by the pthread implementation and is configured to at least the port's host minimum;
 - POSIX builds now export the platform thread dependency through `HardRT::hardrt`; installed CMake consumers do not need to add `Threads::Threads` themselves.

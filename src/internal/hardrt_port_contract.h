@@ -18,7 +18,8 @@ extern "C" {
  *
  * Cortex-M qualification requires every hook used in a timing-sensitive path
  * to have bounded behavior under the supported configuration. POSIX implements
- * the same logical contract but remains a functional simulation environment.
+ * the same logical contract but remains a hosted functional/scheduler-validation
+ * environment rather than a timing-qualified target.
  */
 
 /* ---------------- Hooks that every port must implement ---------------- */
@@ -83,7 +84,9 @@ void hrt_port_sp_valid(uintptr_t sp);
 /* Request a reschedule without directly switching task context.
  * Context: task or supported ISR context after scheduler startup.
  * Blocking: non-blocking and safe to request repeatedly.
- * Cortex-M: pend PendSV. POSIX: set the pending scheduler flag.
+ * Cortex-M: pend PendSV. POSIX: record the pending scheduler request and, when
+ * needed, interrupt the active hosted task so the scheduler/controller can
+ * regain ownership; the signal handler does not execute scheduler policy.
  */
 void hrt__pend_context_switch(void);
 

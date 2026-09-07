@@ -4,7 +4,7 @@ HardRT is a small real-time operating-system kernel written in C for statically 
 
 ## Scope
 
-HardRT 0.5.0 provides:
+HardRT 0.5.1 provides:
 
 - static application-owned task stacks and bounded task capacity;
 - fixed-priority, global round-robin, and fixed-priority round-robin scheduling;
@@ -21,7 +21,7 @@ HardRT 0.5.0 provides:
 
 It intentionally does not provide a heap, filesystem, networking stack, device HAL, process isolation, or general-purpose operating-system services.
 
-Generic IPC timeouts, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not part of v0.5.0.
+Generic IPC timeouts, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not part of v0.5.1.
 
 ## Design goals
 
@@ -43,11 +43,13 @@ Priority zero is highest.
 - `HRT_SCHED_PRIORITY` uses strict fixed-priority FIFO scheduling.
 - `HRT_SCHED_RR` uses one global FIFO and ignores task priority.
 - `HRT_SCHED_PRIORITY_RR` uses fixed-priority selection with round-robin rotation only within a priority class.
-- `timeslice == 0` disables tick-driven rotation for that task.
+- `timeslice == 0` disables tick-driven round-robin rotation for that task; it does not disable scheduler-policy preemption.
 
 Higher-priority preemption under `HRT_SCHED_PRIORITY_RR` preserves the interrupted task's queue precedence and unused quantum. ISR `need_switch` results follow the active scheduler policy rather than merely reporting that a waiter was awakened.
 
-The Cortex-M port performs context transfer through PendSV. The POSIX port uses signal-driven tick accounting but transfers task context only when the running task reaches a HardRT scheduling point; it is not a timing-accurate Cortex-M model.
+The Cortex-M port performs context transfer through PendSV. The 0.5.1 POSIX port maps HardRT application tasks to pthreads, uses a monotonic timer pthread for an internal tick, and uses targeted signals to park/resume the selected hosted task so CPU-bound code can be preempted without first entering a HardRT API. The common HardRT core remains authoritative for task state and scheduling policy. POSIX is a functional/scheduler-validation environment, not a timing-accurate Cortex-M model or a hard-real-time target.
+
+The hosted POSIX port currently reserves process-wide `SIGALRM` and `SIGUSR2`. The application-provided HardRT task-stack buffer remains part of task lifetime and overlap validation, but it is not used as the native pthread execution stack.
 
 ## Typical uses
 
