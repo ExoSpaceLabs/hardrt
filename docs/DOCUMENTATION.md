@@ -26,7 +26,7 @@ Use `/** ... */` for Doxygen blocks on public declarations and add `@brief`, `@p
 
 `.github/workflows/ci_docs.yml` is the release-facing documentation gate. It:
 
-1. configures/builds HardRT 0.5.0 with POSIX + C++ wrappers so generated public headers exist;
+1. configures/builds HardRT 0.5.1 with POSIX + C++ wrappers so generated public headers exist;
 2. compiles `tests/docs/api_c_smoke.c` as strict C11;
 3. compiles `tests/docs/api_cpp_smoke.cpp` as strict C++17;
 4. runs `scripts/check-docs.py` across **all tracked repository Markdown** to validate local links, required command/target paths, removed-script references, release-matrix/evidence-policy invariants, and known stale version/feature wording;
