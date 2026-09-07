@@ -9,7 +9,7 @@
 
 **HardRT** is a small, portable real-time operating-system kernel written in C. The core uses static allocation and has no HAL dependency.
 
-**Version:** `0.5.0`
+**Version:** `0.5.1`
 
 ## Feature set
 
@@ -26,15 +26,17 @@
 - **CMake package:** installation and `find_package(HardRT)` consumption.
 - **Optional C++17 wrapper:** header-only task/IPC/signal wrappers enabled with `HARDRT_ENABLE_CPP`.
 
-Generic IPC timeout variants, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not provided in v0.5.0.
+Generic IPC timeout variants, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not provided in v0.5.1.
 
 ## Port behavior
 
 The Cortex-M port uses SysTick or an application-provided external tick and performs context switching through PendSV. Critical sections preserve stricter pre-existing BASEPRI masks and use the documented HardRT interrupt-priority ceiling.
 
-The POSIX port is a Linux/glibc logic and scheduler simulator. It uses `ucontext` and a `SIGALRM` tick. The signal handler performs tick accounting and requests rescheduling but never switches task contexts directly. A CPU-bound POSIX task that never reaches a HardRT scheduling point can prevent other hosted tasks from running.
+The POSIX port is a Linux hosted logic and scheduler-validation environment. Each HardRT application task executes in a pthread while the HardRT core remains authoritative for task state, READY ordering, wake decisions, round-robin accounting, and scheduling policy. A monotonic timer pthread requests internal ticks, and targeted signals asynchronously park/resume the currently running hosted task so CPU-bound code cannot indefinitely prevent a scheduler-selected task from progressing.
 
-The POSIX port is not a timing-accurate Cortex-M model. See [PORTING.md](docs/PORTING.md).
+The hosted backend is not a hard-real-time or timing-accurate Cortex-M model. Host scheduling and signal latency remain properties of the operating system. The port currently reserves process-wide `SIGALRM` for task preemption and `SIGUSR2` for resume/wake handling. On POSIX, the application-provided HardRT task-stack buffer remains tracked for the public task-lifetime contract but is not used as the native pthread execution stack.
+
+See [PORTING.md](docs/PORTING.md) and [COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ## Architecture
 
@@ -113,10 +115,12 @@ cmake --install build --prefix "$PWD/build/install"
 Consume from another CMake project:
 
 ```cmake
-find_package(HardRT 0.5.0 REQUIRED)
+find_package(HardRT 0.5 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
+
+For a POSIX package, `HardRT::hardrt` carries the required thread linkage transitively.
 
 See [BUILD.md](docs/BUILD.md).
 
@@ -148,7 +152,7 @@ Binary/counting semaphores use FIFO waiters and scheduler-aware wake decisions. 
 
 ### Mutexes
 
-Mutexes are task-context-only, non-recursive, owner-tracked, FIFO, and direct-handoff. v0.5.0 has no priority inheritance, timed lock, or automatic owner-death recovery. Tasks must release owned mutexes before returning/deleting themselves.
+Mutexes are task-context-only, non-recursive, owner-tracked, FIFO, and direct-handoff. v0.5.1 has no priority inheritance, timed lock, or automatic owner-death recovery. Tasks must release owned mutexes before returning/deleting themselves.
 
 ### Message queues
 
@@ -169,6 +173,7 @@ See [EVENTS_NOTIFICATIONS.md](docs/EVENTS_NOTIFICATIONS.md).
 Hosted CI covers:
 
 - POSIX C/C++ builds and tests;
+- asynchronous CPU-bound hosted-preemption regression coverage;
 - strict-warning + UBSan event/notification stress;
 - bundled examples;
 - installed CMake consumers;
@@ -182,7 +187,7 @@ The release-grade physical entry point for NUCLEO-H755ZI-Q / CM7 is:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The v0.5.0 matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters.
+The v0.5.0 hardware qualification matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters. v0.5.1 changes the hosted POSIX backend and does not reinterpret those Cortex-M measurements.
 
 See [QUALIFICATION.md](docs/QUALIFICATION.md), [STM32_MANUAL_TESTS.md](docs/STM32_MANUAL_TESTS.md), and [STATISTICS.md](docs/STATISTICS.md).
 
@@ -190,11 +195,13 @@ See [QUALIFICATION.md](docs/QUALIFICATION.md), [STM32_MANUAL_TESTS.md](docs/STM3
 
 HardRT is being engineered toward configuration-specific hard-real-time guarantees on supported Cortex-M targets. Current timing results are reproducible engineering measurements for documented configurations, not universal WCET proofs. Remaining 1.0 work includes analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, and richer interrupt/task interference analysis.
 
+The POSIX port is excluded from hard-real-time timing claims.
+
 See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md).
 
 ## Compatibility
 
-v0.5.0 is a pre-1.0 minor release and does not claim ABI compatibility with v0.4.0. See [COMPATIBILITY.md](docs/COMPATIBILITY.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md) for migration guidance.
+v0.5.1 is a corrective patch over v0.5.0. It keeps the public C/C++ interface and public object layouts unchanged while replacing the hosted POSIX execution backend that should have shipped with v0.5.0. See [COMPATIBILITY.md](docs/COMPATIBILITY.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md) for the exact boundary.
 
 ## License
 
