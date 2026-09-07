@@ -60,7 +60,7 @@ The v0.5 physical release matrix is **13 functional contracts + 38 benchmark ima
 
 `develop` is the only release-candidate branch. Temporary feature/release branches must be merged by PR and removed before release qualification.
 
-The release procedure preserves one exact qualified source commit:
+The release procedure preserved one exact qualified source commit:
 
 1. merge all release-facing source, documentation, version and package changes into `develop`;
 2. require Linux, strict/UBSan signal stress, Documentation, C/C++ example/package, Cortex-M, and STM32 cross-build jobs to pass on one frozen `develop` commit;
@@ -69,7 +69,7 @@ The release procedure preserves one exact qualified source commit:
 5. fast-forward `main` to the same qualified `develop` commit without changing its tree;
 6. tag `0.5.0` on `main`, publish release artifacts, and leave only the long-lived `main` and `develop` branches.
 
-No tracked source or documentation change belongs between final physical qualification and the release tag unless the new `develop` SHA is deliberately requalified.
+That exact-SHA procedure remains the preferred path when no post-qualification release-infrastructure change is necessary.
 
 ## v0.5.1 corrective patch
 
@@ -84,7 +84,7 @@ v0.5.1 carries the hosted execution correction that was intended for 0.5.0 but n
 - preserve the public C/C++ API and Cortex-M scheduling/context contract;
 - strengthen hosted regression and documentation-drift coverage.
 
-The implementation and hosted/cross-build gates are complete. Release publication still follows the exact-SHA qualification policy: the final 0.5.1 `develop` candidate must pass the full unfiltered STM32H755 runner, then be promoted unchanged to `main` and tagged `0.5.1`. The 0.5.0 hardware package remains historical evidence and is not substituted for this run.
+The implementation, hosted/cross-build gates, and full STM32H755 physical qualification are complete. Release automation is now standardized in a permanent tag-driven workflow. The hardware-qualified SHA remains the authoritative physical evidence source; a later release commit is permitted only for release automation/documentation and must pass `scripts/check_release_qualification_diff.py` against that qualified SHA before `main`/`develop` are aligned and tag `0.5.1` is created.
 
 ## Post-v0.5 synchronization work
 
