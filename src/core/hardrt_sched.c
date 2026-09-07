@@ -45,5 +45,12 @@ void hrt_tick_from_isr(void) {
         hrt_error(ERR_TICK_SOURCE_MISMATCH);
         return;
     }
+
+    /* External tick sources may execute concurrently with a hosted task.
+     * Serialize the public entry through the same port critical-section
+     * contract used by IPC state publication. Cortex-M implements this as a
+     * nestable BASEPRI region; POSIX uses its hosted kernel-state guard. */
+    hrt_port_crit_enter();
     hrt__tick_isr();
+    hrt_port_crit_exit();
 }

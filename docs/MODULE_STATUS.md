@@ -1,6 +1,6 @@
 # Module Status
 
-HardRT 0.5.0 public/runtime components:
+HardRT 0.5.1 public/runtime components:
 
 - [`inc/hardrt.h`](../inc/hardrt.h): lifecycle, tasks, scheduling, time queries, version/port identity, and diagnostics.
 - [`inc/hardrt_time.h`](../inc/hardrt_time.h): application-owned external tick entry point.
@@ -28,8 +28,10 @@ HardRT 0.5.0 public/runtime components:
 - `hrt_sleep(0)` is an immediate scheduling point; positive durations use ceiling conversion to ticks.
 - READY and sleeper storage are intrusive/static. No runtime heap allocation is used by the core.
 - Port-owned ticks are configured during initialization and activated only at scheduler start.
-- `hrt_tick_from_isr()` is valid only for `HRT_TICK_EXTERNAL`; the application must start its external tick only after scheduler execution begins.
-- POSIX is a functional/scheduler simulator using Linux/glibc `ucontext` and signals, not a timing model.
+- `hrt_tick_from_isr()` is valid only for `HRT_TICK_EXTERNAL`; the application must start its external tick only after scheduler execution begins. The public tick path enters the port critical-section contract before touching common scheduler/tick state.
+- POSIX is a Linux hosted functional/scheduler-validation backend. HardRT application tasks execute in pthreads, a monotonic timer pthread requests internal ticks, and targeted signals allow asynchronous hosted preemption. The common core remains the scheduling authority.
+- On POSIX the application-provided HardRT task stack remains part of the task-lifetime/overlap contract but is not the native pthread execution stack.
+- The hosted POSIX backend currently reserves process-wide `SIGALRM` and `SIGUSR2` and is excluded from hard-real-time timing claims.
 - Cortex-M preserves required hard-float task context and uses PendSV for context switching.
 - Cortex-M critical sections preserve stricter pre-existing BASEPRI masks and restore exact outer-entry state.
 
@@ -45,12 +47,14 @@ Generic IPC timeout variants remain outside v0.5.
 
 ## v0.5 validation contract
 
-The v0.5 physical release matrix contains **13 functional contracts + 38 benchmark images**, including the 16 event/notification timing images. Release candidates use the single unfiltered hardware entry point:
+The v0.5.0 physical release matrix contains **13 functional contracts + 38 benchmark images**, including the 16 event/notification timing images. v0.5.1 changes the hosted POSIX implementation and does not reinterpret those Cortex-M measurements. Release candidates use the single unfiltered hardware entry point:
 
 ```bash
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The release-tagged source SHA must be the exact source SHA used for the passing physical run. Generated result data is retained outside the tracked source tree and published with the GitHub Release. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
+The release-tagged source SHA must be the exact source SHA used for any required passing physical run. Generated result data is retained outside the tracked source tree and published with the GitHub Release. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
+
+The v0.5.1 hosted release gate additionally requires the POSIX runtime suite, explicit CPU-bound asynchronous-preemption regression, strict-warning + UBSan signal stress, and installed-package validation with transitive pthread linkage.
 
 Broader 1.0 hard-real-time work such as bounded mutex priority inversion, analytical critical-section/WCET bounds, queue-copy scaling, richer interference analysis, and machine-readable timing evidence remains separate.

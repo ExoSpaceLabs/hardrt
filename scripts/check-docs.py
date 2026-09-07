@@ -142,20 +142,22 @@ if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
 cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-if "project(${LIB_NAME} VERSION 0.5.0 LANGUAGES C)" not in cmake:
-    fail("CMake project version is not 0.5.0")
+if "project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)" not in cmake:
+    fail("CMake project version is not 0.5.1")
 if "COMPATIBILITY SameMinorVersion" not in cmake:
     fail("pre-1.0 CMake package compatibility is not restricted to the same minor line")
 
+# Keep this consumer pinned to 0.5.0: a 0.5.1 SameMinorVersion package must
+# remain consumable by applications that requested the original 0.5 contract.
 installed_consumer = (ROOT / "tests/installed_consumer/CMakeLists.txt").read_text(encoding="utf-8")
 if "find_package(HardRT 0.5.0 REQUIRED)" not in installed_consumer:
-    fail("installed-package consumer is not validating the v0.5.0 package contract")
+    fail("installed-package consumer is not validating 0.5.0 -> 0.5.1 patch compatibility")
 
 cpp_header = (ROOT / "cpp/hardrtpp.hpp").read_text(encoding="utf-8")
 if 'Version string (e.g., "0.4.0")' in cpp_header:
     fail("C++ public header still advertises the 0.4.0 version-string example")
-if 'Version string (e.g., "0.5.0")' not in cpp_header:
-    fail("C++ public header does not advertise the current 0.5.0 version-string example")
+if 'Version string (e.g., "0.5.1")' not in cpp_header:
+    fail("C++ public header does not advertise the current 0.5.1 version-string example")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)

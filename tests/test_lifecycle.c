@@ -94,7 +94,7 @@ static void test_port_init_failure_can_retry(void) {
 
     hrt_config_t cfg = external_cfg();
     cfg.tick_src = HRT_TICK_SYSTICK;
-    cfg.tick_hz = 2000000u; /* POSIX timer period would truncate to zero us. */
+    cfg.tick_hz = HRT_TICK_HZ_MAX; /* Nanosecond period would truncate to zero. */
     T_ASSERT_EQ_INT(HRT_ERR_PORT_INIT, hrt_init(&cfg),
                     "unrepresentable port tick reports port-init failure");
 
