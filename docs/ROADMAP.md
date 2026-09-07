@@ -71,6 +71,21 @@ The release procedure preserves one exact qualified source commit:
 
 No tracked source or documentation change belongs between final physical qualification and the release tag unless the new `develop` SHA is deliberately requalified.
 
+## v0.5.1 corrective patch
+
+v0.5.1 carries the hosted execution correction that was intended for 0.5.0 but not implemented in the published tag:
+
+- replace the POSIX `ucontext` backend with pthread-backed HardRT tasks;
+- allow scheduler-controlled asynchronous progress for CPU-bound hosted tasks;
+- keep the common core authoritative for READY state, wake/preemption decisions, and RR semantics;
+- use a monotonic hosted timer for internal ticks and reserve documented process signals for task park/resume;
+- serialize the public external-tick entry through the existing port critical-section contract;
+- export the POSIX thread dependency transitively through the installed CMake package;
+- preserve the public C/C++ API and Cortex-M scheduling/context contract;
+- strengthen hosted regression and documentation-drift coverage.
+
+The implementation and hosted/cross-build gates are complete. Release publication still follows the exact-SHA qualification policy: the final 0.5.1 `develop` candidate must pass the full unfiltered STM32H755 runner, then be promoted unchanged to `main` and tagged `0.5.1`. The 0.5.0 hardware package remains historical evidence and is not substituted for this run.
+
 ## Post-v0.5 synchronization work
 
 - generic IPC timeout variants;
