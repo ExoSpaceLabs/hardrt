@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install documentation dependencies
         run: |
@@ -55,6 +57,13 @@ jobs:
 
       - name: Check links paths and stale references
         run: python3 scripts/check-docs.py
+
+      - name: Smoke-test release helpers
+        run: |
+          set -euxo pipefail
+          python3 scripts/extract_release_notes.py 0.5.1 RELEASE_NOTES.md > "$RUNNER_TEMP/release-notes.md"
+          grep -q '^# HardRT v0.5.1 Release Notes$' "$RUNNER_TEMP/release-notes.md"
+          python3 scripts/check_release_qualification_diff.py HEAD HEAD
 
       - name: Generate Doxygen without documentation errors
         run: |
