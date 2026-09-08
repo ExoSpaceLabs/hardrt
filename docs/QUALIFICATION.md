@@ -18,24 +18,39 @@ The guard permits only tracked Markdown/documentation, GitHub workflow files, an
 
 At tag time `main` and `develop` must resolve to the same release commit. Temporary feature/release branches are deleted after completion. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
 
-## Tag-driven release publication
+## Tag-driven release staging and publication
 
-Release tags use the non-v-prefixed `X.Y.Z` convention. The permanent `.github/workflows/release.yml` workflow owns release publication when such a tag is pushed.
+Release tags use the non-v-prefixed `X.Y.Z` convention. The permanent `.github/workflows/release.yml` workflow owns software release staging when such a tag is pushed.
 
 The workflow:
 
 - validates the `X.Y.Z` tag against the CMake project version;
 - requires the tag SHA to be the current `main` SHA;
-- requires `main` and `develop` to be aligned;
-- builds/install-packages POSIX and Cortex-M variants;
-- validates an installed POSIX CMake consumer;
-- creates reproducible POSIX, Cortex-M, and combined bundle archives;
-- generates SHA-256 checksums;
+- requires `main` and `develop` to be aligned at tag creation;
+- executes the hosted POSIX validation suite natively on Linux amd64;
+- executes the same hosted POSIX validation suite natively on Linux arm64;
+- builds and validates an installed POSIX package independently on each architecture;
+- builds the Cortex-M package;
+- creates reproducible architecture-qualified POSIX and Cortex-M archives;
+- generates one SHA-256 checksum manifest for the software assets;
 - extracts the matching version section from `RELEASE_NOTES.md`;
 - retains the generated package set as a GitHub Actions artifact;
-- creates/updates the GitHub Release and publishes the generated software artifacts.
+- creates a **draft** GitHub Release containing the validated software assets.
 
-Physical qualification evidence is generated outside CI by the hardware runner and is attached to the corresponding GitHub Release separately. CI must never synthesize or reinterpret physical evidence.
+The canonical software assets are:
+
+```text
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
+hardrt-cortexm-X.Y.Z.tar.gz
+SHA256SUMS
+```
+
+There is intentionally no combined bundle. A POSIX install tree contains compiled architecture-specific objects, so every published POSIX package identifies its Linux architecture explicitly.
+
+Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` verifies the software checksums, packages and uploads the retained physical evidence, verifies the published evidence checksum, publishes the draft release, and may then delete every remote branch except `main` and `develop`. CI must never synthesize or reinterpret physical evidence.
+
+The full end-to-end sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Single STM32 runner
 
@@ -63,17 +78,43 @@ Development evidence is generated under:
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-A selected release package may be retained locally under:
+A selected release package is retained locally under:
 
 ```text
 validation/stm32/releases/X.Y.Z/
 ```
 
-The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
+The local evidence directory mirrors the repository `X.Y.Z` release-tag convention. These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification.
 
-These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification. The selected passing package is published as a GitHub Release artifact for the corresponding `X.Y.Z` release.
+Package the selected passing run with:
+
+```bash
+./scripts/package_stm32_qualification.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
+
+The helper refuses dirty, partial, or failed evidence and creates exactly:
+
+```text
+hardrt-stm32-qualification-X.Y.Z.tar.xz
+hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keeping hundreds of generated evidence files out of the Git repository while retaining the full audit trail as one release asset.
 
 The hardware evidence records the hardware-qualified source SHA. If the final tag points to a later commit under the release-automation-only exception, the qualification record and release issue must preserve both SHAs and the qualification-diff guard must pass.
+
+After the tag workflow has staged the draft release, finalize it with:
+
+```bash
+./scripts/finalize_release.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha> \
+  --cleanup-branches
+```
+
+The finalizer publishes the physical `.tar.xz` package and checksum, verifies all release assets, publishes the draft release, and only then performs optional branch cleanup.
 
 ## Current v0.5 matrix
 
@@ -175,8 +216,10 @@ For 0.5.1:
 5. retain the generated qualification package outside the tracked source tree;
 6. if no tracked changes follow, promote/tag that exact SHA;
 7. if only release automation/documentation must change, apply those changes, run `scripts/check_release_qualification_diff.py` against the hardware-qualified SHA, require hosted/cross-build/documentation CI to remain green, and record both SHAs in the release tracker;
-8. align `main` and `develop`, create tag `0.5.1`, and let `.github/workflows/release.yml` publish the generated software artifacts;
+8. align `main` and `develop`, create tag `0.5.1`, and publish the generated software artifacts from that tag;
 9. attach the retained physical qualification package and checksum to the GitHub Release.
+
+The 0.5.1 release predates the standardized draft-release/finalizer flow described above. Its published asset layout is historical and is not retroactively rewritten. Releases after 0.5.1 use the architecture-qualified POSIX and compressed physical-evidence contract.
 
 The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
 

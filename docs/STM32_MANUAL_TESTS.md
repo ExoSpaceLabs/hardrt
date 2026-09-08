@@ -26,7 +26,7 @@ The board probe always runs first. Only the default unfiltered mode is release-c
 
 ## Release branch and evidence handling
 
-The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources and should be removed after their PRs are merged.
+The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources.
 
 Development runs are written under:
 
@@ -34,7 +34,7 @@ Development runs are written under:
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-For a release candidate, retain the selected passing package locally under:
+For a release candidate, the selected passing package is retained locally under:
 
 ```text
 validation/stm32/releases/X.Y.Z/
@@ -42,9 +42,70 @@ validation/stm32/releases/X.Y.Z/
 
 The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
 
-Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
+Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run.** Hundreds of raw logs belong in the release evidence archive, not in Git history.
 
-The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `X.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
+Normally the hardware-qualified `develop` SHA is promoted unchanged to `main`. If only release automation/documentation changes follow qualification, the later release SHA is permitted solely under the release-only diff policy in [QUALIFICATION.md](QUALIFICATION.md). In either case, the hardware-qualified SHA remains recorded in `qualification.md` and in the packaged evidence.
+
+The tag-driven Release workflow builds the software packages and creates the GitHub Release as a draft. Physical evidence is then packaged, attached, verified, and the release is published by `scripts/finalize_release.sh`.
+
+## Package the physical evidence
+
+After a full passing run, package the selected run directory with:
+
+```bash
+./scripts/package_stm32_qualification.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
+
+The packaging helper rejects dirty, filtered, failed, incomplete, or partially executed reports. It requires:
+
+- clean tracked HardRT source;
+- unfiltered functional + benchmark mode;
+- board/OpenOCD probe PASS;
+- every reported functional contract passed, with zero failures and zero not-run cases;
+- every reported benchmark passed, with zero failures and zero not-run cases;
+- Overall PASS;
+- completed `scripts/stm32_manual_test_full.sh` report;
+- a valid HardRT qualification SHA present in the repository.
+
+It creates:
+
+```text
+validation/stm32/releases/X.Y.Z/
+  hardrt-stm32-qualification-X.Y.Z.tar.xz
+  hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The `.tar.xz` contains the complete `qualification.md`, all raw build/OpenOCD/GDB logs, and package metadata identifying the release version, source run, and hardware-qualified SHA. Packaging is deterministic for the same evidence tree and qualified commit.
+
+The unpacked evidence directory and generated archive remain untracked.
+
+## Finalize the release
+
+After the `X.Y.Z` tag has triggered the Release workflow and the draft GitHub Release contains the CI-produced software packages, run:
+
+```bash
+./scripts/finalize_release.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha> \
+  --cleanup-branches
+```
+
+The finalizer validates the release tag, `main`, `develop` ancestry, CMake version, software asset checksums, hardware-qualified SHA ancestry, and the post-qualification release-only diff guard. It then packages/uploads the physical evidence, downloads it again, verifies its checksum, publishes the draft release, and only afterward performs optional temporary-branch cleanup.
+
+The canonical future software assets are architecture-qualified:
+
+```text
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
+hardrt-cortexm-X.Y.Z.tar.gz
+SHA256SUMS
+```
+
+The POSIX packages are built and tested natively on their respective Linux architectures before publication. There is no combined bundle artifact.
+
+See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for the complete standardized release sequence.
 
 ## Common requirements
 
@@ -58,7 +119,7 @@ For release evidence, use clean tracked HardRT source and a clean recorded STM32
 
 ## Functional validation: 13 contracts
 
-The board probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
+The board/OpenOCD probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -144,7 +205,7 @@ This measures production `hrt_tick_from_isr()` behavior. The intrusive delta sle
 
 ## Accepted development evidence
 
-Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from the exact `develop` source SHA that is tagged.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from a frozen release-candidate source SHA.
 
 ## Human LED acceptance
 
@@ -169,4 +230,4 @@ The runner records:
 
 A default full run is the only mode intended to become complete release evidence.
 
-See [QUALIFICATION.md](QUALIFICATION.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).
+See [QUALIFICATION.md](QUALIFICATION.md), [RELEASE_PROCESS.md](RELEASE_PROCESS.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).

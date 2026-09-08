@@ -12,7 +12,9 @@ The v0.5 release matrix is **13 functional contracts and 38 benchmark images**, 
 
 All target/build-affecting changes must be merged into `develop` before the unfiltered hardware run. The resulting SHA is the hardware-qualified source SHA. Normally it is promoted/tagged unchanged; a later commit is allowed only for release automation/documentation and must pass `scripts/check_release_qualification_diff.py` against the qualified SHA. Generated qualification evidence remains outside the tracked source tree and is published with the GitHub Release.
 
-Tagged releases are published by the permanent `.github/workflows/release.yml` workflow, which validates version/branch alignment, builds POSIX and Cortex-M packages, generates checksums, extracts version-specific release notes, and publishes the generated software artifacts.
+Tagged releases are staged by the permanent `.github/workflows/release.yml` workflow. The workflow validates version/branch alignment, builds POSIX and Cortex-M packages, generates checksums, extracts version-specific release notes, and creates a draft GitHub Release containing the generated software artifacts. `scripts/finalize_release.sh` then packages the retained physical evidence as a deterministic `.tar.xz`, verifies both software and hardware checksums, publishes the release, and can remove temporary remote branches.
+
+The complete sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 Broader 1.0-quality WCET/interference work remains separate and does not turn measured maxima into universal guarantees.
 
@@ -24,6 +26,7 @@ Broader 1.0-quality WCET/interference work remains separate and does not turn me
 | [INTRODUCTION.md](INTRODUCTION.md) | Scope and design goals |
 | [HARD_REAL_TIME.md](HARD_REAL_TIME.md) | Hard real-time qualification boundary and remaining work |
 | [QUALIFICATION.md](QUALIFICATION.md) | Hardware qualification and release-evidence policy |
+| [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | End-to-end tag, packaging, publication, and cleanup procedure |
 | [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) | STM32H755 functional and timing matrix |
 | [BUILD.md](BUILD.md) | CMake prerequisites, options, build, and install behavior |
 | [API_C.md](API_C.md) | Public C API behavior |
