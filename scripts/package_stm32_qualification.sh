@@ -82,7 +82,32 @@ require_report_line() {
 
 require_report_line '- HardRT tracked source state: **clean**'
 require_report_line '- Selected mode: **all tests (functional + benchmark)**'
+require_report_line '- Board probe: **PASS**'
 require_report_line '- Overall: **PASS**'
+require_report_line '- Runner: `scripts/stm32_manual_test_full.sh`'
+
+if grep -Fq '**ABORTED**' "$REPORT"; then
+  echo "Qualification report records an aborted run" >&2
+  exit 1
+fi
+
+FUNCTIONAL_TOTAL="$(sed -nE 's/^- Functional contracts: \*\*([0-9]+)\*\*.*/\1/p' "$REPORT" | head -n1)"
+BENCHMARK_TOTAL="$(sed -nE 's/^- Hardware benchmarks: \*\*([0-9]+)\*\*.*/\1/p' "$REPORT" | head -n1)"
+[[ "$FUNCTIONAL_TOTAL" =~ ^[1-9][0-9]*$ ]] || {
+  echo "Could not resolve functional-contract total from $REPORT" >&2
+  exit 1
+}
+[[ "$BENCHMARK_TOTAL" =~ ^[1-9][0-9]*$ ]] || {
+  echo "Could not resolve benchmark total from $REPORT" >&2
+  exit 1
+}
+
+require_report_line "- Functional contracts passed: **$FUNCTIONAL_TOTAL / $FUNCTIONAL_TOTAL**"
+require_report_line '- Functional contracts failed: **0**'
+require_report_line '- Functional contracts not run: **0**'
+require_report_line "- Benchmarks passed: **$BENCHMARK_TOTAL / $BENCHMARK_TOTAL**"
+require_report_line '- Benchmarks failed: **0**'
+require_report_line '- Benchmarks not run: **0**'
 
 QUALIFIED_SHA="$(sed -nE 's/^- HardRT SHA: `([0-9a-fA-F]{40})`.*/\1/p' "$REPORT" | head -n1 | tr 'A-F' 'a-f')"
 [[ "$QUALIFIED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -134,6 +159,8 @@ format=hardrt-stm32-qualification-v1
 release=$VERSION
 qualified_sha=$QUALIFIED_SHA
 source_run=$(basename "$RUN_DIR")
+functional_contracts=$FUNCTIONAL_TOTAL
+hardware_benchmarks=$BENCHMARK_TOTAL
 report=qualification.md
 EOF
 
@@ -161,6 +188,8 @@ mv -f -- "$TMP_ARCHIVE" "$ARCHIVE"
 )
 
 printf 'QUALIFIED_SHA=%s\n' "$QUALIFIED_SHA"
+printf 'FUNCTIONAL_CONTRACTS=%s\n' "$FUNCTIONAL_TOTAL"
+printf 'HARDWARE_BENCHMARKS=%s\n' "$BENCHMARK_TOTAL"
 printf 'ARCHIVE=%s\n' "$ARCHIVE"
 printf 'CHECKSUM=%s\n' "$CHECKSUM"
 printf 'Qualification package PASS: %s\n' "$ARCHIVE_NAME"
