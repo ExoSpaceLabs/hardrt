@@ -27,9 +27,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  package-and-publish:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout source
@@ -87,23 +89,111 @@ jobs:
             exit 1
           fi
 
+  posix-native:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            uname_machine: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            uname_machine: aarch64
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Verify native architecture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(uname -m)" = "${{ matrix.uname_machine }}"
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ gcc-arm-none-eabi binutils
+          sudo apt-get install -y cmake ninja-build gcc g++ binutils
 
-      - name: Build POSIX package
+      - name: Build and execute hosted validation suite
+        shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build-posix -G Ninja \
+          cmake -S . -B build-posix-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=ON \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_STRICT=ON \
+            -DHARDRT_SANITIZE=ON
+          cmake --build build-posix-tests --parallel
+          ctest -V --test-dir build-posix-tests --timeout 120 --output-on-failure
+          HARDRT_EXAMPLE_TIMEOUT=3s ./scripts/run-all-examples.sh
+
+      - name: Build installable POSIX package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build-posix-package -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DHARDRT_PORT=posix \
             -DHARDRT_ENABLE_CPP=ON \
             -DHARDRT_BUILD_TESTS=OFF \
             -DHARDRT_BUILD_EXAMPLES=OFF
-          cmake --build build-posix --parallel
+          cmake --build build-posix-package --parallel
 
-      - name: Build Cortex-M package
+          rm -rf install-posix build-installed-consumer
+          cmake --install build-posix-package --prefix "$PWD/install-posix"
+          cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-posix"
+          cmake --build build-installed-consumer --parallel
+
+      - name: Create architecture-qualified POSIX archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          mkdir -p packages
+          tar \
+            --sort=name \
+            --mtime="@${source_date_epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C install-posix \
+            -cf - . \
+            | gzip -n > "packages/hardrt-posix-linux-${{ matrix.arch }}-${version}.tar.gz"
+
+      - name: Retain POSIX architecture package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardrt-posix-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.version }}
+          path: packages/hardrt-posix-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.version }}.tar.gz
+          if-no-files-found: error
+
+  cortexm:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Install Cortex-M build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ gcc-arm-none-eabi binutils
+
+      - name: Build installable Cortex-M package
+        shell: bash
         run: |
           set -euxo pipefail
           cmake -S . -B build-cortexm -G Ninja \
@@ -114,61 +204,79 @@ jobs:
             -DHARDRT_BUILD_EXAMPLES=OFF \
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
           cmake --build build-cortexm --parallel
-
-      - name: Install packages and validate POSIX consumer
-        run: |
-          set -euxo pipefail
-          rm -rf install-posix install-cortexm build-installed-consumer
-          cmake --install build-posix --prefix "$PWD/install-posix"
+          rm -rf install-cortexm
           cmake --install build-cortexm --prefix "$PWD/install-cortexm"
 
-          cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
-            -DCMAKE_PREFIX_PATH="$PWD/install-posix"
-          cmake --build build-installed-consumer --parallel
-
-      - name: Create reproducible release archives
+      - name: Create Cortex-M archive
         shell: bash
         run: |
           set -euxo pipefail
-
-          version="${{ steps.version.outputs.version }}"
+          version="${{ needs.prepare.outputs.version }}"
           source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
-          rm -rf packages bundle
-          mkdir -p packages bundle/posix bundle/cortex_m
+          mkdir -p packages
+          tar \
+            --sort=name \
+            --mtime="@${source_date_epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C install-cortexm \
+            -cf - . \
+            | gzip -n > "packages/hardrt-cortexm-${version}.tar.gz"
 
-          cp -a install-posix/. bundle/posix/
-          cp -a install-cortexm/. bundle/cortex_m/
+      - name: Retain Cortex-M package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardrt-cortexm-${{ needs.prepare.outputs.version }}
+          path: packages/hardrt-cortexm-${{ needs.prepare.outputs.version }}.tar.gz
+          if-no-files-found: error
 
-          pack() {
-            local source_dir="$1"
-            local output="$2"
-            tar \
-              --sort=name \
-              --mtime="@${source_date_epoch}" \
-              --owner=0 \
-              --group=0 \
-              --numeric-owner \
-              -C "$source_dir" \
-              -cf - . | gzip -n > "$output"
-          }
+  assemble-release:
+    needs:
+      - prepare
+      - posix-native
+      - cortexm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
-          pack install-posix "packages/hardrt-posix-${version}.tar.gz"
-          pack install-cortexm "packages/hardrt-cortexm-${version}.tar.gz"
-          pack bundle "packages/hardrt-bundle-${version}.tar.gz"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Download architecture packages
+        uses: actions/download-artifact@v5
+        with:
+          pattern: hardrt-*
+          path: downloaded
+          merge-multiple: true
+
+      - name: Assemble release package set
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          rm -rf packages
+          mkdir -p packages
+          cp downloaded/*.tar.gz packages/
+
+          test -f "packages/hardrt-posix-linux-amd64-${version}.tar.gz"
+          test -f "packages/hardrt-posix-linux-arm64-${version}.tar.gz"
+          test -f "packages/hardrt-cortexm-${version}.tar.gz"
 
           (
             cd packages
             sha256sum hardrt-*.tar.gz > SHA256SUMS
+            sha256sum -c SHA256SUMS
           )
 
           python3 scripts/extract_release_notes.py "$version" RELEASE_NOTES.md > release-notes.md
           ls -la packages
           cat packages/SHA256SUMS
 
-      - name: Retain generated release artifacts
+      - name: Retain complete software release set
         uses: actions/upload-artifact@v4
         with:
-          name: hardrt-release-${{ steps.version.outputs.version }}-${{ github.run_id }}
+          name: hardrt-release-${{ needs.prepare.outputs.version }}-${{ github.run_id }}
           path: |
             packages/hardrt-*.tar.gz
             packages/SHA256SUMS
@@ -179,13 +287,13 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
           body_path: release-notes.md
           draft: true
           files: |
-            packages/hardrt-posix-${{ steps.version.outputs.version }}.tar.gz
-            packages/hardrt-cortexm-${{ steps.version.outputs.version }}.tar.gz
-            packages/hardrt-bundle-${{ steps.version.outputs.version }}.tar.gz
+            packages/hardrt-posix-linux-amd64-${{ needs.prepare.outputs.version }}.tar.gz
+            packages/hardrt-posix-linux-arm64-${{ needs.prepare.outputs.version }}.tar.gz
+            packages/hardrt-cortexm-${{ needs.prepare.outputs.version }}.tar.gz
             packages/SHA256SUMS
           fail_on_unmatched_files: true
