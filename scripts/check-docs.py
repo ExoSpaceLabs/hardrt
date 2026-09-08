@@ -57,6 +57,8 @@ required_paths = [
     ".github/workflows/release.yml",
     "scripts/run-all-examples.sh",
     "scripts/stm32_manual_test_full.sh",
+    "scripts/package_stm32_qualification.sh",
+    "scripts/finalize_release.sh",
     "scripts/build-stm32-examples-ci.sh",
     "scripts/build-lib-stm32h7xx-dwt-timing.sh",
     "scripts/extract_release_notes.py",
@@ -72,6 +74,8 @@ required_paths = [
     "docs/CPP.md",
     "docs/EVENTS_NOTIFICATIONS.md",
     "docs/COMPATIBILITY.md",
+    "docs/QUALIFICATION.md",
+    "docs/RELEASE_PROCESS.md",
     "docs/STM32_MANUAL_TESTS.md",
     "validation/stm32/README.md",
     "validation/stm32/releases/README.md",
@@ -100,6 +104,8 @@ stale_patterns = {
     r"slice\s*==\s*0[^\n.]*creates\s+a\s+cooperative\s+task": "zero timeslice is still documented as globally cooperative",
     r"transfers\s+task\s+context\s+only\s+when\s+the\s+running\s+task\s+reaches\s+a\s+HardRT\s+scheduling\s+point": "POSIX documentation still describes the removed cooperative execution model",
     r"does\s+not\s+require\s+re-running\s+the\s+v0\.5\.0\s+physical\s+STM32\s+timing\s+campaign": "0.5.1 documentation contradicts the hardware qualification policy",
+    r"hardrt-posix-X\.Y\.Z\.tar\.gz": "release documentation still uses an architecture-ambiguous POSIX package name",
+    r"hardrt-bundle-X\.Y\.Z\.tar\.gz": "release documentation still describes the removed combined bundle",
 }
 for pattern, description in stale_patterns.items():
     if re.search(pattern, combined, flags=re.IGNORECASE):
@@ -110,20 +116,24 @@ if "38 hardware benchmark images" not in validation:
     fail("validation/stm32/README.md does not describe the 38-image release benchmark matrix")
 if "do not commit generated qualification evidence" not in validation.lower():
     fail("validation/stm32/README.md does not forbid committing generated qualification evidence")
-if "GitHub Release asset" not in validation:
-    fail("validation/stm32/README.md does not direct release evidence to a GitHub Release asset")
+if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in validation:
+    fail("validation/stm32/README.md does not define the compressed physical qualification asset")
+if "scripts/package_stm32_qualification.sh" not in validation:
+    fail("validation/stm32/README.md does not document qualification packaging")
+if "scripts/finalize_release.sh" not in validation:
+    fail("validation/stm32/README.md does not document release finalization")
 if "validation/stm32/releases/X.Y.Z/" not in validation:
     fail("validation/stm32/README.md does not preserve the runner's local X.Y.Z evidence-directory convention")
-if "`X.Y.Z` tag" not in validation:
-    fail("validation/stm32/README.md does not document the non-v-prefixed Git release-tag convention")
 
 release_validation = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
 if "gitignored" not in release_validation.lower():
     fail("release qualification retention guidance does not state that local evidence is gitignored")
 if "validation/stm32/releases/0.5.0/" not in release_validation:
     fail("release qualification retention guidance does not document the local X.Y.Z directory convention")
-if "tags are `0.5.0`" not in release_validation:
-    fail("release qualification retention guidance does not document the non-v-prefixed Git tag convention")
+if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in release_validation:
+    fail("release qualification retention guidance does not define the tar.xz release evidence package")
+if "scripts/finalize_release.sh" not in release_validation:
+    fail("release qualification retention guidance does not document finalization")
 
 qualification = (ROOT / "docs/QUALIFICATION.md").read_text(encoding="utf-8")
 if "tag `0.5.0` was created on `main`" not in qualification:
@@ -140,12 +150,40 @@ if "check_release_qualification_diff.py" not in qualification:
     fail("docs/QUALIFICATION.md does not define the post-qualification release-only diff guard")
 if "hardware-qualified source SHA" not in qualification:
     fail("docs/QUALIFICATION.md does not distinguish hardware evidence SHA from a release-only follow-up commit")
+for required in (
+    "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
+    "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
+    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
+    "scripts/finalize_release.sh",
+    "draft",
+):
+    if required not in qualification:
+        fail(f"docs/QUALIFICATION.md is missing standardized release contract: {required}")
 
 manual = (ROOT / "docs/STM32_MANUAL_TESTS.md").read_text(encoding="utf-8")
-if "validation/stm32/releases/X.Y.Z/" not in manual:
-    fail("STM32 manual documentation does not match the runner's local evidence-directory convention")
-if "repository `X.Y.Z` release-tag convention" not in manual:
-    fail("STM32 manual documentation does not state the non-v-prefixed Git release-tag convention")
+for required in (
+    "validation/stm32/releases/X.Y.Z/",
+    "scripts/package_stm32_qualification.sh",
+    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
+    "scripts/finalize_release.sh",
+):
+    if required not in manual:
+        fail(f"STM32 manual documentation is missing release-evidence contract: {required}")
+
+release_process = (ROOT / "docs/RELEASE_PROCESS.md").read_text(encoding="utf-8")
+for required in (
+    "native amd64",
+    "native arm64",
+    "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
+    "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
+    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
+    "--cleanup-branches",
+    "draft",
+):
+    if required not in release_process:
+        fail(f"release process is missing standardized contract: {required}")
+if "hardrt-bundle" in release_process:
+    fail("release process still references the removed combined bundle")
 
 signal_readme = (ROOT / "examples/hardrt_h755_dwt_timing/README.md").read_text(encoding="utf-8")
 if "HARDRT_CFG_MAX_TASKS=N+1" in signal_readme:
@@ -171,9 +209,16 @@ build_doc = (ROOT / "docs/BUILD.md").read_text(encoding="utf-8")
 if "`stack_words` pointer and `n_words` count" not in build_doc:
     fail("build documentation does not use the actual hrt_create_task stack parameter names")
 if "fresh **unfiltered** STM32H755 release-candidate run" not in build_doc:
-    fail("build documentation does not require fresh full physical qualification for 0.5.1")
-if ".github/workflows/release.yml" not in build_doc:
-    fail("build documentation does not describe tag-driven release publication")
+    fail("build documentation does not preserve the v0.5.1 physical qualification gate")
+for required in (
+    ".github/workflows/release.yml",
+    "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
+    "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
+    "scripts/package_stm32_qualification.sh",
+    "scripts/finalize_release.sh",
+):
+    if required not in build_doc:
+        fail(f"build documentation is missing standardized release contract: {required}")
 
 release_notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 if "`stack_mem`" in release_notes:
@@ -215,16 +260,31 @@ release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="
 for required in (
     "tags:",
     "Validate release tag and branch alignment",
+    "ubuntu-24.04-arm",
+    "hardrt-posix-linux-amd64-",
+    "hardrt-posix-linux-arm64-",
     "scripts/extract_release_notes.py",
     "SHA256SUMS",
+    "draft: true",
     "softprops/action-gh-release@v2",
 ):
     if required not in release_workflow:
         fail(f"release workflow is missing required contract: {required}")
+if "hardrt-bundle" in release_workflow:
+    fail("release workflow still produces the removed combined bundle")
 
 linux_workflow = (ROOT / ".github/workflows/ci_posix.yml").read_text(encoding="utf-8")
+if "ubuntu-24.04-arm" not in linux_workflow:
+    fail("Linux CI does not execute the POSIX suite on native arm64")
 if "softprops/action-gh-release" in linux_workflow:
     fail("Linux CI still publishes GitHub Release assets; release.yml must be the single publisher")
+if "hardrt-bundle" in linux_workflow:
+    fail("Linux CI still assembles the removed combined bundle")
+
+qualification_diff = (ROOT / "scripts/check_release_qualification_diff.py").read_text(encoding="utf-8")
+for helper in ("scripts/package_stm32_qualification.sh", "scripts/finalize_release.sh"):
+    if f'"{helper}"' not in qualification_diff:
+        fail(f"release-only diff guard does not whitelist standardized helper: {helper}")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)
