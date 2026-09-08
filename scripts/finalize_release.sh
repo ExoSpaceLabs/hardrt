@@ -171,6 +171,9 @@ PACKAGE_ARGS=("$VERSION" "$RUN_DIR" --output-dir "$OUTPUT_DIR")
 
 RUN_DIR_ABS="$(cd "$RUN_DIR" && pwd)"
 REPORT="$RUN_DIR_ABS/qualification.md"
+# The sed program is deliberately single-quoted so the Markdown backticks and
+# capture expression remain literal shell input.
+# shellcheck disable=SC2016
 QUALIFIED_SHA="$(sed -nE 's/^- HardRT SHA: `([0-9a-fA-F]{40})`.*/\1/p' "$REPORT" | head -n1 | tr 'A-F' 'a-f')"
 [[ "$QUALIFIED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
   echo "Could not resolve qualified SHA from $REPORT" >&2
