@@ -16,10 +16,10 @@ usage() {
 Usage:
   scripts/finalize_release.sh X.Y.Z RUN_DIR [options]
 
-Finalize an already-tagged HardRT release by packaging the retained STM32
-qualification evidence as tar.xz, publishing the archive and checksum to the
-GitHub Release, verifying the published assets, and optionally deleting all
-remote branches except main and develop.
+Finalize an already-tagged HardRT release by validating the CI-produced software
+assets, packaging and publishing the retained STM32 qualification evidence,
+verifying both checksum sets, publishing a draft GitHub Release when applicable,
+and optionally deleting all remote branches except main and develop.
 
 Arguments:
   X.Y.Z       Existing non-v-prefixed release tag.
@@ -34,12 +34,13 @@ Options:
                         Without this flag, identical existing assets are accepted
                         and different existing assets fail safely.
   --cleanup-branches    Delete every remote branch except main and develop after
-                        release evidence publication and verification succeeds.
+                        release publication and verification succeeds.
   --yes                 Do not prompt before --cleanup-branches deletion.
   -h, --help            Show this help.
 
 The script requires the release tag to equal origin/main. origin/develop may be
 at the release tag or ahead of it, but the release tag must remain its ancestor.
+The tag itself is never moved or rewritten.
 USAGE
 }
 
@@ -72,7 +73,7 @@ need() {
     exit 2
   }
 }
-for cmd in git gh grep sed sha256sum python3; do need "$cmd"; done
+for cmd in git gh grep sed sha256sum python3 head tr awk sort cmp mktemp; do need "$cmd"; done
 
 cd "$ROOT_DIR"
 
@@ -117,10 +118,50 @@ PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0
   exit 1
 }
 
-gh release view "$VERSION" --repo "$REPO" >/dev/null || {
+RELEASE_JSON="$(gh release view "$VERSION" --repo "$REPO" --json tagName,isDraft,isImmutable,url 2>/dev/null)" || {
   echo "GitHub Release does not exist for tag $VERSION" >&2
   exit 1
 }
+RELEASE_TAG="$(printf '%s' "$RELEASE_JSON" | gh api --method POST /graphql -f query='query { __typename }' >/dev/null 2>&1; printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tagName"])')"
+RELEASE_DRAFT="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["isDraft"]).lower())')"
+RELEASE_IMMUTABLE="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["isImmutable"]).lower())')"
+[[ "$RELEASE_TAG" == "$VERSION" ]] || { echo "GitHub Release tag mismatch: $RELEASE_TAG" >&2; exit 1; }
+
+TMP_DIR="$(mktemp -d)"
+cleanup() { rm -rf -- "$TMP_DIR"; }
+trap cleanup EXIT INT TERM
+
+asset_exists() {
+  local name="$1"
+  gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' | grep -Fqx "$name"
+}
+
+SOFTWARE_ASSETS=(
+  "hardrt-posix-${VERSION}.tar.gz"
+  "hardrt-cortexm-${VERSION}.tar.gz"
+  "hardrt-bundle-${VERSION}.tar.gz"
+  "SHA256SUMS"
+)
+for asset in "${SOFTWARE_ASSETS[@]}"; do
+  asset_exists "$asset" || {
+    echo "Release workflow software asset is missing: $asset" >&2
+    exit 1
+  }
+done
+
+SOFTWARE_VERIFY_DIR="$TMP_DIR/software"
+mkdir -p "$SOFTWARE_VERIFY_DIR"
+gh release download "$VERSION" --repo "$REPO" \
+  --pattern "hardrt-posix-${VERSION}.tar.gz" \
+  --pattern "hardrt-cortexm-${VERSION}.tar.gz" \
+  --pattern "hardrt-bundle-${VERSION}.tar.gz" \
+  --pattern "SHA256SUMS" \
+  --dir "$SOFTWARE_VERIFY_DIR"
+(
+  cd "$SOFTWARE_VERIFY_DIR"
+  sha256sum -c SHA256SUMS
+)
+echo "Release software asset verification PASS"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$ROOT_DIR/validation/stm32/releases/$VERSION"
@@ -157,15 +198,6 @@ CHECKSUM="$OUTPUT_DIR/$CHECKSUM_NAME"
   exit 1
 }
 
-TMP_DIR="$(mktemp -d)"
-cleanup() { rm -rf -- "$TMP_DIR"; }
-trap cleanup EXIT INT TERM
-
-asset_exists() {
-  local name="$1"
-  gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' | grep -Fqx "$name"
-}
-
 ensure_asset() {
   local path="$1"
   local name
@@ -173,6 +205,10 @@ ensure_asset() {
 
   if asset_exists "$name"; then
     if (( REPLACE_ASSETS != 0 )); then
+      [[ "$RELEASE_IMMUTABLE" != "true" ]] || {
+        echo "Release is immutable; published asset cannot be replaced: $name" >&2
+        exit 1
+      }
       echo "Replacing release asset: $name"
       gh release upload "$VERSION" "$path" --repo "$REPO" --clobber
       return
@@ -191,6 +227,10 @@ ensure_asset() {
     exit 1
   fi
 
+  [[ "$RELEASE_IMMUTABLE" != "true" ]] || {
+    echo "Release is immutable and qualification asset is missing: $name" >&2
+    exit 1
+  }
   echo "Uploading release asset: $name"
   gh release upload "$VERSION" "$path" --repo "$REPO"
 }
@@ -198,7 +238,7 @@ ensure_asset() {
 ensure_asset "$ARCHIVE"
 ensure_asset "$CHECKSUM"
 
-VERIFY_DIR="$TMP_DIR/verify"
+VERIFY_DIR="$TMP_DIR/qualification"
 mkdir -p "$VERIFY_DIR"
 gh release download "$VERSION" --repo "$REPO" \
   --pattern "$ARCHIVE_NAME" \
@@ -213,8 +253,21 @@ cmp -s "$CHECKSUM" "$VERIFY_DIR/$CHECKSUM_NAME" || {
   cd "$VERIFY_DIR"
   sha256sum -c "$CHECKSUM_NAME"
 )
+echo "Physical qualification asset verification PASS"
 
-printf 'Release evidence publication PASS\n'
+if [[ "$RELEASE_DRAFT" == "true" ]]; then
+  gh release edit "$VERSION" --repo "$REPO" --draft=false
+  RELEASE_DRAFT="false"
+  echo "GitHub Release published: $VERSION"
+fi
+
+FINAL_DRAFT="$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq '.isDraft')"
+[[ "$FINAL_DRAFT" == "false" ]] || {
+  echo "GitHub Release is still a draft after finalization" >&2
+  exit 1
+}
+
+printf 'Release publication PASS\n'
 printf '  repository:    %s\n' "$REPO"
 printf '  release/tag:   %s @ %s\n' "$VERSION" "$TAG_SHA"
 printf '  qualified SHA: %s\n' "$QUALIFIED_SHA"
@@ -253,7 +306,7 @@ if (( CLEANUP_BRANCHES != 0 )); then
   mapfile -t REMAINING_BRANCHES < <(
     git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort
   )
-  if [[ "${REMAINING_BRANCHES[*]}" != "develop main" && "${REMAINING_BRANCHES[*]}" != "main develop" ]]; then
+  if [[ "${REMAINING_BRANCHES[*]}" != "develop main" ]]; then
     echo "Unexpected remote branch set after cleanup:" >&2
     printf '  %s\n' "${REMAINING_BRANCHES[@]}" >&2
     exit 1
@@ -261,7 +314,7 @@ if (( CLEANUP_BRANCHES != 0 )); then
   echo "Remote branch cleanup PASS: main and develop only"
 elif ((${#EXTRA_BRANCHES[@]})); then
   echo
-  echo "Release evidence is published, but remote temporary branches remain:"
+  echo "Release is published, but remote temporary branches remain:"
   printf '  %s\n' "${EXTRA_BRANCHES[@]}"
   echo "Run again with --cleanup-branches after confirming all branch work is complete."
 fi
