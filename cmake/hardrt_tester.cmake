@@ -64,12 +64,24 @@ if(HARDRT_PORT STREQUAL "posix")
   endif()
 
   if(HARDRT_SANITIZE)
-    # Apply UBSan explicitly to the already-created production library and test
-    # executable. Directory-wide options added here would be order-dependent and
-    # could leave the actual kernel uninstrumented.
+    # The production static library is instrumented, so every executable that
+    # can link it in this configuration must also link the UBSan runtime.
+    # Applying the options explicitly avoids directory-order dependence.
     target_compile_options(${LIB_NAME} PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
-    target_compile_options(hardrt_tests PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
-    target_link_options(hardrt_tests PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+
+    set(_hardrt_ubsan_targets hardrt_tests)
+    if(TARGET hardrt_cpp_task_stack)
+      list(APPEND _hardrt_ubsan_targets hardrt_cpp_task_stack)
+    endif()
+    if(TARGET hardrt_min_prio_smoke)
+      list(APPEND _hardrt_ubsan_targets hardrt_min_prio_smoke)
+    endif()
+
+    foreach(_target IN LISTS _hardrt_ubsan_targets)
+      target_compile_options(${_target} PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+      target_link_options(${_target} PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+    endforeach()
+    unset(_hardrt_ubsan_targets)
 
     message(STATUS "POSIX sanitizers enabled: UBSan")
   endif()
