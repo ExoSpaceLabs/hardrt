@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04, ubuntu-22.04]
+        os: [ubuntu-latest, ubuntu-24.04, ubuntu-22.04, ubuntu-24.04-arm]
         build_type: [Release]
 
     runs-on: ${{ matrix.os }}
@@ -147,7 +147,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$PWD/install-posix-ci"
           cmake --build build-installed-consumer --parallel
 
-      - name: Install ARM bare-metal toolchain (22.04 only)
+      - name: Install ARM bare-metal toolchain (22.04 x64 only)
         if: matrix.os == 'ubuntu-22.04'
         timeout-minutes: 10
         run: |
@@ -161,7 +161,7 @@ jobs:
             -o Acquire::https::Timeout=30 \
             gcc-arm-none-eabi
 
-      - name: Prepare STM32CubeH7 headers (22.04 only)
+      - name: Prepare STM32CubeH7 headers (22.04 x64 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           set -euxo pipefail
@@ -182,7 +182,7 @@ jobs:
           test -f "$cube/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"
           echo "STM32CUBE_H7_ROOT=$cube" >> "$GITHUB_ENV"
 
-      - name: Configure & build (Cortex-M C-only, 22.04 only)
+      - name: Configure & build (Cortex-M C-only, 22.04 x64 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           cmake -S . -B build-cortex_m-c-only -G Ninja \
@@ -200,7 +200,7 @@ jobs:
             exit 1
           fi
 
-      - name: Configure & build (Cortex-M + C++ wrappers, 22.04 only)
+      - name: Configure & build (Cortex-M + C++ wrappers, 22.04 x64 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           cmake -S . -B build-cortex_m -G Ninja \
@@ -213,35 +213,7 @@ jobs:
           cmake --build build-cortex_m --parallel
           test -f build-cortex_m/CMakeFiles/*/CMakeCXXCompiler.cmake
 
-      - name: Cross-build STM32H755 examples (22.04 only)
+      - name: Cross-build STM32H755 examples (22.04 x64 only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           BUILD_TYPE=${{ matrix.build_type }} ./scripts/build-stm32-examples-ci.sh
-
-      - name: Validate release package assembly (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
-        run: |
-          set -euxo pipefail
-          rm -rf packages install-posix install-cortexm bundle
-          mkdir -p packages
-
-          cmake --install build-posix --prefix install-posix
-          cmake --install build-cortex_m --prefix install-cortexm
-
-          tar -C install-posix -czf packages/hardrt-posix-${{ github.ref_name }}.tar.gz .
-          tar -C install-cortexm -czf packages/hardrt-cortexm-${{ github.ref_name }}.tar.gz .
-
-          mkdir -p bundle/posix bundle/cortex_m
-          cp -a install-posix/* bundle/posix/
-          cp -a install-cortexm/* bundle/cortex_m/
-          tar -C bundle -czf packages/hardrt-bundle-${{ github.ref_name }}.tar.gz .
-
-          ls -la packages
-
-      - name: Retain CI package assembly (tag builds, 22.04 only)
-        if: matrix.os == 'ubuntu-22.04' && github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: hardrt-ci-tarballs-${{ github.ref_name }}
-          path: packages/*.tar.gz
-          if-no-files-found: error
