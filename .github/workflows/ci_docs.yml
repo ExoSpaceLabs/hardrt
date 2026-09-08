@@ -31,7 +31,7 @@ jobs:
       - name: Install documentation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build gcc g++ python3 doxygen
+          sudo apt-get install -y cmake ninja-build gcc g++ python3 doxygen shellcheck xz-utils
 
       - name: Configure generated public headers
         run: |
@@ -59,11 +59,72 @@ jobs:
         run: python3 scripts/check-docs.py
 
       - name: Smoke-test release helpers
+        shell: bash
         run: |
           set -euxo pipefail
+
           python3 scripts/extract_release_notes.py 0.5.1 RELEASE_NOTES.md > "$RUNNER_TEMP/release-notes.md"
           grep -q '^# HardRT v0.5.1 Release Notes$' "$RUNNER_TEMP/release-notes.md"
           python3 scripts/check_release_qualification_diff.py HEAD HEAD
+
+          bash -n scripts/package_stm32_qualification.sh
+          bash -n scripts/finalize_release.sh
+          shellcheck scripts/package_stm32_qualification.sh scripts/finalize_release.sh
+
+          run_dir="$RUNNER_TEMP/qualification-run"
+          output_dir="$RUNNER_TEMP/qualification-package"
+          mkdir -p "$run_dir/raw"
+          printf 'synthetic raw evidence\n' > "$run_dir/raw/smoke.log"
+          cat > "$run_dir/qualification.md" <<EOF
+          # HardRT STM32H755 Hardware Qualification Report
+
+          - HardRT SHA: \`$GITHUB_SHA\`
+          - HardRT tracked source state: **clean**
+          - Functional contracts: **13**
+          - Hardware benchmarks: **38**
+          - Selected mode: **all tests (functional + benchmark)**
+
+          ## Qualification verdict
+
+          - Board probe: **PASS**
+          - Functional contracts passed: **13 / 13**
+          - Functional contracts failed: **0**
+          - Functional contracts not run: **0**
+          - Benchmarks passed: **38 / 38**
+          - Benchmarks failed: **0**
+          - Benchmarks not run: **0**
+          - Overall: **PASS**
+
+          ## Completion
+
+          - Runner: \`scripts/stm32_manual_test_full.sh\`
+          EOF
+
+          bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$run_dir" --output-dir "$output_dir"
+
+          archive="$output_dir/hardrt-stm32-qualification-0.0.0.tar.xz"
+          checksum="$archive.sha256"
+          test -f "$archive"
+          test -f "$checksum"
+          (cd "$output_dir" && sha256sum -c "$(basename "$checksum")")
+          tar -tJf "$archive" | grep -q 'hardrt-stm32-qualification-0.0.0/qualification.md'
+          tar -tJf "$archive" | grep -q 'hardrt-stm32-qualification-0.0.0/PACKAGE_METADATA.txt'
+
+          first_hash="$(sha256sum "$archive" | awk '{print $1}')"
+          bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$run_dir" --output-dir "$output_dir" --force
+          second_hash="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$first_hash" = "$second_hash"
+
+          bad_run="$RUNNER_TEMP/qualification-run-partial"
+          cp -a "$run_dir" "$bad_run"
+          sed -i 's/all tests (functional + benchmark)/functional/' "$bad_run/qualification.md"
+          if bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$bad_run" --output-dir "$RUNNER_TEMP/bad-package"; then
+            echo "Partial qualification unexpectedly packaged successfully"
+            exit 1
+          fi
 
       - name: Generate Doxygen without documentation errors
         run: |
