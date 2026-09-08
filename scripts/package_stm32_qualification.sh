@@ -84,6 +84,8 @@ require_report_line '- HardRT tracked source state: **clean**'
 require_report_line '- Selected mode: **all tests (functional + benchmark)**'
 require_report_line '- Board probe: **PASS**'
 require_report_line '- Overall: **PASS**'
+# Literal Markdown backticks are intentional here.
+# shellcheck disable=SC2016
 require_report_line '- Runner: `scripts/stm32_manual_test_full.sh`'
 
 if grep -Fq '**ABORTED**' "$REPORT"; then
@@ -109,6 +111,9 @@ require_report_line "- Benchmarks passed: **$BENCHMARK_TOTAL / $BENCHMARK_TOTAL*
 require_report_line '- Benchmarks failed: **0**'
 require_report_line '- Benchmarks not run: **0**'
 
+# The sed program is deliberately single-quoted so its Markdown backticks and
+# capture expression remain literal shell input.
+# shellcheck disable=SC2016
 QUALIFIED_SHA="$(sed -nE 's/^- HardRT SHA: `([0-9a-fA-F]{40})`.*/\1/p' "$REPORT" | head -n1 | tr 'A-F' 'a-f')"
 [[ "$QUALIFIED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
   echo "Could not resolve a 40-character HardRT SHA from $REPORT" >&2
