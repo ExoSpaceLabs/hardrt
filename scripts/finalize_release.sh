@@ -73,7 +73,7 @@ need() {
     exit 2
   }
 }
-for cmd in git gh grep sed sha256sum python3 head tr awk sort cmp mktemp; do need "$cmd"; done
+for cmd in git gh grep sed sha256sum python3 head tr awk sort cmp mktemp basename; do need "$cmd"; done
 
 cd "$ROOT_DIR"
 
@@ -87,8 +87,6 @@ if [[ -z "$REPO" ]]; then
 fi
 [[ "$REPO" == */* ]] || { echo "Could not resolve OWNER/REPO" >&2; exit 2; }
 
-# Refresh only the refs needed for release validation. The published tag itself
-# is never moved by this script.
 git fetch --force --prune origin \
   refs/heads/main:refs/remotes/origin/main \
   refs/heads/develop:refs/remotes/origin/develop \
@@ -118,13 +116,12 @@ PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0
   exit 1
 }
 
-RELEASE_JSON="$(gh release view "$VERSION" --repo "$REPO" --json tagName,isDraft,isImmutable,url 2>/dev/null)" || {
+RELEASE_TAG="$(gh release view "$VERSION" --repo "$REPO" --json tagName --jq '.tagName' 2>/dev/null)" || {
   echo "GitHub Release does not exist for tag $VERSION" >&2
   exit 1
 }
-RELEASE_TAG="$(printf '%s' "$RELEASE_JSON" | gh api --method POST /graphql -f query='query { __typename }' >/dev/null 2>&1; printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tagName"])')"
-RELEASE_DRAFT="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["isDraft"]).lower())')"
-RELEASE_IMMUTABLE="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["isImmutable"]).lower())')"
+RELEASE_DRAFT="$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq '.isDraft')"
+RELEASE_IMMUTABLE="$(gh release view "$VERSION" --repo "$REPO" --json isImmutable --jq '.isImmutable')"
 [[ "$RELEASE_TAG" == "$VERSION" ]] || { echo "GitHub Release tag mismatch: $RELEASE_TAG" >&2; exit 1; }
 
 TMP_DIR="$(mktemp -d)"
@@ -166,7 +163,6 @@ echo "Release software asset verification PASS"
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$ROOT_DIR/validation/stm32/releases/$VERSION"
 fi
-
 PACKAGE_ARGS=("$VERSION" "$RUN_DIR" --output-dir "$OUTPUT_DIR")
 (( FORCE_PACKAGE == 0 )) || PACKAGE_ARGS+=(--force)
 "$ROOT_DIR/scripts/package_stm32_qualification.sh" "${PACKAGE_ARGS[@]}"
@@ -185,7 +181,6 @@ git merge-base --is-ancestor "$QUALIFIED_SHA" "$TAG_SHA" || {
   echo "  release:   $TAG_SHA" >&2
   exit 1
 }
-
 python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
 
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
@@ -244,7 +239,6 @@ gh release download "$VERSION" --repo "$REPO" \
   --pattern "$ARCHIVE_NAME" \
   --pattern "$CHECKSUM_NAME" \
   --dir "$VERIFY_DIR"
-
 cmp -s "$CHECKSUM" "$VERIFY_DIR/$CHECKSUM_NAME" || {
   echo "Published checksum asset differs from local checksum" >&2
   exit 1
@@ -257,10 +251,8 @@ echo "Physical qualification asset verification PASS"
 
 if [[ "$RELEASE_DRAFT" == "true" ]]; then
   gh release edit "$VERSION" --repo "$REPO" --draft=false
-  RELEASE_DRAFT="false"
   echo "GitHub Release published: $VERSION"
 fi
-
 FINAL_DRAFT="$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq '.isDraft')"
 [[ "$FINAL_DRAFT" == "false" ]] || {
   echo "GitHub Release is still a draft after finalization" >&2
