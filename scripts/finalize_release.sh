@@ -117,12 +117,13 @@ PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0
   exit 1
 }
 
-RELEASE_TAG="$(gh release view "$VERSION" --repo "$REPO" --json tagName --jq '.tagName' 2>/dev/null)" || {
+RELEASE_JSON="$(gh api "repos/${REPO}/releases/tags/${VERSION}" 2>/dev/null)" || {
   echo "GitHub Release does not exist for tag $VERSION" >&2
   exit 1
 }
-RELEASE_DRAFT="$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq '.isDraft')"
-RELEASE_IMMUTABLE="$(gh release view "$VERSION" --repo "$REPO" --json isImmutable --jq '.isImmutable')"
+RELEASE_TAG="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+RELEASE_DRAFT="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["draft"]).lower())')"
+RELEASE_IMMUTABLE="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("immutable", False)).lower())')"
 [[ "$RELEASE_TAG" == "$VERSION" ]] || { echo "GitHub Release tag mismatch: $RELEASE_TAG" >&2; exit 1; }
 
 TMP_DIR="$(mktemp -d)"
@@ -254,7 +255,7 @@ if [[ "$RELEASE_DRAFT" == "true" ]]; then
   gh release edit "$VERSION" --repo "$REPO" --draft=false
   echo "GitHub Release published: $VERSION"
 fi
-FINAL_DRAFT="$(gh release view "$VERSION" --repo "$REPO" --json isDraft --jq '.isDraft')"
+FINAL_DRAFT="$(gh api "repos/${REPO}/releases/tags/${VERSION}" --jq '.draft')"
 [[ "$FINAL_DRAFT" == "false" ]] || {
   echo "GitHub Release is still a draft after finalization" >&2
   exit 1
