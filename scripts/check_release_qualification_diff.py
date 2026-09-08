@@ -14,6 +14,8 @@ ALLOWED_EXACT = {
     "scripts/check-docs.py",
     "scripts/extract_release_notes.py",
     "scripts/check_release_qualification_diff.py",
+    "scripts/package_stm32_qualification.sh",
+    "scripts/finalize_release.sh",
 }
 ALLOWED_PREFIXES = (
     ".github/workflows/",
