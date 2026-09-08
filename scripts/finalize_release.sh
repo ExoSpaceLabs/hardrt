@@ -16,10 +16,11 @@ usage() {
 Usage:
   scripts/finalize_release.sh X.Y.Z RUN_DIR [options]
 
-Finalize an already-tagged HardRT release by validating the CI-produced software
-assets, packaging and publishing the retained STM32 qualification evidence,
-verifying both checksum sets, publishing a draft GitHub Release when applicable,
-and optionally deleting all remote branches except main and develop.
+Finalize an already-tagged HardRT release by validating the CI-produced native
+Linux/POSIX and Cortex-M software assets, packaging and publishing the retained
+STM32 qualification evidence, verifying both checksum sets, publishing a draft
+GitHub Release when applicable, and optionally deleting all remote branches
+except main and develop.
 
 Arguments:
   X.Y.Z       Existing non-v-prefixed release tag.
@@ -134,9 +135,9 @@ asset_exists() {
 }
 
 SOFTWARE_ASSETS=(
-  "hardrt-posix-${VERSION}.tar.gz"
+  "hardrt-posix-linux-amd64-${VERSION}.tar.gz"
+  "hardrt-posix-linux-arm64-${VERSION}.tar.gz"
   "hardrt-cortexm-${VERSION}.tar.gz"
-  "hardrt-bundle-${VERSION}.tar.gz"
   "SHA256SUMS"
 )
 for asset in "${SOFTWARE_ASSETS[@]}"; do
@@ -149,9 +150,9 @@ done
 SOFTWARE_VERIFY_DIR="$TMP_DIR/software"
 mkdir -p "$SOFTWARE_VERIFY_DIR"
 gh release download "$VERSION" --repo "$REPO" \
-  --pattern "hardrt-posix-${VERSION}.tar.gz" \
+  --pattern "hardrt-posix-linux-amd64-${VERSION}.tar.gz" \
+  --pattern "hardrt-posix-linux-arm64-${VERSION}.tar.gz" \
   --pattern "hardrt-cortexm-${VERSION}.tar.gz" \
-  --pattern "hardrt-bundle-${VERSION}.tar.gz" \
   --pattern "SHA256SUMS" \
   --dir "$SOFTWARE_VERIFY_DIR"
 (
