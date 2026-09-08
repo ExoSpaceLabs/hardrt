@@ -42,6 +42,11 @@ Options:
 The script requires the release tag to equal origin/main. origin/develop may be
 at the release tag or ahead of it, but the release tag must remain its ancestor.
 The tag itself is never moved or rewritten.
+
+The canonical software asset contract is architecture-qualified Linux amd64 and
+arm64 packages plus the Cortex-M package. The already-published 0.5.1 release is
+recognized as a strict historical exception with its original generic POSIX and
+bundle assets; that compatibility path does not apply to any later version.
 USAGE
 }
 
@@ -135,32 +140,59 @@ asset_exists() {
   gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' | grep -Fqx "$name"
 }
 
-SOFTWARE_ASSETS=(
+all_assets_exist() {
+  local asset
+  for asset in "$@"; do
+    asset_exists "$asset" || return 1
+  done
+}
+
+CANONICAL_SOFTWARE_ASSETS=(
   "hardrt-posix-linux-amd64-${VERSION}.tar.gz"
   "hardrt-posix-linux-arm64-${VERSION}.tar.gz"
   "hardrt-cortexm-${VERSION}.tar.gz"
   "SHA256SUMS"
 )
-for asset in "${SOFTWARE_ASSETS[@]}"; do
-  asset_exists "$asset" || {
-    echo "Release workflow software asset is missing: $asset" >&2
-    exit 1
-  }
-done
+LEGACY_051_SOFTWARE_ASSETS=(
+  "hardrt-posix-0.5.1.tar.gz"
+  "hardrt-cortexm-0.5.1.tar.gz"
+  "hardrt-bundle-0.5.1.tar.gz"
+  "SHA256SUMS"
+)
+
+SOFTWARE_ASSET_CONTRACT=""
+SOFTWARE_ASSETS=()
+if all_assets_exist "${CANONICAL_SOFTWARE_ASSETS[@]}"; then
+  SOFTWARE_ASSET_CONTRACT="canonical-native-linux"
+  SOFTWARE_ASSETS=("${CANONICAL_SOFTWARE_ASSETS[@]}")
+elif [[ "$VERSION" == "0.5.1" ]] && all_assets_exist "${LEGACY_051_SOFTWARE_ASSETS[@]}"; then
+  SOFTWARE_ASSET_CONTRACT="historical-0.5.1"
+  SOFTWARE_ASSETS=("${LEGACY_051_SOFTWARE_ASSETS[@]}")
+  echo "Using historical 0.5.1 software asset contract; future releases require native amd64/arm64 packages."
+else
+  echo "Release does not satisfy the canonical software asset contract:" >&2
+  printf '  required: %s\n' "${CANONICAL_SOFTWARE_ASSETS[@]}" >&2
+  if [[ "$VERSION" == "0.5.1" ]]; then
+    echo "The exact historical 0.5.1 asset set is also accepted for this version only:" >&2
+    printf '  legacy:   %s\n' "${LEGACY_051_SOFTWARE_ASSETS[@]}" >&2
+  fi
+  exit 1
+fi
 
 SOFTWARE_VERIFY_DIR="$TMP_DIR/software"
 mkdir -p "$SOFTWARE_VERIFY_DIR"
+DOWNLOAD_ARGS=()
+for asset in "${SOFTWARE_ASSETS[@]}"; do
+  DOWNLOAD_ARGS+=(--pattern "$asset")
+done
 gh release download "$VERSION" --repo "$REPO" \
-  --pattern "hardrt-posix-linux-amd64-${VERSION}.tar.gz" \
-  --pattern "hardrt-posix-linux-arm64-${VERSION}.tar.gz" \
-  --pattern "hardrt-cortexm-${VERSION}.tar.gz" \
-  --pattern "SHA256SUMS" \
+  "${DOWNLOAD_ARGS[@]}" \
   --dir "$SOFTWARE_VERIFY_DIR"
 (
   cd "$SOFTWARE_VERIFY_DIR"
   sha256sum -c SHA256SUMS
 )
-echo "Release software asset verification PASS"
+echo "Release software asset verification PASS ($SOFTWARE_ASSET_CONTRACT)"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$ROOT_DIR/validation/stm32/releases/$VERSION"
@@ -265,11 +297,12 @@ FINAL_DRAFT="$(gh api "repos/${REPO}/releases/tags/${VERSION}" --jq '.draft')"
 }
 
 printf 'Release publication PASS\n'
-printf '  repository:    %s\n' "$REPO"
-printf '  release/tag:   %s @ %s\n' "$VERSION" "$TAG_SHA"
-printf '  qualified SHA: %s\n' "$QUALIFIED_SHA"
-printf '  archive:       %s\n' "$ARCHIVE_NAME"
-printf '  checksum:      %s\n' "$CHECKSUM_NAME"
+printf '  repository:       %s\n' "$REPO"
+printf '  release/tag:      %s @ %s\n' "$VERSION" "$TAG_SHA"
+printf '  software assets:  %s\n' "$SOFTWARE_ASSET_CONTRACT"
+printf '  qualified SHA:    %s\n' "$QUALIFIED_SHA"
+printf '  archive:          %s\n' "$ARCHIVE_NAME"
+printf '  checksum:         %s\n' "$CHECKSUM_NAME"
 
 mapfile -t EXTRA_BRANCHES < <(
   git ls-remote --heads origin \
