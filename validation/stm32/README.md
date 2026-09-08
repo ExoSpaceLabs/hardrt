@@ -31,16 +31,40 @@ A release candidate must already be on `develop`; do not qualify a temporary fea
 
 For a release candidate:
 
-1. merge all release-facing changes into `develop` and remove temporary branches;
+1. merge all target/build-affecting changes into `develop`;
 2. freeze the `develop` SHA after hosted/cross-build CI is green;
 3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
 4. require board probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
 5. inspect the report and raw logs;
-6. retain the selected package locally under `validation/stm32/releases/X.Y.Z/` if desired;
-7. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
-8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.
+6. package the selected evidence without adding it to Git:
 
-The local retention directory mirrors the repository `X.Y.Z` Git-tag convention. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
+   ```bash
+   ./scripts/package_stm32_qualification.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
+   ```
+
+7. promote/tag the release according to `docs/QUALIFICATION.md`; release-automation/documentation-only follow-up changes are allowed only through the repository qualification-diff guard;
+8. let `.github/workflows/release.yml` create the draft release and software assets;
+9. publish and verify the physical evidence, then clean temporary branches:
+
+   ```bash
+   ./scripts/finalize_release.sh \
+     X.Y.Z \
+     validation/stm32/<UTC>_<short-sha> \
+     --cleanup-branches
+   ```
+
+The package helper creates a deterministic `.tar.xz` archive plus a separate SHA-256 file under `validation/stm32/releases/X.Y.Z/`. Both timestamped runs and local release packages are gitignored deliberately. **Do not commit generated qualification evidence.**
+
+The canonical physical release assets are:
+
+```text
+hardrt-stm32-qualification-X.Y.Z.tar.xz
+hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and package metadata identifying the release and qualified source SHA. The GitHub Release asset contains the evidence; the repository does not contain hundreds of generated log files.
+
+See [`docs/RELEASE_PROCESS.md`](../../docs/RELEASE_PROCESS.md) for the complete procedure.
 
 ## Functional hardware matrix
 
