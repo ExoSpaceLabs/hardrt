@@ -11,6 +11,8 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'scripts/extract_release_notes.py'
+      - 'scripts/package_stm32_qualification.sh'
+      - 'scripts/finalize_release.sh'
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'RELEASE_NOTES.md'
@@ -173,13 +175,14 @@ jobs:
             release-notes.md
           if-no-files-found: error
 
-      - name: Publish GitHub Release
+      - name: Create draft GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
           body_path: release-notes.md
+          draft: true
           files: |
             packages/hardrt-posix-${{ steps.version.outputs.version }}.tar.gz
             packages/hardrt-cortexm-${{ steps.version.outputs.version }}.tar.gz
