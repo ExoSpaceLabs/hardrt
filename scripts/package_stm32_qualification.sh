@@ -56,7 +56,7 @@ need() {
     exit 2
   }
 }
-for cmd in git grep sed tar xz sha256sum mktemp cp; do need "$cmd"; done
+for cmd in git grep sed tar xz sha256sum mktemp cp head tr mv basename; do need "$cmd"; done
 
 if ! tar --version 2>/dev/null | grep -q 'GNU tar'; then
   echo "GNU tar is required for deterministic qualification packaging" >&2
