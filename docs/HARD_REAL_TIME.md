@@ -71,12 +71,17 @@ A HardRT configuration can be described as hard real time only when relevant ker
 
 ### Periodic timing behavior
 
-- an absolute periodic release primitive such as `hrt_delay_until()` (#90);
+- a stable-phase absolute periodic release primitive such as `hrt_delay_until()` (#90);
+- the phase reference is established once, at the first task instance, and future nominal releases are derived from that persistent reference rather than from actual completion or wake time;
+- for nominal release `R`, period `P`, and current time `now`, the remaining wait is conceptually `P - (now - R)` when positive, equivalently `next_release - now`;
+- the elapsed interval intentionally includes application execution, preemption by other tasks, interrupt service, scheduler work, and context-switch overhead, so those costs consume available slack instead of shifting the next nominal release later;
 - wrap-safe deadline semantics;
-- documented missed-deadline behavior;
-- no cumulative phase drift caused by repeated relative sleeps;
+- documented missed-deadline/overrun behavior that does not silently rebase the periodic phase to `now`;
+- no cumulative phase drift caused by repeated relative sleeps or by rebasing each cycle;
 - bounded expiry/release processing;
 - measured and eventually bounded release jitter under stated interference assumptions (#54).
+
+A 10 ms task period illustrates the required semantics. If execution and interference consume 4 ms after the nominal release, only 6 ms remain to wait. If they consume 13 ms, the task is already 3 ms late; it must follow the documented overrun policy rather than receiving a fresh 10 ms delay.
 
 ### Lifecycle/error determinism
 
@@ -131,10 +136,12 @@ Tracked by #91.
 
 - bounded common IPC timeout model (#68);
 - bounded mutex priority-inversion model (#89);
-- absolute periodic release timing (#90);
+- stable-phase absolute periodic release timing (#90);
 - synchronization-critical critical-section measurement (#53);
 - queue-copy scaling and explicit design/qualification bound (#53/#52);
 - initial physical periodic-release evidence (#54).
+
+The periodic mechanism must prove that application execution, task preemption, interrupt handling, scheduler latency, and context-switch overhead are accounted as elapsed time inside the current period. They reduce the remaining delay but do not redefine the next nominal release.
 
 0.6 is allowed to say these operations are structurally/deterministically bounded where that has been demonstrated. It must not promote observed maxima into universal WCET claims.
 
@@ -146,7 +153,7 @@ Tracked by #91.
 - hardware event -> ISR -> READY -> PendSV -> task decomposition;
 - synchronization fast-path/contention/handoff cost;
 - maximum critical-section characterization;
-- periodic release jitter;
+- periodic release jitter and phase error relative to the persistent nominal schedule;
 - higher-priority task/IRQ interference;
 - complete machine-readable evidence metadata;
 - configuration-specific analytical upper bounds where justified.
@@ -176,7 +183,7 @@ For every supported Cortex-M configuration, documentation must identify:
 - finite structural bounds for kernel data structures and loops;
 - synchronization/blocking bounds including mutex priority inversion;
 - critical-section/IRQ assumptions;
-- periodic release semantics and jitter assumptions;
+- stable-phase periodic release semantics and jitter assumptions;
 - execution-time and memory costs used by schedulability analysis;
 - measured evidence and analytical bounds, clearly distinguished;
 - exact source/toolchain/hardware/runtime configuration supporting each guarantee.
@@ -189,7 +196,7 @@ The major open work is tracked by:
 
 - #68 common IPC timeouts;
 - #89 bounded mutex priority inversion;
-- #90 absolute periodic timing;
+- #90 stable-phase periodic timing;
 - #37 reproducible latency/qualification model;
 - #49 zero-cost timing/trace infrastructure;
 - #50 scheduler/context-switch timing;
@@ -221,7 +228,7 @@ Qualification separates:
 2. **Scheduler/context switch**: scheduler decision, context save/restore, PendSV software interval, PendSV-to-task continuation.
 3. **Synchronization**: primitive cost, waiter publication, timeout/priority-inversion bookkeeping, task continuation, ISR/task variants, queue-copy cost.
 4. **Critical sections/bounded work**: interrupt-masked duration and cost as a function of configured task/waiter/payload limits.
-5. **Timekeeping**: tick cost, sleep/deadline expiry, internal/external tick behavior, absolute periodic release and release jitter.
+5. **Timekeeping**: tick cost, sleep/deadline expiry, internal/external tick behavior, stable-phase periodic release and release jitter.
 
 ## Instrumentation rule
 
