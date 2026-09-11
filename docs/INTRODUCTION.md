@@ -2,6 +2,8 @@
 
 HardRT is a small real-time operating-system kernel written in C for statically bounded embedded systems and hosted functional/scheduler testing.
 
+The Cortex-M target is being developed toward an **explicitly qualified hard real-time RTOS contract**. The goal is not merely preemption or low average latency: supported configurations must have deterministic scheduling and synchronization semantics, statically bounded kernel behavior, bounded priority inversion and critical sections, periodic timing primitives, and reproducible timing evidence suitable for schedulability analysis. Until those bounds are established, current releases distinguish measured configuration-specific evidence from universal WCET guarantees.
+
 ## Scope
 
 HardRT 0.5.1 provides:
@@ -21,7 +23,7 @@ HardRT 0.5.1 provides:
 
 It intentionally does not provide a heap, filesystem, networking stack, device HAL, process isolation, or general-purpose operating-system services.
 
-Generic IPC timeouts, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not part of v0.5.1.
+Generic IPC timeouts, bounded mutex priority-inversion handling, owner-death recovery, absolute periodic release timing, tickless idle, and high-resolution timers are not part of v0.5.1.
 
 ## Design goals
 
@@ -32,9 +34,10 @@ Generic IPC timeouts, mutex priority inheritance/owner-death recovery, tickless 
 | Port separation | Context, tick, critical-section, idle, and architecture details live under `src/port/`. |
 | Determinism | READY/sleeper/waiter storage is bounded and scheduler/wake semantics are explicit. |
 | Bounded storage | Kernel/object storage is sized by compile-time task/priority limits. |
+| Hard-real-time progression | 0.6 adds bounded synchronization/periodic semantics; 0.7 deepens timing/interference qualification; 0.8 hardens the pre-1 API/kernel; 0.9 freezes and qualifies the 1.0 candidate. |
 | Reproducibility | Cortex-M timing claims are tied to explicit hardware/build/runtime evidence. |
 
-Static allocation and bounded data structures do not themselves prove application deadlines. Blocking synchronization calls can wait indefinitely, continuously READY higher-priority tasks can starve lower-priority work, event-set cost depends on registered waiter count, and queue critical-section cost depends on payload size.
+Static allocation and bounded data structures do not themselves prove application deadlines. Blocking synchronization calls can wait indefinitely in v0.5.1, mutexes do not yet bound priority inversion, continuously READY higher-priority tasks can starve lower-priority work, event-set cost depends on registered waiter count, and queue critical-section cost depends on payload size. These gaps are explicitly tracked on the path to 1.0 rather than hidden behind the project name.
 
 ## Scheduling model
 
@@ -50,6 +53,18 @@ Higher-priority preemption under `HRT_SCHED_PRIORITY_RR` preserves the interrupt
 The Cortex-M port performs context transfer through PendSV. The 0.5.1 POSIX port maps HardRT application tasks to pthreads, uses a monotonic timer pthread for an internal tick, and uses targeted signals to park/resume the selected hosted task so CPU-bound code can be preempted without first entering a HardRT API. The common HardRT core remains authoritative for task state and scheduling policy. POSIX is a functional/scheduler-validation environment, not a timing-accurate Cortex-M model or a hard-real-time target.
 
 The hosted POSIX port currently reserves process-wide `SIGALRM` and `SIGUSR2`. The application-provided HardRT task-stack buffer remains part of task lifetime and overlap validation, but it is not used as the native pthread execution stack.
+
+## Path to 1.0
+
+The release progression is maintained in [ROADMAP.md](ROADMAP.md) and the qualification umbrella #48:
+
+- **0.6.x:** bounded IPC timeouts, bounded mutex priority inversion, absolute periodic timing, and synchronization-critical timing decisions;
+- **0.7.x:** timing decomposition, release jitter, IRQ/task interference, machine-readable evidence, and configuration-specific bounds;
+- **0.8.x:** pre-1 API/kernel hardening, architecture-neutral interfaces, memory accounting, and static-analysis depth;
+- **0.9.x:** frozen 1.0 API/configuration candidate and complete qualification campaign;
+- **1.0.0:** stable, explicitly qualified hard-real-time contract for documented Cortex-M configurations.
+
+SVC/MPU privilege separation is a separately tracked optional architecture direction. PendSV remains the Cortex-M context-switch mechanism.
 
 ## Typical uses
 

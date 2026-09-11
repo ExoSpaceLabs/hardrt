@@ -9,6 +9,8 @@
 
 **HardRT** is a small, portable real-time operating-system kernel written in C. The core uses static allocation and has no HAL dependency.
 
+The Cortex-M target is being developed toward an **explicitly qualified hard real-time RTOS contract**. The goal is deterministic, statically bounded kernel behavior with bounded synchronization/blocking and reproducible configuration-specific timing evidence suitable for schedulability analysis, not merely preemption or low average latency. See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md) and [ROADMAP.md](docs/ROADMAP.md).
+
 **Version:** `0.5.1`
 
 ## Feature set
@@ -26,7 +28,7 @@
 - **CMake package:** installation and `find_package(HardRT)` consumption.
 - **Optional C++17 wrapper:** header-only task/IPC/signal wrappers enabled with `HARDRT_ENABLE_CPP`.
 
-Generic IPC timeout variants, mutex priority inheritance/owner-death recovery, tickless idle, and high-resolution timers are not provided in v0.5.1.
+Generic IPC timeout variants, bounded mutex priority-inversion handling, owner-death recovery, absolute periodic release timing, tickless idle, and high-resolution timers are not provided in v0.5.1. The 0.6.x roadmap prioritizes the timeout, priority-inversion, periodic timing, and synchronization-critical bound work rather than pretending those gaps do not matter.
 
 ## Port behavior
 
@@ -152,11 +154,11 @@ Binary/counting semaphores use FIFO waiters and scheduler-aware wake decisions. 
 
 ### Mutexes
 
-Mutexes are task-context-only, non-recursive, owner-tracked, FIFO, and direct-handoff. v0.5.1 has no priority inheritance, timed lock, or automatic owner-death recovery. Tasks must release owned mutexes before returning/deleting themselves.
+Mutexes are task-context-only, non-recursive, owner-tracked, FIFO, and direct-handoff. v0.5.1 has no bounded priority-inversion mechanism, timed lock, or automatic owner-death recovery. Tasks must release owned mutexes before returning/deleting themselves.
 
 ### Message queues
 
-Queues provide blocking/non-blocking task operations plus non-blocking ISR send/receive. Payloads are copied with `memcpy()` while the queue critical section is held.
+Queues provide blocking/non-blocking task operations plus non-blocking ISR send/receive. Payloads are copied with `memcpy()` while the queue critical section is held; the resulting item-size-dependent critical-section bound is explicitly tracked for pre-1 qualification.
 
 ### Event flags
 
@@ -187,17 +189,25 @@ The release-grade physical entry point for NUCLEO-H755ZI-Q / CM7 is:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The v0.5 hardware qualification matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters. The published v0.5.0 hardware package remains historical evidence. v0.5.1 must pass a fresh unfiltered full run on the exact frozen `develop` SHA that is later promoted unchanged to `main` and tagged `0.5.1`.
+The v0.5 hardware qualification matrix contains **13 functional contracts and 38 benchmark images**. The benchmark set includes event/notification ISR-to-task measurements, notification producer costs, and event waiter-scan scaling at 1, 8, 16, and 32 actual registered waiters. The published v0.5.0 and v0.5.1 releases retain configuration-specific physical evidence; those measurements are historical evidence for their exact qualified source/configuration and are not silently promoted into universal WCET claims.
 
 See [QUALIFICATION.md](docs/QUALIFICATION.md), [STM32_MANUAL_TESTS.md](docs/STM32_MANUAL_TESTS.md), and [STATISTICS.md](docs/STATISTICS.md).
 
 ## Hard real-time claims
 
-HardRT is being engineered toward configuration-specific hard-real-time guarantees on supported Cortex-M targets. Current timing results are reproducible engineering measurements for documented configurations, not universal WCET proofs. Remaining 1.0 work includes analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, and richer interrupt/task interference analysis.
+HardRT is being engineered toward configuration-specific hard-real-time guarantees on supported Cortex-M targets. Current timing results are reproducible engineering measurements for documented configurations, not universal WCET proofs.
+
+The explicit pre-1 progression is:
+
+- **0.6.x:** bounded IPC timeouts, bounded mutex priority inversion, absolute periodic release timing, and synchronization-critical bound decisions;
+- **0.7.x:** timing/interference decomposition and configuration-specific upper-bound work;
+- **0.8.x:** pre-1 kernel/API hardening, portability cleanup, static-memory accounting, and static-analysis depth;
+- **0.9.x:** frozen 1.0 candidate and complete qualification campaign;
+- **1.0.0:** stable, explicitly qualified hard-real-time contract for documented Cortex-M configurations.
 
 The POSIX port is excluded from hard-real-time timing claims.
 
-See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md).
+See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md) and [ROADMAP.md](docs/ROADMAP.md).
 
 ## Compatibility
 
