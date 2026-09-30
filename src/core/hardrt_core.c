@@ -7,6 +7,7 @@
 #include "hardrt_cfg.h"
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
+#include "hardrt_deadline.h"
 
 #ifndef HARDRT_STALL_ON_ERROR
 #define HARDRT_STALL_ON_ERROR 0
@@ -549,37 +550,6 @@ static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_h
     if (t == 0u) t = 1u;
     if (t > UINT32_MAX) t = UINT32_MAX;
     return (uint32_t)t;
-}
-
-typedef enum {
-    HRT_DEADLINE_PAST = -1,
-    HRT_DEADLINE_AT = 0,
-    HRT_DEADLINE_FUTURE = 1,
-    HRT_DEADLINE_AMBIGUOUS = 2
-} hrt_deadline_relation_t;
-
-/*
- * Compare two wrapping uint32_t tick values without implementation-defined
- * unsigned-to-signed conversion. The half-range point is intentionally
- * rejected because it has no unique past/future interpretation.
- */
-static hrt_deadline_relation_t hrt__deadline_relation(
-    const hrt_tick_t now,
-    const hrt_tick_t deadline,
-    hrt_tick_t *distance_ticks) {
-    const hrt_tick_t forward = deadline - now;
-    if (distance_ticks != NULL) *distance_ticks = 0u;
-
-    if (forward == 0u) return HRT_DEADLINE_AT;
-    if (forward == HRT_TICK_HALF_RANGE) return HRT_DEADLINE_AMBIGUOUS;
-
-    if ((forward & HRT_TICK_HALF_RANGE) == 0u) {
-        if (distance_ticks != NULL) *distance_ticks = forward;
-        return HRT_DEADLINE_FUTURE;
-    }
-
-    if (distance_ticks != NULL) *distance_ticks = now - deadline;
-    return HRT_DEADLINE_PAST;
 }
 
 void hrt_sleep(const uint32_t ms) {
