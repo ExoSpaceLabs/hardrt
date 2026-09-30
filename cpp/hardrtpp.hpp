@@ -79,6 +79,17 @@ namespace hardrt {
         }
 
         /**
+         * @brief Wait until an absolute tick deadline without rebasing phase.
+         *
+         * The result reports whether the task actually continued on time or
+         * resumed after the deadline. The optional lateness output is in ticks.
+         */
+        static hrt_delay_result_t delay_until(const hrt_tick_t deadline,
+                                              hrt_tick_t* lateness_ticks = nullptr) {
+            return hrt_delay_until(deadline, lateness_ticks);
+        }
+
+        /**
          * @brief Voluntarily schedule away from the current RUNNING task.
          *
          * The core republishes it as READY according to the active policy;
@@ -146,7 +157,7 @@ namespace hardrt {
          * @brief Get the elapsed system ticks since initialization.
          * @return Current tick count.
          */
-        static uint32_t tick_now() {
+        static hrt_tick_t tick_now() {
             return hrt_tick_now();
         }
 
