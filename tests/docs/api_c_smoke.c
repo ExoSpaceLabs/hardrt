@@ -29,6 +29,7 @@ int hardrt_doc_c_smoke(void) {
     hrt_event_t event;
     hrt_event_bits_t matched = 0u;
     uint32_t notify_value = 0u;
+    hrt_tick_t lateness = 0u;
     int need_switch = 0;
 
     hrt_sem_init(&sem, 0u);
@@ -72,6 +73,7 @@ int hardrt_doc_c_smoke(void) {
     (void)hrt_port_id();
     (void)hrt_tick_now();
     (void)hrt_now_ms();
+    (void)hrt_delay_until(hrt_tick_now(), &lateness);
     hrt_set_policy(HRT_SCHED_PRIORITY);
     hrt_set_default_timeslice(0u);
     hrt_tick_from_isr();

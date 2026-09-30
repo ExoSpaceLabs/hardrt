@@ -132,11 +132,20 @@ The same non-overlap rule applies to application-owned stacks.
 
 ```cpp
 hardrt::Task::sleep(500);
+
+hrt_tick_t next_release = hardrt::System::tick_now();
+next_release += period_ticks;
+hrt_tick_t lateness = 0u;
+const hrt_delay_result_t result =
+    hardrt::Task::delay_until(next_release, &lateness);
+
 hardrt::Task::yield();
 hardrt::Task::delete_current();
 ```
 
 `Task::sleep(0)` forwards to the v0.5 C contract: it yields immediately without entering the sleep queue or waiting for a tick. Positive sub-tick values still round up to one tick.
+
+`Task::delay_until()` forwards directly to the stable-phase C periodic timing primitive. The caller keeps one nominal phase reference and advances it by the requested period; the returned `hrt_delay_result_t` distinguishes an on-time release from an observable missed target, with optional lateness in ticks. The wrapper does not add timers, allocation, or hidden per-tick bookkeeping.
 
 A dispatched task is internally `RUNNING`. A voluntary scheduling point returns it to `READY` as appropriate. A task that returns from its entry function, or calls `Task::delete_current()`, enters `EXITED`; its TCB slot remains occupied until later reclamation.
 

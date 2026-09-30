@@ -17,6 +17,7 @@ int hardrt_doc_cpp_smoke() {
     hardrt::EventFlags event;
     uint32_t matched = 0u;
     uint32_t value = 0u;
+    hrt_tick_t lateness = 0u;
     int need_switch = 0;
 
     (void)event.bits();
@@ -38,6 +39,7 @@ int hardrt_doc_cpp_smoke() {
     (void)hardrt::System::init(cfg);
     (void)hardrt::System::tick_now();
     (void)hardrt::System::now_ms();
+    (void)hardrt::Task::delay_until(hardrt::System::tick_now(), &lateness);
     (void)hardrt::System::version_string();
     (void)hardrt::System::version();
     (void)hardrt::System::version_u32();

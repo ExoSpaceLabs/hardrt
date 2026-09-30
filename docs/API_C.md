@@ -100,14 +100,39 @@ See [SCHEDULING.md](SCHEDULING.md).
 ## Task control and time
 
 ```c
-void     hrt_sleep(uint32_t ms);
-void     hrt_yield(void);
-void     hrt_task_delete(void);
-uint32_t hrt_tick_now(void);
-uint32_t hrt_now_ms(void);
+void               hrt_sleep(uint32_t ms);
+hrt_delay_result_t hrt_delay_until(hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks);
+void               hrt_yield(void);
+void               hrt_task_delete(void);
+uint32_t           hrt_tick_now(void);
+uint32_t           hrt_now_ms(void);
 ```
 
 Positive sleep durations are converted with ceiling division so a positive sub-tick delay sleeps for one tick. In v0.5, `hrt_sleep(0)` is an immediate scheduling point equivalent to a yield for scheduling purposes; it does not enter the sleep queue.
+
+`hrt_delay_until()` is the stable-phase periodic primitive introduced on the 0.6 development line. It accepts an **absolute wrapping tick deadline**, reuses the existing sleeper queue when the deadline is in the future, and checks the actual current tick again when the task resumes. Reaching the deadline exactly returns `HRT_DELAY_OK`; arriving or resuming later returns `HRT_DELAY_MISSED` and reports the lateness in ticks when an output pointer is supplied.
+
+A periodic task should capture its phase once and advance nominal releases from that phase:
+
+```c
+hrt_tick_t next_release = hrt_tick_now();
+
+for (;;) {
+    do_work();
+
+    next_release += period_ticks;
+    hrt_tick_t lateness = 0u;
+    const hrt_delay_result_t result =
+        hrt_delay_until(next_release, &lateness);
+
+    if (result == HRT_DELAY_MISSED) {
+        /* Application-visible schedulability/design event. */
+    }
+}
+```
+
+The deadline is never silently rebased to the actual completion time. Application execution, preemption, interrupt work, scheduler work, and context-switch overhead therefore consume the current period's slack instead of accumulating phase drift. Deadline ordering follows the wrapping 32-bit half-range rule: intended comparisons must remain within `HRT_TICK_MAX_HORIZON`, and the exactly half-range case is rejected as ambiguous.
 
 `hrt_task_delete()` moves the current task to EXITED and schedules another task. The exited slot remains owned until later reclamation. A naturally returning task follows the same path through the port trampoline. `hrt_sleep()`, `hrt_yield()`, and `hrt_task_delete()` require the current RUNNING application-task context; calls outside that context are safe no-ops that record `ERR_INVALID_TASK`.
 
