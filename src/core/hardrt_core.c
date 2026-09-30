@@ -551,6 +551,37 @@ static inline uint32_t hrt__ms_to_ticks(const uint32_t ms, const uint32_t tick_h
     return (uint32_t)t;
 }
 
+typedef enum {
+    HRT_DEADLINE_PAST = -1,
+    HRT_DEADLINE_AT = 0,
+    HRT_DEADLINE_FUTURE = 1,
+    HRT_DEADLINE_AMBIGUOUS = 2
+} hrt_deadline_relation_t;
+
+/*
+ * Compare two wrapping uint32_t tick values without implementation-defined
+ * unsigned-to-signed conversion. The half-range point is intentionally
+ * rejected because it has no unique past/future interpretation.
+ */
+static hrt_deadline_relation_t hrt__deadline_relation(
+    const hrt_tick_t now,
+    const hrt_tick_t deadline,
+    hrt_tick_t *distance_ticks) {
+    const hrt_tick_t forward = deadline - now;
+    if (distance_ticks != NULL) *distance_ticks = 0u;
+
+    if (forward == 0u) return HRT_DEADLINE_AT;
+    if (forward == HRT_TICK_HALF_RANGE) return HRT_DEADLINE_AMBIGUOUS;
+
+    if ((forward & HRT_TICK_HALF_RANGE) == 0u) {
+        if (distance_ticks != NULL) *distance_ticks = forward;
+        return HRT_DEADLINE_FUTURE;
+    }
+
+    if (distance_ticks != NULL) *distance_ticks = now - deadline;
+    return HRT_DEADLINE_PAST;
+}
+
 void hrt_sleep(const uint32_t ms) {
     /* v0.5 contract: zero is a pure scheduling point. It must not publish
      * SLEEP state, enter the delta queue, or wait for a tick. */
@@ -588,6 +619,85 @@ void hrt_sleep(const uint32_t ms) {
     hrt__pend_context_switch();
     hrt_port_crit_exit();
     hrt_port_yield_to_scheduler();
+}
+
+hrt_delay_result_t hrt_delay_until(const hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks) {
+    if (lateness_ticks != NULL) *lateness_ticks = 0u;
+
+#if HARDRT_DEBUG == 1
+    if (g_current < 0) {
+        hrt_error(ERR_INVALID_ID);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    const int current = g_current;
+    _hrt_tcb_t *t = hrt__tcb(current);
+#if HARDRT_DEBUG == 1
+    if (t == NULL || t->state != HRT_RUNNING) {
+        hrt_error(ERR_INVALID_TASK);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    hrt_tick_t distance = 0u;
+
+    /*
+     * Decide and publish the sleep atomically with respect to the tick source.
+     * No per-task deadline scan is added to the tick path: future deadlines
+     * reuse the existing intrusive delta sleeper queue.
+     */
+    hrt_port_crit_enter();
+    hrt_deadline_relation_t relation =
+        hrt__deadline_relation(g_tick, deadline, &distance);
+
+    if (relation == HRT_DEADLINE_AMBIGUOUS) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_INVALID_DEADLINE;
+    }
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+
+    t->wake_tick = deadline;
+    t->state = HRT_SLEEP;
+    sleepq_insert(current, distance);
+#if HARDRT_DEBUG == 1
+    dbg_pend_from_core++;
+#endif
+    hrt__pend_context_switch();
+    hrt_port_crit_exit();
+    hrt_port_yield_to_scheduler();
+
+    /*
+     * Expiry becoming READY on time is not enough: higher-priority work or IRQ
+     * interference may postpone actual continuation. Check again only when this
+     * task runs, making tardiness observable without adding tick-side scanning.
+     */
+    hrt_port_crit_enter();
+    relation = hrt__deadline_relation(g_tick, deadline, &distance);
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+    hrt_port_crit_exit();
+
+    /* Resuming before the absolute deadline violates the sleeper contract; an
+     * exact half-range separation is outside the supported comparison domain. */
+    hrt_error(ERR_INVALID_STATE);
+    return HRT_DELAY_INVALID_DEADLINE;
 }
 
 void hrt_yield(void) {

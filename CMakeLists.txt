@@ -146,7 +146,7 @@ set(LIBRARY_SOURCES
 
 set_source_files_properties("${SOURCE_CORE_DIR}/hardrt_core.c" PROPERTIES
   COMPILE_DEFINITIONS
-    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl;hrt_sleep=hrt__sleep_impl;hrt_yield=hrt__yield_impl;hrt_task_delete=hrt__task_delete_impl"
+    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl;hrt_sleep=hrt__sleep_impl;hrt_delay_until=hrt__delay_until_impl;hrt_yield=hrt__yield_impl;hrt_task_delete=hrt__task_delete_impl"
 )
 
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
