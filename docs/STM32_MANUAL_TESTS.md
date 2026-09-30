@@ -117,9 +117,9 @@ See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for the complete standardized relea
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 13 contracts
+## Functional validation: 14 contracts
 
-The board/OpenOCD probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
+The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **14 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -133,7 +133,8 @@ The board/OpenOCD probe is a prerequisite, not a functional feature. Functional 
 10. **Event flags hardware contract**: wait-all is completed incrementally by task and real TIM2 ISR producers; clear-on-exit removes matched bits; retained wait-any bits remain until explicitly cleared; ISR wake reports scheduler-aware `need_switch` and preempts when required.
 11. **Task notification hardware contract**: pending data survives unrelated semaphore blocking; overwrite/no-overwrite/set-bits semantics are checked; a real TIM2 ISR notification wakes and preempts correctly; increment plus counting-take preserves and consumes the count correctly.
 12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep/tick accounting is correct, and awakened higher-priority work preempts.
-13. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+13. **Stable periodic delay hardware contract**: one persistent phase drives repeated five-tick releases while two ticks per period are consumed as task execution; exact-deadline behavior is on time; an intentional three-tick late call returns `HRT_DELAY_MISSED` with the expected lateness and does not sleep or rebase phase.
+14. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
