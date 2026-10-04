@@ -126,6 +126,23 @@ jobs:
             exit 1
           fi
 
+          # While the historical evidence branch still exists, exercise the
+          # real 0.5.1 recovery path against its pinned retained chunks. Once
+          # release finalization removes that branch this check becomes a no-op.
+          if git ls-remote --exit-code --heads origin refs/heads/release/0.5.1 >/dev/null 2>&1; then
+            recovered_output="$RUNNER_TEMP/recovered-0.5.1"
+            bash scripts/finalize_release.sh \
+              0.5.1 \
+              "$RUNNER_TEMP/definitely-missing-0.5.1-run" \
+              --output-dir "$recovered_output"
+
+            recovered_archive="$recovered_output/hardrt-stm32-qualification-0.5.1.tar.xz"
+            recovered_checksum="$recovered_archive.sha256"
+            test -f "$recovered_archive"
+            test -f "$recovered_checksum"
+            (cd "$recovered_output" && sha256sum -c "$(basename "$recovered_checksum")")
+          fi
+
       - name: Generate Doxygen without documentation errors
         run: |
           cat > "$RUNNER_TEMP/Doxyfile" <<EOF
