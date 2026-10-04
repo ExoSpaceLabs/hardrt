@@ -130,6 +130,48 @@ jobs:
           # real 0.5.1 recovery path against its pinned retained chunks. Once
           # release finalization removes that branch this check becomes a no-op.
           if git ls-remote --exit-code --heads origin refs/heads/release/0.5.1 >/dev/null 2>&1; then
+            git fetch --force origin refs/heads/release/0.5.1:refs/remotes/origin/release/0.5.1
+            python3 - <<'PY'
+            import base64
+            import io
+            import subprocess
+            import tarfile
+            import zlib
+
+            ref = "refs/remotes/origin/release/0.5.1"
+            parts = []
+            for index in range(5):
+                path = f"release-assets/qualification.b64.part{index:02d}"
+                text = subprocess.check_output(
+                    ["git", "show", f"{ref}:{path}"],
+                    text=True,
+                )
+                parts.append("".join(text.split()))
+
+            encoded = "".join(parts)
+            encoded += "=" * ((-len(encoded)) % 4)
+            compressed = base64.b64decode(encoded, validate=True)
+            inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            unpacked = inflater.decompress(compressed)
+            unpacked += inflater.flush()
+
+            print(f"RECOVERY_DIAG encoded_chars={len(encoded)}")
+            print(f"RECOVERY_DIAG compressed_bytes={len(compressed)}")
+            print(f"RECOVERY_DIAG decompressed_bytes={len(unpacked)}")
+            print(f"RECOVERY_DIAG gzip_eof={inflater.eof}")
+
+            try:
+                archive = tarfile.open(fileobj=io.BytesIO(unpacked), mode="r:")
+                names = archive.getnames()
+                raw = [name for name in names if "/raw/" in name and not name.endswith("/")]
+                reports = [name for name in names if name.endswith("/qualification.md") or name == "qualification.md"]
+                print(f"RECOVERY_DIAG tar_entries={len(names)}")
+                print(f"RECOVERY_DIAG raw_files={len(raw)}")
+                print(f"RECOVERY_DIAG reports={reports}")
+            except Exception as exc:
+                print(f"RECOVERY_DIAG tar_error={type(exc).__name__}:{exc}")
+            PY
+
             recovered_output="$RUNNER_TEMP/recovered-0.5.1"
             bash scripts/finalize_release.sh \
               0.5.1 \
