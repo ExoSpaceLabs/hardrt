@@ -99,7 +99,7 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 
 The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and `PACKAGE_METADATA.txt` identifying the release version, qualified SHA, and source run directory.
 
-The local retention path is gitignored. The archive and checksum are release assets, not tracked source files.
+The local retention path is gitignored. The archive and checksum are retained evidence files, not tracked source files.
 
 ## 4. Finalize the release locally
 
@@ -120,7 +120,9 @@ Requirements:
 - `origin/develop` contains the release tag and may already be ahead;
 - the retained hardware run is a complete unfiltered PASS.
 
-The finalizer has no GitHub/GitLab/service-specific dependency. It does not use a hosting API, require an account login, inspect release pages, or upload assets.
+Historical 0.5.1 is the sole exception. Its complete original run directory is no longer retained, and the later `release/0.5.1` staging branch was audited as an incomplete copy. When the supplied 0.5.1 run path is missing, the finalizer validates [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md), the immutable qualified/release SHAs, and the qualification-diff guard. It does **not** fabricate a full archive from the partial staging data.
+
+The finalizer has no hosting-service CLI/API dependency. It does not require an account login, inspect release pages, or upload assets.
 
 The finalizer:
 
@@ -158,7 +160,9 @@ Use that only when intentionally regenerating the retained evidence package. Rel
 
 HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-For 0.5.1, the finalizer only validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`; packages the retained STM32 qualification run; verifies that package locally; and then performs optional branch cleanup.
+For 0.5.1, the finalizer validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), re-runs the post-qualification diff guard, and reports that no complete raw archive is retained.
+
+The October 2026 cleanup audit established that `release/0.5.1` contains only a truncated staging copy: 78 raw files are recoverable, `qualification.md` is absent, and the gzip stream is incomplete. That branch is therefore not treated as full qualification evidence and can be retired after the historical record has been verified.
 
 No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 

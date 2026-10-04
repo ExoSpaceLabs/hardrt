@@ -48,7 +48,7 @@ SHA256SUMS
 
 There is intentionally no combined bundle. A POSIX install tree contains compiled architecture-specific objects, so every published POSIX package identifies its Linux architecture explicitly.
 
-Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` verifies the software checksums, packages and uploads the retained physical evidence, verifies the published evidence checksum, publishes the draft release, and may then delete every remote branch except `main` and `develop`. CI must never synthesize or reinterpret physical evidence.
+Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` validates the release/source relationship, packages and verifies complete retained physical evidence locally, and may then delete every remote branch except `main` and `develop`. Hosting-service publication is separate from finalization. CI must never synthesize or reinterpret physical evidence.
 
 The full end-to-end sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
@@ -101,7 +101,7 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz
 hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 ```
 
-The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keeping hundreds of generated evidence files out of the Git repository while retaining the full audit trail as one release asset.
+The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keeping hundreds of generated evidence files out of the Git repository while retaining the full audit trail as one local evidence archive.
 
 The hardware evidence records the hardware-qualified source SHA. If the final tag points to a later commit under the release-automation-only exception, the qualification record and release issue must preserve both SHAs and the qualification-diff guard must pass.
 
@@ -114,7 +114,7 @@ After the tag workflow has staged the draft release, finalize it with:
   --cleanup-branches
 ```
 
-The finalizer publishes the physical `.tar.xz` package and checksum, verifies all release assets, publishes the draft release, and only then performs optional branch cleanup.
+The finalizer verifies the physical `.tar.xz` package and checksum locally and only then performs optional branch cleanup. It does not require a hosting-service CLI or account authentication.
 
 ## Current v0.5 matrix
 
@@ -185,7 +185,7 @@ These measurements characterize bounded implementation behavior. They are not fo
 
 Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was consolidated. They are development evidence, not substitutes for a release qualification run.
 
-Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected GitHub Release qualification artifact produced from the hardware-qualified source SHA.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected retained qualification package produced from the hardware-qualified source SHA.
 
 ## What belongs on hardware
 
@@ -217,9 +217,9 @@ For 0.5.1:
 6. if no tracked changes follow, promote/tag that exact SHA;
 7. if only release automation/documentation must change, apply those changes, run `scripts/check_release_qualification_diff.py` against the hardware-qualified SHA, require hosted/cross-build/documentation CI to remain green, and record both SHAs in the release tracker;
 8. align `main` and `develop`, create tag `0.5.1`, and publish the generated software artifacts from that tag;
-9. attach the retained physical qualification package and checksum to the GitHub Release.
+9. preserve the physical qualification result and evidence-retention state accurately.
 
-The 0.5.1 release predates the standardized draft-release/finalizer flow described above. Its published asset layout is historical and is not retroactively rewritten. Releases after 0.5.1 use the architecture-qualified POSIX and compressed physical-evidence contract.
+The 0.5.1 release predates the standardized finalizer flow described above. During later cleanup, the original full run directory was no longer available and the temporary staged branch was found to contain only a truncated copy. The durable result and retention limitation are recorded in [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md). No full raw-evidence archive is claimed for 0.5.1. Releases after 0.5.1 remain subject to the normal complete-evidence retention contract.
 
 The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
 

@@ -126,6 +126,15 @@ jobs:
             exit 1
           fi
 
+          historical_log="$RUNNER_TEMP/historical-finalizer.log"
+          bash scripts/finalize_release.sh \
+            0.5.1 \
+            "$RUNNER_TEMP/definitely-missing-0.5.1-run" \
+            > "$historical_log"
+          grep -q '^Historical 0.5.1 qualification record verification PASS$' "$historical_log"
+          grep -q '^  full raw archive retained: no$' "$historical_log"
+          grep -q '^Release finalization PASS: 0.5.1$' "$historical_log"
+
       - name: Generate Doxygen without documentation errors
         run: |
           cat > "$RUNNER_TEMP/Doxyfile" <<EOF
