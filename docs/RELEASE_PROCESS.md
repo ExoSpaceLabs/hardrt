@@ -164,6 +164,14 @@ A local package can likewise be rebuilt only with:
 --force-package
 ```
 
+## Historical 0.5.1 finalization compatibility
+
+HardRT 0.5.1 was published before the architecture-qualified Linux artifact contract was adopted. Its existing software assets remain historical and are not renamed or regenerated. The release contains the original generic POSIX archive, the Cortex-M archive, one now-obsolete combined software archive, and `SHA256SUMS`.
+
+`finalize_release.sh` recognizes that exact historical four-file layout **only when finalizing version `0.5.1`**. It verifies those published files against their `SHA256SUMS`, then continues through the normal physical-evidence packaging, upload, verification, and branch-cleanup path.
+
+This exception exists solely so the already-published 0.5.1 release can receive its retained physical qualification evidence without rewriting its tag or software artifacts. No later release may use the generic POSIX filename or a combined software archive.
+
 ## Canonical release assets
 
 A completed release contains software assets generated and validated by CI:
