@@ -21,7 +21,9 @@ branch except main and develop.
 
 Arguments:
   X.Y.Z       Existing non-v-prefixed release tag.
-  RUN_DIR     Passing full STM32 qualification run directory.
+  RUN_DIR     Passing full STM32 qualification run directory. For historical
+              0.5.1 only, a missing path is recovered from the retained
+              origin/release/0.5.1 evidence chunks.
 
 Options:
   --output-dir DIR      Local package output directory. Default:
@@ -37,10 +39,12 @@ Requirements:
   - an 'origin' remote containing main, develop, and the release tag;
   - origin/main must equal the release tag;
   - origin/develop may be ahead, but the release tag must remain its ancestor;
-  - RUN_DIR must be a complete passing unfiltered STM32 qualification run.
+  - RUN_DIR must be a complete passing unfiltered STM32 qualification run;
+  - historical 0.5.1 can recover that run from the retained release/0.5.1
+    branch when the local run directory no longer exists.
 
-No GitHub/GitLab/service-specific CLI, API, authentication, or release-asset
-publication is performed here. Release hosting, if desired, is a separate step.
+No hosting-service CLI, API, authentication, or release-asset publication is
+performed here. Release hosting, if desired, is a separate step.
 USAGE
 }
 
@@ -75,6 +79,90 @@ for cmd in git grep sed sha256sum python3 head tr awk sort basename tar xz; do
   need "$cmd"
 done
 
+RECOVERY_TMP=""
+cleanup() {
+  if [[ -n "$RECOVERY_TMP" ]]; then
+    rm -rf -- "$RECOVERY_TMP"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+recover_historical_051_run() {
+  local ref="refs/remotes/origin/release/0.5.1"
+  local encoded archive extract_root
+  local -a parts=(
+    "qualification.b64.part00:8d01c78e64d800541a9e00df79e89a6c19077d58"
+    "qualification.b64.part01:ebe925d5924e317733db0683600b67aa9db8898b"
+    "qualification.b64.part02:6ff3bf0d552de2466455c046269bff33a2e25ff7"
+    "qualification.b64.part03:98f012dcd6d3e6ccdd77e830f8e26b4b632d45f6"
+    "qualification.b64.part04:ccd01353caa6de290681d81262feacf073bc114c"
+  )
+  local spec name expected actual
+  local -a reports=()
+
+  need base64
+  need gzip
+  need find
+  need mktemp
+
+  echo "Qualification run directory is missing; recovering retained 0.5.1 evidence from origin/release/0.5.1."
+
+  git fetch --force origin "refs/heads/release/0.5.1:$ref" >/dev/null 2>&1 || {
+    echo "Could not fetch retained evidence branch: origin/release/0.5.1" >&2
+    return 1
+  }
+
+  RECOVERY_TMP="$(mktemp -d)"
+  encoded="$RECOVERY_TMP/qualification.b64"
+  archive="$RECOVERY_TMP/qualification.tar.gz"
+  extract_root="$RECOVERY_TMP/extracted"
+  mkdir -p "$extract_root"
+  : > "$encoded"
+
+  for spec in "${parts[@]}"; do
+    name="${spec%%:*}"
+    expected="${spec##*:}"
+    actual="$(git rev-parse "$ref:release-assets/$name" 2>/dev/null || true)"
+    [[ "$actual" == "$expected" ]] || {
+      echo "Retained 0.5.1 evidence chunk failed identity check: $name" >&2
+      echo "  expected blob: $expected" >&2
+      echo "  actual blob:   ${actual:-missing}" >&2
+      return 1
+    }
+    git show "$ref:release-assets/$name" >> "$encoded"
+  done
+
+  tr -d "\r\n\t " < "$encoded" | base64 --decode > "$archive" || {
+    echo "Retained 0.5.1 evidence chunks are not valid base64" >&2
+    return 1
+  }
+
+  gzip -t "$archive" || {
+    echo "Recovered 0.5.1 evidence archive failed gzip integrity check" >&2
+    return 1
+  }
+
+  tar -tzf "$archive" >/dev/null || {
+    echo "Recovered 0.5.1 evidence is not a valid tar.gz archive" >&2
+    return 1
+  }
+
+  tar -xzf "$archive" -C "$extract_root"
+  mapfile -t reports < <(find "$extract_root" -type f -name qualification.md -print | sort)
+
+  [[ "${#reports[@]}" -eq 1 ]] || {
+    echo "Expected exactly one qualification.md in retained 0.5.1 evidence; found ${#reports[@]}" >&2
+    return 1
+  }
+
+  RUN_DIR="$(dirname "${reports[0]}")"
+  [[ -d "$RUN_DIR/raw" ]] || {
+    echo "Recovered 0.5.1 qualification run is missing raw evidence: $RUN_DIR/raw" >&2
+    return 1
+  }
+
+  echo "Recovered retained qualification run: $RUN_DIR"
+}
 cd "$ROOT_DIR"
 
 git remote get-url origin >/dev/null 2>&1 || {
@@ -110,6 +198,15 @@ PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0
   echo "Tag version $VERSION does not match CMake project version $PROJECT_VERSION" >&2
   exit 1
 }
+
+if [[ ! -d "$RUN_DIR" ]]; then
+  if [[ "$VERSION" == "0.5.1" ]]; then
+    recover_historical_051_run
+  else
+    echo "Qualification run directory does not exist: $RUN_DIR" >&2
+    exit 2
+  fi
+fi
 
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$ROOT_DIR/validation/stm32/releases/$VERSION"
@@ -174,7 +271,7 @@ mapfile -t EXTRA_BRANCHES < <(
 )
 
 if (( CLEANUP_BRANCHES != 0 )); then
-  if (("${#EXTRA_BRANCHES[@]}")); then
+  if (( ${#EXTRA_BRANCHES[@]} )); then
     echo
     echo "Remote branches scheduled for deletion:"
     printf '  %s\n' "${EXTRA_BRANCHES[@]}"
@@ -208,7 +305,7 @@ if (( CLEANUP_BRANCHES != 0 )); then
   fi
 
   echo "Remote branch cleanup PASS: main and develop only"
-elif (("${#EXTRA_BRANCHES[@]}")); then
+elif (( ${#EXTRA_BRANCHES[@]} )); then
   echo
   echo "Temporary remote branches remain:"
   printf '  %s\n' "${EXTRA_BRANCHES[@]}"
