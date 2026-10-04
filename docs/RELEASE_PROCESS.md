@@ -99,7 +99,7 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 
 The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and `PACKAGE_METADATA.txt` identifying the release version, qualified SHA, and source run directory.
 
-The local retention path is gitignored. The archive and checksum are release assets, not tracked source files.
+The local retention path is gitignored. The archive and checksum are retained evidence files, not tracked source files.
 
 ## 4. Finalize the release locally
 
@@ -120,7 +120,9 @@ Requirements:
 - `origin/develop` contains the release tag and may already be ahead;
 - the retained hardware run is a complete unfiltered PASS.
 
-The finalizer has no GitHub/GitLab/service-specific dependency. It does not use a hosting API, require an account login, inspect release pages, or upload assets.
+For historical 0.5.1 only, the original run may already be absent from the workstation. If the supplied run path does not exist, the finalizer fetches `origin/release/0.5.1`, verifies the five retained evidence chunks by their Git blob IDs, reconstructs the base64/gzip archive in a temporary directory, verifies it, locates the single qualification run, and proceeds normally. The branch is not deleted until the recovered run has been repackaged and verified into the canonical local evidence files.
+
+The finalizer has no hosting-service CLI/API dependency. It does not require an account login, inspect release pages, or upload assets.
 
 The finalizer:
 
@@ -158,7 +160,9 @@ Use that only when intentionally regenerating the retained evidence package. Rel
 
 HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-For 0.5.1, the finalizer only validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`; packages the retained STM32 qualification run; verifies that package locally; and then performs optional branch cleanup.
+For 0.5.1, the finalizer validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`; packages the retained STM32 qualification run; verifies that package locally; and then performs optional branch cleanup.
+
+If the original run directory is gone, the finalizer recovers it from the exact retained chunk set on `origin/release/0.5.1`. The chunk blob IDs are pinned in the historical recovery path, so branch cleanup cannot silently consume modified evidence.
 
 No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 
