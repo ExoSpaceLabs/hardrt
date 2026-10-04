@@ -89,7 +89,7 @@ trap cleanup EXIT INT TERM
 
 recover_historical_051_run() {
   local ref="refs/remotes/origin/release/0.5.1"
-  local archive extract_root encoded_part
+  local archive extract_root encoded_text padding
   local -a parts=(
     "qualification.b64.part00:8d01c78e64d800541a9e00df79e89a6c19077d58"
     "qualification.b64.part01:ebe925d5924e317733db0683600b67aa9db8898b"
@@ -129,9 +129,18 @@ recover_historical_051_run() {
       return 1
     }
 
-    encoded_part="$RECOVERY_TMP/$name"
-    git show "$ref:release-assets/$name" | tr -d "\r\n\t " > "$encoded_part"
-    base64 --decode "$encoded_part" >> "$archive" || {
+    encoded_text="$(git show "$ref:release-assets/$name" | tr -d "\r\n\t ")"
+    case $(( ${#encoded_text} % 4 )) in
+      0) padding="" ;;
+      2) padding="==" ;;
+      3) padding="=" ;;
+      *)
+        echo "Retained 0.5.1 evidence chunk has invalid base64 length: $name" >&2
+        return 1
+        ;;
+    esac
+
+    printf '%s%s' "$encoded_text" "$padding" | base64 --decode >> "$archive" || {
       echo "Retained 0.5.1 evidence chunk is not valid base64: $name" >&2
       return 1
     }
