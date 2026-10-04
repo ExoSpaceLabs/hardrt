@@ -177,7 +177,7 @@ for required in (
     "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
     "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
     "hardrt-stm32-qualification-X.Y.Z.tar.xz",
-    "--cleanup-branches",
+    "Branch cleanup is deliberately **outside** the finalizer",
     "draft",
 ):
     if required not in release_process:
