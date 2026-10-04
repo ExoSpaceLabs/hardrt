@@ -5,8 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION=""
 RUN_DIR=""
 OUTPUT_DIR=""
-CLEANUP_BRANCHES=0
-ASSUME_YES=0
+LEGACY_CLEANUP_REQUESTED=0
 FORCE_PACKAGE=0
 
 usage() {
@@ -15,9 +14,9 @@ Usage:
   scripts/finalize_release.sh X.Y.Z RUN_DIR [options]
 
 Finalize an already-tagged HardRT release without any hosting-service CLI.
-The script validates the release tag/history, packages and verifies the retained
-STM32 qualification evidence locally, and can optionally delete every remote
-branch except main and develop.
+The script validates the release tag/history and packages/verifies retained
+STM32 qualification evidence locally. It never creates, deletes, or rewrites
+remote branches.
 
 Arguments:
   X.Y.Z       Existing non-v-prefixed release tag.
@@ -29,9 +28,8 @@ Options:
   --output-dir DIR      Local package output directory. Default:
                         validation/stm32/releases/X.Y.Z/
   --force-package       Rebuild an existing local qualification package.
-  --cleanup-branches    Delete every remote branch except main and develop after
-                        local evidence verification succeeds.
-  --yes                 Do not prompt before --cleanup-branches deletion.
+  --cleanup-branches    Deprecated compatibility no-op. Branch cleanup is manual.
+  --yes                 Deprecated compatibility no-op.
   -h, --help            Show this help.
 
 Requirements:
@@ -57,8 +55,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --force-package) FORCE_PACKAGE=1; shift ;;
-    --cleanup-branches) CLEANUP_BRANCHES=1; shift ;;
-    --yes) ASSUME_YES=1; shift ;;
+    --cleanup-branches) LEGACY_CLEANUP_REQUESTED=1; shift ;;
+    --yes) shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -248,53 +246,9 @@ else
   echo "No full physical-evidence archive is claimed or generated because the raw archive is not fully retained."
 fi
 
-mapfile -t EXTRA_BRANCHES < <(
-  git ls-remote --heads origin \
-    | awk '{sub("refs/heads/", "", $2); print $2}' \
-    | grep -Ev '^(main|develop)$' \
-    | sort || true
-)
-
-if (( CLEANUP_BRANCHES != 0 )); then
-  if (( ${#EXTRA_BRANCHES[@]} )); then
-    echo
-    echo "Remote branches scheduled for deletion:"
-    printf '  %s\n' "${EXTRA_BRANCHES[@]}"
-    echo
-    echo "Policy after release finalization: retain only main and develop."
-
-    if (( ASSUME_YES == 0 )); then
-      read -r -p "Delete all listed remote branches? [y/N]: " answer
-      case "${answer,,}" in
-        y|yes) ;;
-        *) echo "Branch cleanup cancelled" >&2; exit 1 ;;
-      esac
-    fi
-
-    git push origin --delete "${EXTRA_BRANCHES[@]}"
-    git fetch --prune origin
-  else
-    echo "Remote branch cleanup: nothing to delete"
-  fi
-
-  mapfile -t REMAINING_BRANCHES < <(
-    git ls-remote --heads origin |
-      awk '{sub("refs/heads/", "", $2); print $2}' |
-      sort
-  )
-
-  if [[ "${REMAINING_BRANCHES[*]}" != "develop main" ]]; then
-    echo "Unexpected remote branch set after cleanup:" >&2
-    printf '  %s\n' "${REMAINING_BRANCHES[@]}" >&2
-    exit 1
-  fi
-
-  echo "Remote branch cleanup PASS: main and develop only"
-elif (( ${#EXTRA_BRANCHES[@]} )); then
-  echo
-  echo "Temporary remote branches remain:"
-  printf '  %s\n' "${EXTRA_BRANCHES[@]}"
-  echo "Run again with --cleanup-branches after confirming local evidence is retained."
+if (( LEGACY_CLEANUP_REQUESTED != 0 )); then
+  echo "Branch cleanup not performed: --cleanup-branches is deprecated and ignored."
+  echo "Delete temporary branches manually after reviewing the remote branch list."
 fi
 
 echo "Release finalization PASS: $VERSION"
