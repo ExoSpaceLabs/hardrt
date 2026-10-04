@@ -162,7 +162,18 @@ For 0.5.1, the finalizer only validates the immutable git relationship between t
 
 No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 
-## Canonical retained evidence
+## Canonical artifacts and retained evidence
+
+The release workflow still produces the canonical software packages:
+
+```text
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
+hardrt-cortexm-X.Y.Z.tar.gz
+SHA256SUMS
+```
+
+Those software artifacts are validated by CI and are independent of the local finalizer.
 
 Physical qualification evidence is retained locally as:
 
