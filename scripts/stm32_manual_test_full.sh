@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=13
+FUNCTIONAL_TOTAL=14
 BENCHMARK_TOTAL=38
 
 NAMES=()
@@ -536,6 +536,20 @@ external_tick_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+periodic_delay_case() {
+  local prefix=periodic_delay status=PASS notes=""
+  local title="Stable periodic delay hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_periodic_validation/build-cortex_m/hardrt_h755_periodic_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Absolute releases retain one phase while two ticks of each five-tick period are consumed as task execution; exact deadline is on time; an intentional three-tick late call reports HRT_DELAY_MISSED with lateness=3 without sleeping."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-periodic-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/periodic_delay_validation.dbg" "$prefix"; then status=FAIL; notes="Periodic-delay GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|phase=|miss_result=|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 basepri_case() {
   local prefix=basepri_validation status=PASS notes=""
   local title="BASEPRI critical-section hardware contract"
@@ -584,6 +598,7 @@ run_functional_matrix() {
   ipc_case event "Event flags hardware contract"
   ipc_case notification "Task notification hardware contract"
   external_tick_case
+  periodic_delay_case
   basepri_case
 }
 

@@ -7,6 +7,7 @@
 #include "hardrt_cfg.h"
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
+#include "hardrt_deadline.h"
 
 #ifndef HARDRT_STALL_ON_ERROR
 #define HARDRT_STALL_ON_ERROR 0
@@ -588,6 +589,85 @@ void hrt_sleep(const uint32_t ms) {
     hrt__pend_context_switch();
     hrt_port_crit_exit();
     hrt_port_yield_to_scheduler();
+}
+
+hrt_delay_result_t hrt_delay_until(const hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks) {
+    if (lateness_ticks != NULL) *lateness_ticks = 0u;
+
+#if HARDRT_DEBUG == 1
+    if (g_current < 0) {
+        hrt_error(ERR_INVALID_ID);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    const int current = g_current;
+    _hrt_tcb_t *t = hrt__tcb(current);
+#if HARDRT_DEBUG == 1
+    if (t == NULL || t->state != HRT_RUNNING) {
+        hrt_error(ERR_INVALID_TASK);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    hrt_tick_t distance = 0u;
+
+    /*
+     * Decide and publish the sleep atomically with respect to the tick source.
+     * No per-task deadline scan is added to the tick path: future deadlines
+     * reuse the existing intrusive delta sleeper queue.
+     */
+    hrt_port_crit_enter();
+    hrt_deadline_relation_t relation =
+        hrt__deadline_relation(g_tick, deadline, &distance);
+
+    if (relation == HRT_DEADLINE_AMBIGUOUS) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_INVALID_DEADLINE;
+    }
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+
+    t->wake_tick = deadline;
+    t->state = HRT_SLEEP;
+    sleepq_insert(current, distance);
+#if HARDRT_DEBUG == 1
+    dbg_pend_from_core++;
+#endif
+    hrt__pend_context_switch();
+    hrt_port_crit_exit();
+    hrt_port_yield_to_scheduler();
+
+    /*
+     * Expiry becoming READY on time is not enough: higher-priority work or IRQ
+     * interference may postpone actual continuation. Check again only when this
+     * task runs, making tardiness observable without adding tick-side scanning.
+     */
+    hrt_port_crit_enter();
+    relation = hrt__deadline_relation(g_tick, deadline, &distance);
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+    hrt_port_crit_exit();
+
+    /* Resuming before the absolute deadline violates the sleeper contract; an
+     * exact half-range separation is outside the supported comparison domain. */
+    hrt_error(ERR_INVALID_STATE);
+    return HRT_DELAY_INVALID_DEADLINE;
 }
 
 void hrt_yield(void) {
