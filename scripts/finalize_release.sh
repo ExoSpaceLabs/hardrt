@@ -4,11 +4,9 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION=""
 RUN_DIR=""
-REPO=""
 OUTPUT_DIR=""
 CLEANUP_BRANCHES=0
 ASSUME_YES=0
-REPLACE_ASSETS=0
 FORCE_PACKAGE=0
 
 usage() {
@@ -16,44 +14,33 @@ usage() {
 Usage:
   scripts/finalize_release.sh X.Y.Z RUN_DIR [options]
 
-Finalize an already-tagged HardRT release by validating the CI-produced native
-Linux/POSIX and Cortex-M software assets, packaging and publishing the retained
-STM32 qualification evidence, verifying both checksum sets, publishing a draft
-GitHub Release when applicable, and optionally deleting all remote branches
-except main and develop.
+Finalize an already-tagged HardRT release without any hosting-service CLI.
+The script validates the release tag/history, packages and verifies the retained
+STM32 qualification evidence locally, and can optionally delete every remote
+branch except main and develop.
 
 Arguments:
   X.Y.Z       Existing non-v-prefixed release tag.
   RUN_DIR     Passing full STM32 qualification run directory.
 
 Options:
-  --repo OWNER/REPO     GitHub repository. Default: resolved by `gh repo view`.
   --output-dir DIR      Local package output directory. Default:
                         validation/stm32/releases/X.Y.Z/
   --force-package       Rebuild an existing local qualification package.
-  --replace-assets      Replace same-named qualification assets on the release.
-                        Without this flag, identical existing assets are accepted
-                        and different existing assets fail safely.
   --cleanup-branches    Delete every remote branch except main and develop after
-                        release publication and verification succeeds.
-  --yes                 Accept supported setup/cleanup prompts non-interactively.
+                        local evidence verification succeeds.
+  --yes                 Do not prompt before --cleanup-branches deletion.
   -h, --help            Show this help.
 
-Dependencies:
-  The finalizer requires GitHub CLI (gh) for release asset publication and
-  verification. If gh is missing, the script offers to install it using a
-  supported package manager. With --yes, that installation is accepted
-  automatically. GitHub authentication is still required; on an interactive
-  terminal the script can launch 'gh auth login' when needed.
+Requirements:
+  - standard command-line tools plus git;
+  - an 'origin' remote containing main, develop, and the release tag;
+  - origin/main must equal the release tag;
+  - origin/develop may be ahead, but the release tag must remain its ancestor;
+  - RUN_DIR must be a complete passing unfiltered STM32 qualification run.
 
-The script requires the release tag to equal origin/main. origin/develop may be
-at the release tag or ahead of it, but the release tag must remain its ancestor.
-The tag itself is never moved or rewritten.
-
-The canonical software asset contract is architecture-qualified Linux amd64 and
-arm64 packages plus the Cortex-M package. The already-published 0.5.1 release is
-recognized as a strict historical exception with its original generic POSIX and
-bundle assets; that compatibility path does not apply to any later version.
+No GitHub/GitLab/service-specific CLI, API, authentication, or release-asset
+publication is performed here. Release hosting, if desired, is a separate step.
 USAGE
 }
 
@@ -64,10 +51,8 @@ shift 2
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) REPO="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --force-package) FORCE_PACKAGE=1; shift ;;
-    --replace-assets) REPLACE_ASSETS=1; shift ;;
     --cleanup-branches) CLEANUP_BRANCHES=1; shift ;;
     --yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -86,127 +71,16 @@ need() {
     exit 2
   }
 }
-
-run_privileged() {
-  if (( EUID == 0 )); then
-    "$@"
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo "$@"
-  else
-    echo "Installing GitHub CLI requires root privileges, but sudo is unavailable." >&2
-    return 1
-  fi
-}
-
-confirm_gh_install() {
-  if (( ASSUME_YES != 0 )); then
-    return 0
-  fi
-  if [[ ! -t 0 ]]; then
-    echo "GitHub CLI (gh) is required but missing, and no interactive terminal is available." >&2
-    echo "Install gh, then rerun the finalizer." >&2
-    return 1
-  fi
-
-  echo "GitHub CLI (gh) is required to inspect, upload, download, and verify GitHub Release assets."
-  read -r -p "Install GitHub CLI now? [Y/n]: " answer
-  case "${answer,,}" in
-    ""|y|yes) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-install_gh() {
-  confirm_gh_install || {
-    echo "GitHub CLI installation declined; release finalization cannot continue." >&2
-    return 1
-  }
-
-  echo "Installing GitHub CLI (gh)..."
-
-  if command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1; then
-    # GitHub recommends its official Debian/Ubuntu package repository. Older
-    # distro-provided gh versions have used deprecated GitHub APIs.
-    if ! command -v wget >/dev/null 2>&1; then
-      run_privileged apt-get update
-      run_privileged apt-get install -y wget
-    fi
-    need mktemp
-    local key_tmp
-    key_tmp="$(mktemp)"
-    trap 'rm -f -- "$key_tmp"' RETURN
-
-    wget -nv -O"$key_tmp" https://cli.github.com/packages/githubcli-archive-keyring.gpg
-    run_privileged mkdir -p -m 755 /etc/apt/keyrings
-    run_privileged cp "$key_tmp" /etc/apt/keyrings/githubcli-archive-keyring.gpg
-    run_privileged chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n'       "$(dpkg --print-architecture)"       | run_privileged tee /etc/apt/sources.list.d/github-cli.list >/dev/null
-    run_privileged apt-get update
-    run_privileged apt-get install -y gh
-    trap - RETURN
-    rm -f -- "$key_tmp"
-  elif command -v dnf >/dev/null 2>&1; then
-    run_privileged dnf install -y gh
-  elif command -v yum >/dev/null 2>&1; then
-    run_privileged yum install -y gh
-  elif command -v zypper >/dev/null 2>&1; then
-    run_privileged zypper --non-interactive install gh
-  elif command -v pacman >/dev/null 2>&1; then
-    run_privileged pacman -S --needed --noconfirm github-cli
-  elif command -v brew >/dev/null 2>&1; then
-    brew install gh
-  else
-    echo "No supported package manager was detected for automatic gh installation." >&2
-    echo "Install GitHub CLI from https://cli.github.com/ and rerun the finalizer." >&2
-    return 1
-  fi
-
-  command -v gh >/dev/null 2>&1 || {
-    echo "GitHub CLI installation completed without making 'gh' available on PATH." >&2
-    return 1
-  }
-  echo "GitHub CLI installed: $(gh --version | head -n1)"
-}
-
-ensure_gh_auth() {
-  if gh auth status >/dev/null 2>&1; then
-    return 0
-  fi
-
-  echo "GitHub CLI is installed but not authenticated." >&2
-  if [[ -t 0 && -t 1 ]]; then
-    if (( ASSUME_YES == 0 )); then
-      read -r -p "Run 'gh auth login' now? [Y/n]: " answer
-      case "${answer,,}" in
-        ""|y|yes) ;;
-        *)
-          echo "Authenticate with 'gh auth login' and rerun the finalizer." >&2
-          return 1
-          ;;
-      esac
-    fi
-    gh auth login
-    gh auth status >/dev/null 2>&1 || {
-      echo "GitHub CLI authentication did not complete successfully." >&2
-      return 1
-    }
-    return 0
-  fi
-
-  echo "No interactive terminal is available. Run 'gh auth login' and rerun the finalizer." >&2
-  return 1
-}
-
-for cmd in git grep sed sha256sum python3 head tr awk sort cmp mktemp basename; do need "$cmd"; done
-command -v gh >/dev/null 2>&1 || install_gh
-ensure_gh_auth
+for cmd in git grep sed sha256sum python3 head tr awk sort basename tar xz; do
+  need "$cmd"
+done
 
 cd "$ROOT_DIR"
 
-if [[ -z "$REPO" ]]; then
-  REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner')"
-fi
-[[ "$REPO" == */* ]] || { echo "Could not resolve OWNER/REPO" >&2; exit 2; }
+git remote get-url origin >/dev/null 2>&1 || {
+  echo "Missing git remote: origin" >&2
+  exit 2
+}
 
 git fetch --force --prune origin \
   refs/heads/main:refs/remotes/origin/main \
@@ -237,87 +111,17 @@ PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0
   exit 1
 }
 
-RELEASE_JSON="$(gh api "repos/${REPO}/releases/tags/${VERSION}" 2>/dev/null)" || {
-  echo "GitHub Release does not exist for tag $VERSION" >&2
-  exit 1
-}
-RELEASE_TAG="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
-RELEASE_DRAFT="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["draft"]).lower())')"
-RELEASE_IMMUTABLE="$(printf '%s' "$RELEASE_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("immutable", False)).lower())')"
-[[ "$RELEASE_TAG" == "$VERSION" ]] || { echo "GitHub Release tag mismatch: $RELEASE_TAG" >&2; exit 1; }
-
-TMP_DIR="$(mktemp -d)"
-cleanup() { rm -rf -- "$TMP_DIR"; }
-trap cleanup EXIT INT TERM
-
-asset_exists() {
-  local name="$1"
-  gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' | grep -Fqx "$name"
-}
-
-all_assets_exist() {
-  local asset
-  for asset in "$@"; do
-    asset_exists "$asset" || return 1
-  done
-}
-
-CANONICAL_SOFTWARE_ASSETS=(
-  "hardrt-posix-linux-amd64-${VERSION}.tar.gz"
-  "hardrt-posix-linux-arm64-${VERSION}.tar.gz"
-  "hardrt-cortexm-${VERSION}.tar.gz"
-  "SHA256SUMS"
-)
-LEGACY_051_SOFTWARE_ASSETS=(
-  "hardrt-posix-0.5.1.tar.gz"
-  "hardrt-cortexm-0.5.1.tar.gz"
-  "hardrt-bundle-0.5.1.tar.gz"
-  "SHA256SUMS"
-)
-
-SOFTWARE_ASSET_CONTRACT=""
-SOFTWARE_ASSETS=()
-if all_assets_exist "${CANONICAL_SOFTWARE_ASSETS[@]}"; then
-  SOFTWARE_ASSET_CONTRACT="canonical-native-linux"
-  SOFTWARE_ASSETS=("${CANONICAL_SOFTWARE_ASSETS[@]}")
-elif [[ "$VERSION" == "0.5.1" ]] && all_assets_exist "${LEGACY_051_SOFTWARE_ASSETS[@]}"; then
-  SOFTWARE_ASSET_CONTRACT="historical-0.5.1"
-  SOFTWARE_ASSETS=("${LEGACY_051_SOFTWARE_ASSETS[@]}")
-  echo "Using historical 0.5.1 software asset contract; future releases require native amd64/arm64 packages."
-else
-  echo "Release does not satisfy the canonical software asset contract:" >&2
-  printf '  required: %s\n' "${CANONICAL_SOFTWARE_ASSETS[@]}" >&2
-  if [[ "$VERSION" == "0.5.1" ]]; then
-    echo "The exact historical 0.5.1 asset set is also accepted for this version only:" >&2
-    printf '  legacy:   %s\n' "${LEGACY_051_SOFTWARE_ASSETS[@]}" >&2
-  fi
-  exit 1
-fi
-
-SOFTWARE_VERIFY_DIR="$TMP_DIR/software"
-mkdir -p "$SOFTWARE_VERIFY_DIR"
-DOWNLOAD_ARGS=()
-for asset in "${SOFTWARE_ASSETS[@]}"; do
-  DOWNLOAD_ARGS+=(--pattern "$asset")
-done
-gh release download "$VERSION" --repo "$REPO" \
-  "${DOWNLOAD_ARGS[@]}" \
-  --dir "$SOFTWARE_VERIFY_DIR"
-(
-  cd "$SOFTWARE_VERIFY_DIR"
-  sha256sum -c SHA256SUMS
-)
-echo "Release software asset verification PASS ($SOFTWARE_ASSET_CONTRACT)"
-
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$ROOT_DIR/validation/stm32/releases/$VERSION"
 fi
+
 PACKAGE_ARGS=("$VERSION" "$RUN_DIR" --output-dir "$OUTPUT_DIR")
 (( FORCE_PACKAGE == 0 )) || PACKAGE_ARGS+=(--force)
 "$ROOT_DIR/scripts/package_stm32_qualification.sh" "${PACKAGE_ARGS[@]}"
 
 RUN_DIR_ABS="$(cd "$RUN_DIR" && pwd)"
 REPORT="$RUN_DIR_ABS/qualification.md"
+
 # The sed program is deliberately single-quoted so the Markdown backticks and
 # capture expression remain literal shell input.
 # shellcheck disable=SC2016
@@ -333,6 +137,7 @@ git merge-base --is-ancestor "$QUALIFIED_SHA" "$TAG_SHA" || {
   echo "  release:   $TAG_SHA" >&2
   exit 1
 }
+
 python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
 
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
@@ -340,84 +145,26 @@ ARCHIVE_NAME="hardrt-stm32-qualification-${VERSION}.tar.xz"
 CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
 ARCHIVE="$OUTPUT_DIR/$ARCHIVE_NAME"
 CHECKSUM="$OUTPUT_DIR/$CHECKSUM_NAME"
+PACKAGE_ROOT="hardrt-stm32-qualification-${VERSION}"
+
 [[ -f "$ARCHIVE" && -f "$CHECKSUM" ]] || {
   echo "Qualification package helper did not produce expected files" >&2
   exit 1
 }
 
-ensure_asset() {
-  local path="$1"
-  local name
-  name="$(basename "$path")"
-
-  if asset_exists "$name"; then
-    if (( REPLACE_ASSETS != 0 )); then
-      [[ "$RELEASE_IMMUTABLE" != "true" ]] || {
-        echo "Release is immutable; published asset cannot be replaced: $name" >&2
-        exit 1
-      }
-      echo "Replacing release asset: $name"
-      gh release upload "$VERSION" "$path" --repo "$REPO" --clobber
-      return
-    fi
-
-    local existing_dir="$TMP_DIR/existing-$name"
-    mkdir -p "$existing_dir"
-    gh release download "$VERSION" --repo "$REPO" --pattern "$name" --dir "$existing_dir"
-    if cmp -s "$path" "$existing_dir/$name"; then
-      echo "Release asset already matches local file: $name"
-      return
-    fi
-
-    echo "Release asset exists but differs from local file: $name" >&2
-    echo "Use --replace-assets only after explicitly deciding to replace published evidence." >&2
-    exit 1
-  fi
-
-  [[ "$RELEASE_IMMUTABLE" != "true" ]] || {
-    echo "Release is immutable and qualification asset is missing: $name" >&2
-    exit 1
-  }
-  echo "Uploading release asset: $name"
-  gh release upload "$VERSION" "$path" --repo "$REPO"
-}
-
-ensure_asset "$ARCHIVE"
-ensure_asset "$CHECKSUM"
-
-VERIFY_DIR="$TMP_DIR/qualification"
-mkdir -p "$VERIFY_DIR"
-gh release download "$VERSION" --repo "$REPO" \
-  --pattern "$ARCHIVE_NAME" \
-  --pattern "$CHECKSUM_NAME" \
-  --dir "$VERIFY_DIR"
-cmp -s "$CHECKSUM" "$VERIFY_DIR/$CHECKSUM_NAME" || {
-  echo "Published checksum asset differs from local checksum" >&2
-  exit 1
-}
+xz -t "$ARCHIVE"
+tar -tJf "$ARCHIVE" | grep -Fqx "$PACKAGE_ROOT/qualification.md"
+tar -tJf "$ARCHIVE" | grep -Fqx "$PACKAGE_ROOT/PACKAGE_METADATA.txt"
 (
-  cd "$VERIFY_DIR"
+  cd "$OUTPUT_DIR"
   sha256sum -c "$CHECKSUM_NAME"
 )
-echo "Physical qualification asset verification PASS"
 
-if [[ "$RELEASE_DRAFT" == "true" ]]; then
-  gh release edit "$VERSION" --repo "$REPO" --draft=false
-  echo "GitHub Release published: $VERSION"
-fi
-FINAL_DRAFT="$(gh api "repos/${REPO}/releases/tags/${VERSION}" --jq '.draft')"
-[[ "$FINAL_DRAFT" == "false" ]] || {
-  echo "GitHub Release is still a draft after finalization" >&2
-  exit 1
-}
-
-printf 'Release publication PASS\n'
-printf '  repository:       %s\n' "$REPO"
+echo "Local physical qualification evidence verification PASS"
 printf '  release/tag:      %s @ %s\n' "$VERSION" "$TAG_SHA"
-printf '  software assets:  %s\n' "$SOFTWARE_ASSET_CONTRACT"
 printf '  qualified SHA:    %s\n' "$QUALIFIED_SHA"
-printf '  archive:          %s\n' "$ARCHIVE_NAME"
-printf '  checksum:         %s\n' "$CHECKSUM_NAME"
+printf '  archive:          %s\n' "$ARCHIVE"
+printf '  checksum:         %s\n' "$CHECKSUM"
 
 mapfile -t EXTRA_BRANCHES < <(
   git ls-remote --heads origin \
@@ -427,7 +174,7 @@ mapfile -t EXTRA_BRANCHES < <(
 )
 
 if (( CLEANUP_BRANCHES != 0 )); then
-  if ((${#EXTRA_BRANCHES[@]})); then
+  if (("${#EXTRA_BRANCHES[@]}")); then
     echo
     echo "Remote branches scheduled for deletion:"
     printf '  %s\n' "${EXTRA_BRANCHES[@]}"
@@ -449,19 +196,23 @@ if (( CLEANUP_BRANCHES != 0 )); then
   fi
 
   mapfile -t REMAINING_BRANCHES < <(
-    git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort
+    git ls-remote --heads origin |
+      awk '{sub("refs/heads/", "", $2); print $2}' |
+      sort
   )
+
   if [[ "${REMAINING_BRANCHES[*]}" != "develop main" ]]; then
     echo "Unexpected remote branch set after cleanup:" >&2
     printf '  %s\n' "${REMAINING_BRANCHES[@]}" >&2
     exit 1
   fi
+
   echo "Remote branch cleanup PASS: main and develop only"
-elif ((${#EXTRA_BRANCHES[@]})); then
+elif (("${#EXTRA_BRANCHES[@]}")); then
   echo
-  echo "Release is published, but remote temporary branches remain:"
+  echo "Temporary remote branches remain:"
   printf '  %s\n' "${EXTRA_BRANCHES[@]}"
-  echo "Run again with --cleanup-branches after confirming all branch work is complete."
+  echo "Run again with --cleanup-branches after confirming local evidence is retained."
 fi
 
 echo "Release finalization PASS: $VERSION"
