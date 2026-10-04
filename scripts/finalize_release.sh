@@ -89,7 +89,7 @@ trap cleanup EXIT INT TERM
 
 recover_historical_051_run() {
   local ref="refs/remotes/origin/release/0.5.1"
-  local encoded archive extract_root
+  local archive extract_root encoded_part
   local -a parts=(
     "qualification.b64.part00:8d01c78e64d800541a9e00df79e89a6c19077d58"
     "qualification.b64.part01:ebe925d5924e317733db0683600b67aa9db8898b"
@@ -113,11 +113,10 @@ recover_historical_051_run() {
   }
 
   RECOVERY_TMP="$(mktemp -d)"
-  encoded="$RECOVERY_TMP/qualification.b64"
   archive="$RECOVERY_TMP/qualification.tar.gz"
   extract_root="$RECOVERY_TMP/extracted"
   mkdir -p "$extract_root"
-  : > "$encoded"
+  : > "$archive"
 
   for spec in "${parts[@]}"; do
     name="${spec%%:*}"
@@ -129,14 +128,14 @@ recover_historical_051_run() {
       echo "  actual blob:   ${actual:-missing}" >&2
       return 1
     }
-    git show "$ref:release-assets/$name" >> "$encoded"
+
+    encoded_part="$RECOVERY_TMP/$name"
+    git show "$ref:release-assets/$name" | tr -d "\r\n\t " > "$encoded_part"
+    base64 --decode "$encoded_part" >> "$archive" || {
+      echo "Retained 0.5.1 evidence chunk is not valid base64: $name" >&2
+      return 1
+    }
   done
-
-  tr -d "\r\n\t " < "$encoded" | base64 --decode > "$archive" || {
-    echo "Retained 0.5.1 evidence chunks are not valid base64" >&2
-    return 1
-  }
-
   gzip -t "$archive" || {
     echo "Recovered 0.5.1 evidence archive failed gzip integrity check" >&2
     return 1
