@@ -36,8 +36,15 @@ Options:
                         and different existing assets fail safely.
   --cleanup-branches    Delete every remote branch except main and develop after
                         release publication and verification succeeds.
-  --yes                 Do not prompt before --cleanup-branches deletion.
+  --yes                 Accept supported setup/cleanup prompts non-interactively.
   -h, --help            Show this help.
+
+Dependencies:
+  The finalizer requires GitHub CLI (gh) for release asset publication and
+  verification. If gh is missing, the script offers to install it using a
+  supported package manager. With --yes, that installation is accepted
+  automatically. GitHub authentication is still required; on an interactive
+  terminal the script can launch 'gh auth login' when needed.
 
 The script requires the release tag to equal origin/main. origin/develop may be
 at the release tag or ahead of it, but the release tag must remain its ancestor.
@@ -75,18 +82,126 @@ done
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
-    echo "Missing command: $1" >&2
+    echo "Missing required command: $1" >&2
     exit 2
   }
 }
-for cmd in git gh grep sed sha256sum python3 head tr awk sort cmp mktemp basename; do need "$cmd"; done
+
+run_privileged() {
+  if (( EUID == 0 )); then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "Installing GitHub CLI requires root privileges, but sudo is unavailable." >&2
+    return 1
+  fi
+}
+
+confirm_gh_install() {
+  if (( ASSUME_YES != 0 )); then
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    echo "GitHub CLI (gh) is required but missing, and no interactive terminal is available." >&2
+    echo "Install gh, then rerun the finalizer." >&2
+    return 1
+  fi
+
+  echo "GitHub CLI (gh) is required to inspect, upload, download, and verify GitHub Release assets."
+  read -r -p "Install GitHub CLI now? [Y/n]: " answer
+  case "${answer,,}" in
+    ""|y|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+install_gh() {
+  confirm_gh_install || {
+    echo "GitHub CLI installation declined; release finalization cannot continue." >&2
+    return 1
+  }
+
+  echo "Installing GitHub CLI (gh)..."
+
+  if command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1; then
+    # GitHub recommends its official Debian/Ubuntu package repository. Older
+    # distro-provided gh versions have used deprecated GitHub APIs.
+    if ! command -v wget >/dev/null 2>&1; then
+      run_privileged apt-get update
+      run_privileged apt-get install -y wget
+    fi
+    need mktemp
+    local key_tmp
+    key_tmp="$(mktemp)"
+    trap 'rm -f -- "$key_tmp"' RETURN
+
+    wget -nv -O"$key_tmp" https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    run_privileged mkdir -p -m 755 /etc/apt/keyrings
+    run_privileged cp "$key_tmp" /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    run_privileged chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n'       "$(dpkg --print-architecture)"       | run_privileged tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+    run_privileged apt-get update
+    run_privileged apt-get install -y gh
+    trap - RETURN
+    rm -f -- "$key_tmp"
+  elif command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y gh
+  elif command -v yum >/dev/null 2>&1; then
+    run_privileged yum install -y gh
+  elif command -v zypper >/dev/null 2>&1; then
+    run_privileged zypper --non-interactive install gh
+  elif command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -S --needed --noconfirm github-cli
+  elif command -v brew >/dev/null 2>&1; then
+    brew install gh
+  else
+    echo "No supported package manager was detected for automatic gh installation." >&2
+    echo "Install GitHub CLI from https://cli.github.com/ and rerun the finalizer." >&2
+    return 1
+  fi
+
+  command -v gh >/dev/null 2>&1 || {
+    echo "GitHub CLI installation completed without making 'gh' available on PATH." >&2
+    return 1
+  }
+  echo "GitHub CLI installed: $(gh --version | head -n1)"
+}
+
+ensure_gh_auth() {
+  if gh auth status >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "GitHub CLI is installed but not authenticated." >&2
+  if [[ -t 0 && -t 1 ]]; then
+    if (( ASSUME_YES == 0 )); then
+      read -r -p "Run 'gh auth login' now? [Y/n]: " answer
+      case "${answer,,}" in
+        ""|y|yes) ;;
+        *)
+          echo "Authenticate with 'gh auth login' and rerun the finalizer." >&2
+          return 1
+          ;;
+      esac
+    fi
+    gh auth login
+    gh auth status >/dev/null 2>&1 || {
+      echo "GitHub CLI authentication did not complete successfully." >&2
+      return 1
+    }
+    return 0
+  fi
+
+  echo "No interactive terminal is available. Run 'gh auth login' and rerun the finalizer." >&2
+  return 1
+}
+
+for cmd in git grep sed sha256sum python3 head tr awk sort cmp mktemp basename; do need "$cmd"; done
+command -v gh >/dev/null 2>&1 || install_gh
+ensure_gh_auth
 
 cd "$ROOT_DIR"
-
-gh auth status >/dev/null 2>&1 || {
-  echo "GitHub CLI is not authenticated. Run: gh auth login" >&2
-  exit 2
-}
 
 if [[ -z "$REPO" ]]; then
   REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner')"
