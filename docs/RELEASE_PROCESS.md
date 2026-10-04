@@ -6,7 +6,7 @@ The process intentionally separates three things:
 
 1. **hardware qualification**, performed manually on one frozen source SHA;
 2. **software staging**, performed automatically by `.github/workflows/release.yml` when the release tag is pushed;
-3. **physical-evidence retention and branch cleanup**, performed locally by `scripts/finalize_release.sh`.
+3. **physical-evidence retention**, performed locally by `scripts/finalize_release.sh`.
 
 This keeps hundreds of hardware logs out of Git while preserving the complete evidence set as one deterministic local archive. Publishing that archive to any hosting service is deliberately outside the finalizer.
 
@@ -108,8 +108,7 @@ After the release tag exists and the complete hardware qualification run has bee
 ```bash
 ./scripts/finalize_release.sh \
   X.Y.Z \
-  validation/stm32/<UTC>_<short-sha> \
-  --cleanup-branches
+  validation/stm32/<UTC>_<short-sha>
 ```
 
 Requirements:
@@ -132,19 +131,9 @@ The finalizer:
 4. validates the hardware-qualified SHA is an ancestor of the release tag;
 5. runs `check_release_qualification_diff.py` between the qualified SHA and release/tag SHA;
 6. verifies the generated xz archive, expected archive contents, and SHA-256 checksum locally;
-7. only after successful local verification, optionally deletes every remote branch except `main` and `develop`.
+7. reports finalization success without mutating remote branches.
 
-Branch deletion is deliberately behind `--cleanup-branches` and requires confirmation. For non-interactive cleanup:
-
-```bash
-./scripts/finalize_release.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha> \
-  --cleanup-branches \
-  --yes
-```
-
-The branch cleanup uses ordinary git operations against the configured `origin`; it is independent of the hosting provider.
+Branch cleanup is deliberately **outside** the finalizer. After finalization, the release operator reviews and deletes temporary branches manually using the hosting UI or ordinary git. The finalizer never performs a remote push, never asks for branch-cleanup credentials, and never deletes refs.
 
 ## Existing local evidence and retries
 
