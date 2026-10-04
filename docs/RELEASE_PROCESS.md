@@ -6,9 +6,9 @@ The process intentionally separates three things:
 
 1. **hardware qualification**, performed manually on one frozen source SHA;
 2. **software staging**, performed automatically by `.github/workflows/release.yml` when the release tag is pushed;
-3. **physical-evidence publication and branch cleanup**, performed by `scripts/finalize_release.sh` after the draft GitHub Release exists.
+3. **physical-evidence retention and branch cleanup**, performed locally by `scripts/finalize_release.sh`.
 
-This keeps hundreds of hardware logs out of Git while still publishing the complete evidence set as one compressed release asset.
+This keeps hundreds of hardware logs out of Git while preserving the complete evidence set as one deterministic local archive. Publishing that archive to any hosting service is deliberately outside the finalizer.
 
 ## 1. Prepare and qualify the release candidate
 
@@ -101,9 +101,9 @@ The archive contains the original `qualification.md`, every raw build/OpenOCD/GD
 
 The local retention path is gitignored. The archive and checksum are release assets, not tracked source files.
 
-## 4. Finalize the GitHub Release
+## 4. Finalize the release locally
 
-After the tag-driven Release workflow has created the draft release and staged the software packages, run:
+After the release tag exists and the complete hardware qualification run has been retained, run:
 
 ```bash
 ./scripts/finalize_release.sh \
@@ -114,30 +114,25 @@ After the tag-driven Release workflow has created the draft release and staged t
 
 Requirements:
 
-- GitHub CLI (`gh`). The finalizer treats this as a required release tool because it reads, uploads, downloads, and verifies GitHub Release assets;
-- authenticated GitHub CLI (`gh auth login`);
+- standard command-line tools and `git`;
 - the `X.Y.Z` tag already exists;
 - `origin/main` equals the release tag;
-- `origin/develop` contains the release tag. It may already be ahead after development resumes;
-- the corresponding GitHub Release already exists, normally as a draft created by the Release workflow.
+- `origin/develop` contains the release tag and may already be ahead;
+- the retained hardware run is a complete unfiltered PASS.
 
-If `gh` is missing, the finalizer explains the dependency and offers to install it. With `--yes`, supported package-manager installation is accepted automatically. Debian/Ubuntu installation uses GitHub's official package repository rather than relying on potentially stale distribution packages. Authentication remains explicit; on an interactive terminal the finalizer can launch `gh auth login`.
+The finalizer has no GitHub/GitLab/service-specific dependency. It does not use a hosting API, require an account login, inspect release pages, or upload assets.
 
 The finalizer:
 
-1. refreshes `main`, `develop`, and the release tag;
+1. refreshes `main`, `develop`, and the release tag from `origin`;
 2. validates tag/CMake version alignment;
-3. requires all canonical software assets to exist;
-4. downloads the amd64 POSIX, arm64 POSIX, Cortex-M, and `SHA256SUMS` assets and verifies them;
-5. validates the hardware-qualified SHA is an ancestor of the release tag;
-6. runs `check_release_qualification_diff.py` between the hardware-qualified SHA and release/tag SHA;
-7. packages the hardware evidence through `package_stm32_qualification.sh`;
-8. uploads the `.tar.xz` archive and `.sha256` file with `gh release upload`;
-9. downloads the physical evidence assets again and verifies the checksum;
-10. publishes the draft GitHub Release;
-11. only after successful publication, optionally deletes every remote branch except `main` and `develop`.
+3. packages the retained hardware evidence through `package_stm32_qualification.sh`;
+4. validates the hardware-qualified SHA is an ancestor of the release tag;
+5. runs `check_release_qualification_diff.py` between the qualified SHA and release/tag SHA;
+6. verifies the generated xz archive, expected archive contents, and SHA-256 checksum locally;
+7. only after successful local verification, optionally deletes every remote branch except `main` and `develop`.
 
-Branch deletion is deliberately behind `--cleanup-branches` and requires confirmation. For non-interactive use after the release state has been reviewed:
+Branch deletion is deliberately behind `--cleanup-branches` and requires confirmation. For non-interactive cleanup:
 
 ```bash
 ./scripts/finalize_release.sh \
@@ -147,52 +142,33 @@ Branch deletion is deliberately behind `--cleanup-branches` and requires confirm
   --yes
 ```
 
-The branch cleanup implements the repository policy that completed release work leaves only the two long-lived branches.
+The branch cleanup uses ordinary git operations against the configured `origin`; it is independent of the hosting provider.
 
-## Existing assets and retries
+## Existing local evidence and retries
 
-The finalizer is safe to rerun when the published qualification assets already match the local package. It downloads and compares same-named assets instead of blindly replacing them.
-
-If a same-named release asset differs, finalization fails. Replacement requires the explicit option:
-
-```text
---replace-assets
-```
-
-Use that only when intentionally correcting release evidence. Release tags themselves are never moved or rewritten by the script.
-
-A local package can likewise be rebuilt only with:
+The finalizer does not overwrite an existing qualification package by default. Rebuilding the same local archive/checksum requires:
 
 ```text
 --force-package
 ```
 
-## Historical 0.5.1 finalization compatibility
+Use that only when intentionally regenerating the retained evidence package. Release tags themselves are never moved or rewritten by the script.
 
-HardRT 0.5.1 was published before the architecture-qualified Linux artifact contract was adopted. Its existing software assets remain historical and are not renamed or regenerated. The release contains the original generic POSIX archive, the Cortex-M archive, one now-obsolete combined software archive, and `SHA256SUMS`.
+## Historical 0.5.1 finalization
 
-`finalize_release.sh` recognizes that exact historical four-file layout **only when finalizing version `0.5.1`**. It verifies those published files against their `SHA256SUMS`, then continues through the normal physical-evidence packaging, upload, verification, and branch-cleanup path.
+HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-This exception exists solely so the already-published 0.5.1 release can receive its retained physical qualification evidence without rewriting its tag or software artifacts. No later release may use the generic POSIX filename or a combined software archive.
+For 0.5.1, the finalizer only validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`; packages the retained STM32 qualification run; verifies that package locally; and then performs optional branch cleanup.
 
-## Canonical release assets
+No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 
-A completed release contains software assets generated and validated by CI:
+## Canonical retained evidence
 
-```text
-hardrt-posix-linux-amd64-X.Y.Z.tar.gz
-hardrt-posix-linux-arm64-X.Y.Z.tar.gz
-hardrt-cortexm-X.Y.Z.tar.gz
-SHA256SUMS
-```
-
-and physical evidence generated locally:
+Physical qualification evidence is retained locally as:
 
 ```text
 hardrt-stm32-qualification-X.Y.Z.tar.xz
 hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 ```
 
-There is intentionally no combined software bundle. A consumer selects the package for the actual execution target instead of downloading duplicate copies of the same install trees inside another archive.
-
-The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. The GitHub Release is the publication boundary for those artifacts.
+The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. If the project later chooses to publish those files on a hosting service, that publication is separate from release finalization and does not change the qualified-source contract.
