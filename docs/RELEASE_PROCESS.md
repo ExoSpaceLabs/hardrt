@@ -120,7 +120,7 @@ Requirements:
 - `origin/develop` contains the release tag and may already be ahead;
 - the retained hardware run is a complete unfiltered PASS.
 
-For historical 0.5.1 only, the original run may already be absent from the workstation. If the supplied run path does not exist, the finalizer fetches `origin/release/0.5.1`, verifies the five retained evidence chunks by their Git blob IDs, reconstructs the base64/gzip archive in a temporary directory, verifies it, locates the single qualification run, and proceeds normally. The branch is not deleted until the recovered run has been repackaged and verified into the canonical local evidence files.
+Historical 0.5.1 is the sole exception. Its complete original run directory is no longer retained, and the later `release/0.5.1` staging branch was audited as an incomplete copy. When the supplied 0.5.1 run path is missing, the finalizer validates [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md), the immutable qualified/release SHAs, and the qualification-diff guard. It does **not** fabricate a full archive from the partial staging data.
 
 The finalizer has no hosting-service CLI/API dependency. It does not require an account login, inspect release pages, or upload assets.
 
@@ -160,9 +160,9 @@ Use that only when intentionally regenerating the retained evidence package. Rel
 
 HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-For 0.5.1, the finalizer validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`; packages the retained STM32 qualification run; verifies that package locally; and then performs optional branch cleanup.
+For 0.5.1, the finalizer validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), re-runs the post-qualification diff guard, and reports that no complete raw archive is retained.
 
-If the original run directory is gone, the finalizer recovers it from the exact retained chunk set on `origin/release/0.5.1`. The chunk blob IDs are pinned in the historical recovery path, so branch cleanup cannot silently consume modified evidence.
+The October 2026 cleanup audit established that `release/0.5.1` contains only a truncated staging copy: 78 raw files are recoverable, `qualification.md` is absent, and the gzip stream is incomplete. That branch is therefore not treated as full qualification evidence and can be retired after the historical record has been verified.
 
 No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 

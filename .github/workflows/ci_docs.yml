@@ -126,25 +126,14 @@ jobs:
             exit 1
           fi
 
-          # While the historical evidence branch still exists, exercise the
-          # real 0.5.1 recovery path against its pinned retained chunks. Once
-          # release finalization removes that branch this check becomes a no-op.
-          if git ls-remote --exit-code --heads origin refs/heads/release/0.5.1 >/dev/null 2>&1; then
-            git fetch --force origin refs/heads/release/0.5.1:refs/remotes/origin/release/0.5.1
-            python3 -c 'import base64,io,subprocess,tarfile,zlib; ref="refs/remotes/origin/release/0.5.1"; parts=["".join(subprocess.check_output(["git","show",f"{ref}:release-assets/qualification.b64.part{i:02d}"],text=True).split()) for i in range(5)]; encoded="".join(parts); encoded += "="*((-len(encoded))%4); compressed=base64.b64decode(encoded,validate=True); inflater=zlib.decompressobj(16+zlib.MAX_WBITS); unpacked=inflater.decompress(compressed)+inflater.flush(); print(f"RECOVERY_DIAG encoded_chars={len(encoded)} compressed_bytes={len(compressed)} decompressed_bytes={len(unpacked)} gzip_eof={inflater.eof}"); archive=tarfile.open(fileobj=io.BytesIO(unpacked),mode="r:"); names=archive.getnames(); raw=[n for n in names if "/raw/" in n and not n.endswith("/")]; reports=[n for n in names if n.endswith("/qualification.md") or n=="qualification.md"]; print(f"RECOVERY_DIAG tar_entries={len(names)} raw_files={len(raw)} reports={reports}")'
-
-            recovered_output="$RUNNER_TEMP/recovered-0.5.1"
-            bash scripts/finalize_release.sh \
-              0.5.1 \
-              "$RUNNER_TEMP/definitely-missing-0.5.1-run" \
-              --output-dir "$recovered_output"
-
-            recovered_archive="$recovered_output/hardrt-stm32-qualification-0.5.1.tar.xz"
-            recovered_checksum="$recovered_archive.sha256"
-            test -f "$recovered_archive"
-            test -f "$recovered_checksum"
-            (cd "$recovered_output" && sha256sum -c "$(basename "$recovered_checksum")")
-          fi
+          historical_log="$RUNNER_TEMP/historical-finalizer.log"
+          bash scripts/finalize_release.sh \
+            0.5.1 \
+            "$RUNNER_TEMP/definitely-missing-0.5.1-run" \
+            > "$historical_log"
+          grep -q '^Historical 0.5.1 qualification record verification PASS$' "$historical_log"
+          grep -q '^  full raw archive retained: no$' "$historical_log"
+          grep -q '^Release finalization PASS: 0.5.1$' "$historical_log"
 
       - name: Generate Doxygen without documentation errors
         run: |
