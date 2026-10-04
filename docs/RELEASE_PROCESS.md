@@ -114,11 +114,14 @@ After the tag-driven Release workflow has created the draft release and staged t
 
 Requirements:
 
+- GitHub CLI (`gh`). The finalizer treats this as a required release tool because it reads, uploads, downloads, and verifies GitHub Release assets;
 - authenticated GitHub CLI (`gh auth login`);
 - the `X.Y.Z` tag already exists;
 - `origin/main` equals the release tag;
 - `origin/develop` contains the release tag. It may already be ahead after development resumes;
 - the corresponding GitHub Release already exists, normally as a draft created by the Release workflow.
+
+If `gh` is missing, the finalizer explains the dependency and offers to install it. With `--yes`, supported package-manager installation is accepted automatically. Debian/Ubuntu installation uses GitHub's official package repository rather than relying on potentially stale distribution packages. Authentication remains explicit; on an interactive terminal the finalizer can launch `gh auth login`.
 
 The finalizer:
 
