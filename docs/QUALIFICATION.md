@@ -48,7 +48,7 @@ SHA256SUMS
 
 There is intentionally no combined bundle. A POSIX install tree contains compiled architecture-specific objects, so every published POSIX package identifies its Linux architecture explicitly.
 
-Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` validates the release/source relationship, packages and verifies complete retained physical evidence locally, and may then delete every remote branch except `main` and `develop`. Hosting-service publication is separate from finalization. CI must never synthesize or reinterpret physical evidence.
+Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` validates the release/source relationship and packages/verifies complete retained physical evidence locally. It never mutates remote branches. Hosting-service publication and branch cleanup are separate operator actions. CI must never synthesize or reinterpret physical evidence.
 
 The full end-to-end sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
@@ -110,11 +110,10 @@ After the tag workflow has staged the draft release, finalize it with:
 ```bash
 ./scripts/finalize_release.sh \
   X.Y.Z \
-  validation/stm32/<UTC>_<short-sha> \
-  --cleanup-branches
+  validation/stm32/<UTC>_<short-sha>
 ```
 
-The finalizer verifies the physical `.tar.xz` package and checksum locally and only then performs optional branch cleanup. It does not require a hosting-service CLI or account authentication.
+The finalizer verifies the physical `.tar.xz` package and checksum locally and stops there. It does not require a hosting-service CLI or account authentication, and it never deletes or rewrites remote branches.
 
 ## Current v0.5 matrix
 
