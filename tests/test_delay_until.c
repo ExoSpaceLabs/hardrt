@@ -3,6 +3,7 @@
 #define STACK_WORDS 1024
 
 static uint32_t g_worker_stack[STACK_WORDS];
+static uint32_t g_peer_stack[STACK_WORDS];
 static uint32_t g_driver_stack[STACK_WORDS];
 static volatile hrt_delay_result_t g_result;
 static volatile hrt_tick_t g_lateness;
@@ -11,6 +12,8 @@ static volatile hrt_tick_t g_deadline;
 static volatile hrt_tick_t g_periodic_ticks[3];
 static volatile hrt_delay_result_t g_periodic_results[3];
 static volatile hrt_tick_t g_periodic_lateness[3];
+static volatile int g_simultaneous_order[2];
+static volatile int g_simultaneous_count;
 
 static hrt_config_t external_cfg(hrt_policy_t policy) {
     hrt_config_t cfg = {0};
@@ -31,6 +34,9 @@ static void reset_fixture(void) {
         g_periodic_results[i] = HRT_DELAY_INVALID_CONTEXT;
         g_periodic_lateness[i] = UINT32_MAX;
     }
+    g_simultaneous_order[0] = -1;
+    g_simultaneous_order[1] = -1;
+    g_simultaneous_count = 0;
 }
 
 static void stop_from_task(void) {
@@ -62,6 +68,40 @@ static void rr_late_tick_driver(void *arg) {
        running task. Advance one tick past the deadline before yielding. */
     for (int i = 0; i < 6; ++i) hrt_tick_from_isr();
     hrt_yield();
+    stop_from_task();
+}
+
+static void simultaneous_waiter(void *arg) {
+    const int marker = (int)(uintptr_t)arg;
+    hrt_tick_t late = UINT32_MAX;
+    const hrt_delay_result_t result = hrt_delay_until(5u, &late);
+
+    T_ASSERT_EQ_INT(HRT_DELAY_OK, result,
+                    "simultaneous absolute release returns on time");
+    T_ASSERT_EQ_UINT(0u, late,
+                     "simultaneous absolute release has zero lateness");
+    T_ASSERT_EQ_UINT(5u, hrt_tick_now(),
+                     "simultaneous absolute release observes nominal tick");
+
+    const int slot = g_simultaneous_count;
+    if (slot < 2) g_simultaneous_order[slot] = marker;
+    g_simultaneous_count = slot + 1;
+
+    if (g_simultaneous_count >= 2) {
+        stop_from_task();
+    } else {
+        hrt_yield();
+    }
+}
+
+static void internal_tick_waiter(void *arg) {
+    (void)arg;
+    const hrt_tick_t deadline = hrt_tick_now() + 3u;
+    hrt_tick_t late = UINT32_MAX;
+    g_result = hrt_delay_until(deadline, &late);
+    g_lateness = late;
+    g_deadline = deadline;
+    g_observed_tick = hrt_tick_now();
     stop_from_task();
 }
 
@@ -194,6 +234,80 @@ static void test_delay_until_preserves_periodic_phase(void) {
     }
 }
 
+static void run_simultaneous_release_policy(const hrt_policy_t policy,
+                                            const char *label) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+    const hrt_config_t cfg = external_cfg(policy);
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg), label);
+
+    const hrt_task_attr_t waiter_attr = { .priority = HRT_PRIO0, .timeslice = 0u };
+    const hrt_task_attr_t driver_attr = {
+        .priority = (policy == HRT_SCHED_RR) ? HRT_PRIO0 : HRT_PRIO1,
+        .timeslice = 0u
+    };
+
+    T_ASSERT_TRUE(hrt_create_task(simultaneous_waiter, (void *)(uintptr_t)1u,
+                                  g_worker_stack, STACK_WORDS, &waiter_attr) >= 0,
+                  "created first simultaneous waiter");
+    T_ASSERT_TRUE(hrt_create_task(simultaneous_waiter, (void *)(uintptr_t)2u,
+                                  g_peer_stack, STACK_WORDS, &waiter_attr) >= 0,
+                  "created second simultaneous waiter");
+    T_ASSERT_TRUE(hrt_create_task(yielding_tick_driver, (void *)(uintptr_t)8u,
+                                  g_driver_stack, STACK_WORDS, &driver_attr) >= 0,
+                  "created simultaneous-release tick driver");
+    hrt_start();
+
+    T_ASSERT_EQ_INT(2, g_simultaneous_count,
+                    "both simultaneous waiters resumed");
+    T_ASSERT_EQ_INT(1, g_simultaneous_order[0],
+                    "equal-deadline release preserves first sleeper order");
+    T_ASSERT_EQ_INT(2, g_simultaneous_order[1],
+                    "equal-deadline release preserves second sleeper order");
+}
+
+static void test_delay_until_simultaneous_priority(void) {
+    run_simultaneous_release_policy(HRT_SCHED_PRIORITY,
+                                    "init simultaneous fixed-priority test");
+}
+
+static void test_delay_until_simultaneous_global_rr(void) {
+    run_simultaneous_release_policy(HRT_SCHED_RR,
+                                    "init simultaneous global-RR test");
+}
+
+static void test_delay_until_simultaneous_priority_rr(void) {
+    run_simultaneous_release_policy(HRT_SCHED_PRIORITY_RR,
+                                    "init simultaneous PRIORITY_RR test");
+}
+
+static void test_delay_until_internal_tick(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+
+    const hrt_config_t cfg = {
+        .tick_hz = 100u,
+        .policy = HRT_SCHED_PRIORITY_RR,
+        .default_slice = 0u,
+        .tick_src = HRT_TICK_SYSTICK
+    };
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "init internal-tick delay-until test");
+
+    const hrt_task_attr_t attr = { .priority = HRT_PRIO0, .timeslice = 0u };
+    T_ASSERT_TRUE(hrt_create_task(internal_tick_waiter, NULL, g_worker_stack,
+                                  STACK_WORDS, &attr) >= 0,
+                  "created internal-tick absolute waiter");
+    hrt_start();
+
+    T_ASSERT_EQ_INT(HRT_DELAY_OK, g_result,
+                    "internal tick reaches absolute deadline on time");
+    T_ASSERT_EQ_UINT(0u, g_lateness,
+                     "internal-tick deadline has zero lateness");
+    T_ASSERT_EQ_UINT(g_deadline, g_observed_tick,
+                     "internal tick resumes at the nominal absolute deadline");
+}
+
 static void test_delay_until_wraps_cleanly(void) {
     hrt__test_reset_scheduler_state();
     reset_fixture();
@@ -255,6 +369,10 @@ static const test_case_t CASES[] = {
     {"Delay-until: future deadline wakes on time", test_delay_until_future_deadline_wakes_on_time},
     {"Delay-until: delayed dispatch reports lateness", test_delay_until_detects_dispatch_lateness},
     {"Delay-until: periodic phase does not drift", test_delay_until_preserves_periodic_phase},
+    {"Delay-until: simultaneous fixed-priority releases are deterministic", test_delay_until_simultaneous_priority},
+    {"Delay-until: simultaneous global-RR releases are deterministic", test_delay_until_simultaneous_global_rr},
+    {"Delay-until: simultaneous PRIORITY_RR releases are deterministic", test_delay_until_simultaneous_priority_rr},
+    {"Delay-until: internal tick reaches absolute deadline", test_delay_until_internal_tick},
     {"Delay-until: absolute deadline survives tick wrap", test_delay_until_wraps_cleanly},
     {"Delay-until: half-range ambiguity is rejected", test_delay_until_rejects_half_range_ambiguity},
     {"Delay-until: non-task context is rejected", test_delay_until_rejects_non_task_context},
