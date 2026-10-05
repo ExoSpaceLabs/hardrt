@@ -12,6 +12,7 @@
 static uint32_t g_stack_a[STACK_WORDS];
 static uint32_t g_stack_b[STACK_WORDS];
 static uint32_t g_stack_c[STACK_WORDS];
+static uint32_t g_capacity_stacks[HARDRT_APP_MAX_TASKS][STACK_WORDS];
 
 static hrt_sem_t g_sem;
 static hrt_mutex_t g_mutex;
@@ -29,6 +30,8 @@ static volatile hrt_event_bits_t g_event_matched;
 static volatile int g_barged;
 static volatile int g_barger_value;
 static volatile int g_middle_value;
+static volatile int g_capacity_done;
+static volatile int g_capacity_failures;
 
 static hrt_config_t external_cfg(const hrt_policy_t policy) {
     hrt_config_t cfg = {0};
@@ -50,6 +53,8 @@ static void reset_fixture(void) {
     g_barged = 0;
     g_barger_value = -1;
     g_middle_value = -1;
+    g_capacity_done = 0;
+    g_capacity_failures = 0;
     hrt_sem_init(&g_sem, 0u);
     hrt_mutex_init(&g_mutex);
     hrt_queue_init(&g_queue, g_queue_storage, 1u, sizeof(g_queue_storage[0]));
@@ -390,6 +395,51 @@ static void test_simultaneous_timeout_expiry(void) {
                     "all same-deadline timeout waiters resumed");
     T_ASSERT_EQ_INT(0, g_sem.count_wait,
                     "simultaneous expiry unlinks every semaphore waiter");
+}
+
+static void capacity_timeout_waiter(void *arg) {
+    (void)arg;
+    const hrt_wait_result_t result = hrt_sem_take_until(&g_sem, 10u);
+    if (result != HRT_WAIT_TIMEOUT) g_capacity_failures++;
+    g_capacity_done++;
+    if (g_capacity_done >= HARDRT_APP_MAX_TASKS) {
+        stop_from_task();
+    } else {
+        hrt_yield();
+    }
+}
+
+static void test_max_capacity_simultaneous_timeout_expiry(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+
+    const hrt_config_t cfg = {
+        .tick_hz = 100u,
+        .policy = HRT_SCHED_PRIORITY_RR,
+        .default_slice = 0u,
+        .tick_src = HRT_TICK_SYSTICK
+    };
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "init max-capacity simultaneous expiry");
+
+    const hrt_task_attr_t attr = { .priority = HRT_PRIO0, .timeslice = 0u };
+    for (int i = 0; i < HARDRT_APP_MAX_TASKS; ++i) {
+        T_ASSERT_TRUE(hrt_create_task(capacity_timeout_waiter, NULL,
+                                      g_capacity_stacks[i], STACK_WORDS,
+                                      &attr) >= 0,
+                      "created max-capacity timed waiter");
+    }
+
+    hrt_start();
+
+    T_ASSERT_EQ_INT(HARDRT_APP_MAX_TASKS, g_capacity_done,
+                    "every configured application slot expired");
+    T_ASSERT_EQ_INT(0, g_capacity_failures,
+                    "every max-capacity waiter observed timeout");
+    T_ASSERT_EQ_INT(0, g_sem.count_wait,
+                    "max-capacity expiry unlinked every semaphore waiter");
+    T_ASSERT_EQ_UINT(10u, hrt_tick_now(),
+                     "same-deadline capacity batch expired at nominal tick");
 }
 
 static void sem_success_before_boundary_driver(void *arg) {
@@ -998,6 +1048,7 @@ static const test_case_t CASES[] = {
     {"IPC timeout: PRIORITY_RR semaphore expiry", test_sem_timeout_priority_rr},
     {"IPC timeout: semaphore deadline survives tick wrap", test_sem_timeout_wrap},
     {"IPC timeout: simultaneous expiries wake every waiter", test_simultaneous_timeout_expiry},
+    {"IPC timeout: max-capacity simultaneous expiry is bounded", test_max_capacity_simultaneous_timeout_expiry},
     {"IPC timeout: producer before boundary wins", test_producer_wins_before_timeout_boundary},
     {"IPC timeout: expiry before producer wins boundary", test_timeout_wins_at_boundary_before_producer},
     {"IPC timeout: all primitive expiry paths unlink", test_all_primitive_timeout_unlink_paths},
