@@ -50,6 +50,22 @@ void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count);
 int hrt_sem_take(hrt_sem_t *s);
 
 /**
+ * @brief Take the semaphore until an absolute HardRT tick deadline.
+ *
+ * The semaphore is attempted once immediately. If already available, the call
+ * succeeds even when the deadline is due/past, making deadline==hrt_tick_now()
+ * the timed equivalent of try-take. Otherwise a future deadline blocks using
+ * the common bounded timeout engine.
+ *
+ * @param s Semaphore to take.
+ * @param deadline Absolute wrapping tick deadline. The exact half-range point
+ * is invalid/ambiguous.
+ * @return HRT_WAIT_OK, HRT_WAIT_TIMEOUT, or a negative HRT_WAIT_* error.
+ * @note Task context only. Existing hrt_sem_take() remains the infinite wait.
+ */
+hrt_wait_result_t hrt_sem_take_until(hrt_sem_t *s, hrt_tick_t deadline);
+
+/**
  * @brief Try to take the semaphore without blocking.
  * @param s Semaphore to try to take.
  * @return 0 on success, -1 if not available.
