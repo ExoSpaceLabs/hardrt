@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "hardrt.h"
 
 /** Producer actions supported by task notifications. */
 typedef enum {
