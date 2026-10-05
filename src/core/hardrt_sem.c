@@ -4,6 +4,7 @@
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
 #include "hardrt_timing.h"
+#include "hardrt_deadline.h"
 
 #undef HRT_SEM_DEBUG
 #define HRT_SEM_DEBUG 0
@@ -39,6 +40,40 @@ static int _waitq_pop(hrt_sem_t *s) {
     s->head = (uint8_t)((s->head + 1u) % HARDRT_APP_MAX_TASKS);
     s->count_wait--;
     return id;
+}
+
+static int _waitq_remove(hrt_sem_t *s, const uint8_t id) {
+    const uint8_t count = s->count_wait;
+    uint8_t offset = 0u;
+
+    while (offset < count) {
+        const uint8_t index =
+            (uint8_t)((s->head + offset) % HARDRT_APP_MAX_TASKS);
+        if (s->q[index] == id) break;
+        offset++;
+    }
+    if (offset >= count) return -1;
+
+    for (uint8_t i = offset; i + 1u < count; ++i) {
+        const uint8_t dst =
+            (uint8_t)((s->head + i) % HARDRT_APP_MAX_TASKS);
+        const uint8_t src =
+            (uint8_t)((s->head + i + 1u) % HARDRT_APP_MAX_TASKS);
+        s->q[dst] = s->q[src];
+    }
+
+    s->tail = (uint8_t)((s->tail + HARDRT_APP_MAX_TASKS - 1u) %
+                        HARDRT_APP_MAX_TASKS);
+    s->count_wait--;
+    return 0;
+}
+
+static int _timeout_cancel(void *context, const int task_id) {
+    hrt_sem_t *const s = (hrt_sem_t *)context;
+    if (s == NULL || task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS) {
+        return -1;
+    }
+    return _waitq_remove(s, (uint8_t)task_id);
 }
 
 void hrt_sem_init_counting(hrt_sem_t *s, unsigned init, uint8_t max_count) {
@@ -94,6 +129,63 @@ int hrt_sem_take(hrt_sem_t *s) {
     return 0;
 }
 
+hrt_wait_result_t hrt_sem_take_until(hrt_sem_t *s,
+                                     const hrt_tick_t deadline) {
+    if (s == NULL) return HRT_WAIT_INVALID_ARGUMENT;
+
+    const int me = hrt__current_running_app_task();
+    if (me < 0) return HRT_WAIT_INVALID_CONTEXT;
+
+    hrt_port_crit_enter();
+
+    hrt_tick_t distance = 0u;
+    const hrt_deadline_relation_t relation =
+        hrt__deadline_relation(hrt_tick_now(), deadline, &distance);
+    if (relation == HRT_DEADLINE_AMBIGUOUS) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_INVALID_DEADLINE;
+    }
+
+    if (s->count != 0u) {
+        s->count--;
+        hrt_port_crit_exit();
+        return HRT_WAIT_OK;
+    }
+
+    if (relation != HRT_DEADLINE_FUTURE) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_TIMEOUT;
+    }
+
+    if (_waitq_push(s, (uint8_t)me) != 0) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_ERROR;
+    }
+
+    if (hrt__wait_timeout_arm_locked(me, distance, _timeout_cancel, s) != 0) {
+        (void)_waitq_remove(s, (uint8_t)me);
+        hrt_port_crit_exit();
+        return HRT_WAIT_ERROR;
+    }
+
+    _hrt_tcb_t *const task = hrt__tcb(me);
+    if (task == NULL) {
+        (void)_waitq_remove(s, (uint8_t)me);
+        hrt_port_crit_exit();
+        return HRT_WAIT_ERROR;
+    }
+
+    task->state = HRT_BLOCKED;
+    hrt__pend_context_switch();
+    hrt_port_crit_exit();
+    hrt_port_yield_to_scheduler();
+
+    hrt_port_crit_enter();
+    const hrt_wait_result_t result = hrt__wait_result_take_locked(me);
+    hrt_port_crit_exit();
+    return result;
+}
+
 static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
     int should_switch = 0;
 
@@ -105,6 +197,7 @@ static int _give_common(hrt_sem_t *s, int is_isr, int *need_switch) {
 #if HARDRT_DEBUG == 1
         if (!hrt__tcb(waiter)) hrt_error(ERR_TCB_NULL);
 #endif
+        hrt__wait_satisfied_locked(waiter);
         hrt__make_ready(waiter);
         if (is_isr) HRT_TIMING_ISR_WAITER_READY(waiter);
         should_switch = hrt__should_preempt_after_wake(waiter);
