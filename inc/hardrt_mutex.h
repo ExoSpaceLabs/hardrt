@@ -47,6 +47,18 @@ static inline void hrt_mutex_init(hrt_mutex_t *m) {
 int hrt_mutex_lock(hrt_mutex_t *m);
 
 /**
+ * @brief Acquire the mutex until an absolute HardRT tick deadline.
+ *
+ * The mutex is attempted immediately. An unlocked mutex is acquired even when
+ * the deadline is due/past; otherwise a non-future deadline returns timeout.
+ * A successful wake uses the existing direct ownership handoff.
+ *
+ * Priority-inversion control is defined separately by the 0.6 mutex work; this
+ * timed API does not itself change task priority.
+ */
+hrt_wait_result_t hrt_mutex_lock_until(hrt_mutex_t *m, hrt_tick_t deadline);
+
+/**
  * @brief Attempt to acquire the mutex without blocking.
  *
  * MUST be called by the current RUNNING application task.
