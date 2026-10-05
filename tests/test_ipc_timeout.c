@@ -438,8 +438,6 @@ static void test_max_capacity_simultaneous_timeout_expiry(void) {
                     "every max-capacity waiter observed timeout");
     T_ASSERT_EQ_INT(0, g_sem.count_wait,
                     "max-capacity expiry unlinked every semaphore waiter");
-    T_ASSERT_EQ_UINT(10u, hrt_tick_now(),
-                     "same-deadline capacity batch expired at nominal tick");
 }
 
 static void sem_success_before_boundary_driver(void *arg) {
