@@ -1,0 +1,55 @@
+# HardRT STM32H755 common IPC timeout validator
+set confirm off
+set pagination off
+set print pretty on
+set mem inaccessible-by-default off
+
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break *hrt_error
+commands
+  silent
+  set $error_code = (unsigned int)$r0
+  printf "hrt_error=%u\n", $error_code
+  printf "RESULT: FAIL (hrt_error=%u)\n", $error_code
+  detach
+  quit
+end
+
+break *ipc_timeout_validation_emit
+commands
+  silent
+  set $base = (unsigned int)$r0
+  set $pass = *(unsigned int*)($base + 0)
+  set $error = *(unsigned int*)($base + 4)
+  set $irq = *(unsigned int*)($base + 8)
+  set $tick = *(unsigned int*)($base + 12)
+  set $sem_ok = *(unsigned int*)($base + 16)
+  set $sem_ok_tick = *(unsigned int*)($base + 20)
+  set $sem_to = *(unsigned int*)($base + 24)
+  set $qrx_to = *(unsigned int*)($base + 28)
+  set $qtx_to = *(unsigned int*)($base + 32)
+  set $mutex_to = *(unsigned int*)($base + 36)
+  set $event_to = *(unsigned int*)($base + 40)
+  set $notify_to = *(unsigned int*)($base + 44)
+  set $take_to = *(unsigned int*)($base + 48)
+  set $notify_recover = *(unsigned int*)($base + 52)
+  set $take_recover = *(unsigned int*)($base + 56)
+  set $producer = *(unsigned int*)($base + 60)
+
+  printf "pass=%u error=%u irq_count=%u final_tick=%u producer_runs=%u\n", $pass,$error,$irq,$tick,$producer
+  printf "sem_success=%u sem_success_tick=%u sem_timeout=%u\n", $sem_ok,$sem_ok_tick,$sem_to
+  printf "queue_rx_timeout=%u queue_tx_timeout=%u mutex_timeout=%u event_timeout=%u\n", $qrx_to,$qtx_to,$mutex_to,$event_to
+  printf "notify_wait_timeout=%u notify_take_timeout=%u notify_recovery=%u notify_take_recovery=%u\n", $notify_to,$take_to,$notify_recover,$take_recover
+
+  if $pass == 1 && $error == 0 && $producer == 1 && $sem_ok == 0 && $sem_to == 1 && $qrx_to == 1 && $qtx_to == 1 && $mutex_to == 1 && $event_to == 1 && $notify_to == 1 && $take_to == 1 && $notify_recover == 0 && $take_recover == 0
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (error=%u)\n", $error
+  end
+  detach
+  quit
+end
+continue
