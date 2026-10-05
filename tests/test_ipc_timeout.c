@@ -12,7 +12,6 @@
 static uint32_t g_stack_a[STACK_WORDS];
 static uint32_t g_stack_b[STACK_WORDS];
 static uint32_t g_stack_c[STACK_WORDS];
-static uint32_t g_stack_d[STACK_WORDS];
 
 static hrt_sem_t g_sem;
 static hrt_mutex_t g_mutex;
@@ -103,12 +102,13 @@ static void immediate_contract_task(void *arg) {
     hrt_event_init(&g_event);
     T_ASSERT_EQ_INT(0, hrt_event_set(&g_event, 0x4u),
                     "seed event bit for immediate wait");
-    g_event_matched = 0u;
+    hrt_event_bits_t matched = 0u;
     T_ASSERT_EQ_INT(HRT_WAIT_OK,
                     hrt_event_wait_until(&g_event, 0x4u,
                                          HRT_EVENT_CLEAR_ON_EXIT,
-                                         now, (hrt_event_bits_t *)&g_event_matched),
+                                         now, &matched),
                     "due event wait succeeds when condition already matches");
+    g_event_matched = matched;
     T_ASSERT_EQ_UINT(0x4u, g_event_matched,
                      "immediate timed event reports matched bit");
     T_ASSERT_EQ_INT(HRT_WAIT_TIMEOUT,
@@ -558,10 +558,10 @@ static void test_mutex_success_before_deadline(void) {
 
 static void event_success_waiter(void *arg) {
     (void)arg;
-    g_event_matched = 0u;
+    hrt_event_bits_t matched = 0u;
     g_result_a = hrt_event_wait_until(&g_event, 0x3u, HRT_EVENT_WAIT_ALL,
-                                      10u,
-                                      (hrt_event_bits_t *)&g_event_matched);
+                                      10u, &matched);
+    g_event_matched = matched;
     stop_from_task();
 }
 
@@ -599,9 +599,9 @@ static void test_event_success_before_deadline(void) {
 static void notify_wait_success_waiter(void *arg) {
     (void)arg;
     g_task_id = hrt__get_current();
-    g_notify_value = 0u;
-    g_result_a = hrt_task_notify_wait_until(0u, 0u, 10u,
-                                            (uint32_t *)&g_notify_value);
+    uint32_t value = 0u;
+    g_result_a = hrt_task_notify_wait_until(0u, 0u, 10u, &value);
+    g_notify_value = value;
     stop_from_task();
 }
 
@@ -639,9 +639,9 @@ static void test_notification_wait_success_before_deadline(void) {
 static void notify_take_success_waiter(void *arg) {
     (void)arg;
     g_task_id = hrt__get_current();
-    g_notify_value = 0u;
-    g_result_a = hrt_task_notify_take_until(1, 10u,
-                                            (uint32_t *)&g_notify_value);
+    uint32_t value = 0u;
+    g_result_a = hrt_task_notify_take_until(1, 10u, &value);
+    g_notify_value = value;
     stop_from_task();
 }
 
