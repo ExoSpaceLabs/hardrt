@@ -83,16 +83,15 @@ The unpacked evidence directory and generated archive remain untracked.
 
 ## Finalize the release
 
-After the `X.Y.Z` tag has triggered the Release workflow and the draft GitHub Release contains the CI-produced software packages, run:
+Release finalization is hosting-neutral and branch-read-only. Run:
 
 ```bash
 ./scripts/finalize_release.sh \
   X.Y.Z \
-  validation/stm32/<UTC>_<short-sha> \
-  --cleanup-branches
+  validation/stm32/<UTC>_<short-sha>
 ```
 
-The finalizer validates the release tag, `main`, `develop` ancestry, CMake version, software asset checksums, hardware-qualified SHA ancestry, and the post-qualification release-only diff guard. It then packages/uploads the physical evidence, downloads it again, verifies its checksum, publishes the draft release, and only afterward performs optional temporary-branch cleanup.
+The finalizer validates the release tag, `main`/`develop` ancestry, CMake version, hardware-qualified SHA ancestry, post-qualification release-only diff guard, and the retained physical evidence package/checksum where available. It never uploads assets, authenticates to a hosting service, or creates/deletes remote branches. Any publication or branch cleanup is a separate manual operator action.
 
 The canonical future software assets are architecture-qualified:
 
@@ -117,9 +116,9 @@ See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for the complete standardized relea
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 14 contracts
+## Functional validation: 15 contracts
 
-The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **14 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
+The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **15 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -134,7 +133,8 @@ The board/OpenOCD probe is a prerequisite, not a functional feature. The current
 11. **Task notification hardware contract**: pending data survives unrelated semaphore blocking; overwrite/no-overwrite/set-bits semantics are checked; a real TIM2 ISR notification wakes and preempts correctly; increment plus counting-take preserves and consumes the count correctly.
 12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep/tick accounting is correct, and awakened higher-priority work preempts.
 13. **Stable periodic delay hardware contract**: one persistent phase drives repeated five-tick releases while two ticks per period are consumed as task execution; exact-deadline behavior is on time; an intentional three-tick late call returns `HRT_DELAY_MISSED` with the expected lateness and does not sleep or rebase phase.
-14. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+14. **Common IPC timeout hardware contract**: one external tick domain drives a producer-before-deadline semaphore success plus semaphore, queue receive/send, mutex, event, notification-wait and notification-take expiries; timed-out waiter membership is removed and notification operations recover after timeout.
+15. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
@@ -219,7 +219,7 @@ The runner records:
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
-- functional `N/13 PASS`, failure and not-run counts
+- functional `N/15 PASS`, failure and not-run counts
 - benchmark `N/38 PASS`, failure and not-run counts
 - established timing min/avg/max
 - event/notification ISR and event-scan timing min/avg/max
