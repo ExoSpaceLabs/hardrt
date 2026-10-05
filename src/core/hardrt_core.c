@@ -81,9 +81,20 @@ static uint8_t g_rq_next[HARDRT_MAX_TASKS];
  * and O(K) when K tasks actually wake.
  */
 #define HRT_SLEEP_NONE UINT8_MAX
+
+typedef enum {
+    HRT_TIMER_NONE = 0,
+    HRT_TIMER_SLEEP,
+    HRT_TIMER_WAIT
+} hrt_timer_kind_t;
+
 static uint8_t g_sleep_head = HRT_SLEEP_NONE;
 static uint8_t g_sleep_next[HARDRT_MAX_TASKS];
 static uint32_t g_sleep_delta[HARDRT_MAX_TASKS];
+static uint8_t g_timer_kind[HARDRT_MAX_TASKS];
+static hrt_wait_result_t g_wait_result[HARDRT_MAX_TASKS];
+static hrt_wait_cancel_fn_t g_wait_cancel[HARDRT_MAX_TASKS];
+static void *g_wait_context[HARDRT_MAX_TASKS];
 
 _hrt_tcb_t *hrt__tcb(const int id) {
 #if HARDRT_DEBUG == 1
@@ -355,6 +366,90 @@ static void sleepq_insert(const int id, const uint32_t ticks) {
     }
 }
 
+static int sleepq_remove(const int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return -1;
+
+    const uint8_t task_id = (uint8_t)id;
+    uint8_t prev = HRT_SLEEP_NONE;
+    uint8_t current = g_sleep_head;
+
+    while (current != HRT_SLEEP_NONE && current != task_id) {
+        prev = current;
+        current = g_sleep_next[current];
+    }
+    if (current == HRT_SLEEP_NONE) return -1;
+
+    const uint8_t next = g_sleep_next[current];
+    if (next != HRT_SLEEP_NONE) {
+        g_sleep_delta[next] += g_sleep_delta[current];
+    }
+
+    if (prev == HRT_SLEEP_NONE) {
+        g_sleep_head = next;
+    } else {
+        g_sleep_next[prev] = next;
+    }
+
+    g_sleep_next[current] = HRT_SLEEP_NONE;
+    g_sleep_delta[current] = 0u;
+    return 0;
+}
+
+static void timer_clear_locked(const int id) {
+    g_timer_kind[id] = (uint8_t)HRT_TIMER_NONE;
+    g_wait_cancel[id] = NULL;
+    g_wait_context[id] = NULL;
+}
+
+int hrt__wait_timeout_arm_locked(const int task_id,
+                                 const hrt_tick_t distance,
+                                 const hrt_wait_cancel_fn_t cancel_fn,
+                                 void *context) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS ||
+        distance == 0u || distance >= HRT_TICK_HALF_RANGE ||
+        cancel_fn == NULL ||
+        g_timer_kind[task_id] != (uint8_t)HRT_TIMER_NONE) {
+        hrt_error(ERR_INVALID_STATE);
+        return -1;
+    }
+
+    g_wait_result[task_id] = HRT_WAIT_ERROR;
+    g_wait_cancel[task_id] = cancel_fn;
+    g_wait_context[task_id] = context;
+    g_timer_kind[task_id] = (uint8_t)HRT_TIMER_WAIT;
+    sleepq_insert(task_id, distance);
+    return 0;
+}
+
+void hrt__wait_satisfied_locked(const int task_id) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return;
+    }
+
+    if (g_timer_kind[task_id] == (uint8_t)HRT_TIMER_WAIT) {
+        if (sleepq_remove(task_id) != 0) {
+            hrt_error(ERR_INVALID_STATE);
+        }
+        timer_clear_locked(task_id);
+    } else if (g_timer_kind[task_id] == (uint8_t)HRT_TIMER_SLEEP) {
+        hrt_error(ERR_INVALID_STATE);
+        return;
+    }
+
+    g_wait_result[task_id] = HRT_WAIT_OK;
+}
+
+hrt_wait_result_t hrt__wait_result_take_locked(const int task_id) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS) {
+        return HRT_WAIT_ERROR;
+    }
+
+    const hrt_wait_result_t result = g_wait_result[task_id];
+    g_wait_result[task_id] = HRT_WAIT_ERROR;
+    return result;
+}
+
 static int stack_bounds(const uint32_t *base, const size_t words,
                         uintptr_t *lo, uintptr_t *hi) {
     if (base == NULL || lo == NULL || hi == NULL) return 0;
@@ -390,8 +485,12 @@ int hrt_init(const hrt_config_t *cfg) {
     readyq_reset_storage();
     memset(g_sleep_next, HRT_SLEEP_NONE, sizeof(g_sleep_next));
     memset(g_sleep_delta, 0, sizeof(g_sleep_delta));
+    memset(g_timer_kind, HRT_TIMER_NONE, sizeof(g_timer_kind));
+    memset(g_wait_cancel, 0, sizeof(g_wait_cancel));
+    memset(g_wait_context, 0, sizeof(g_wait_context));
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
         g_tcbs[i].slot_state = HRT_SLOT_UNUSED;
+        g_wait_result[i] = HRT_WAIT_ERROR;
     }
 
     g_tick = 0;
@@ -582,6 +681,7 @@ void hrt_sleep(const uint32_t ms) {
     hrt_port_crit_enter();
     t->wake_tick = g_tick + ticks;
     t->state = HRT_SLEEP;
+    g_timer_kind[g_current] = (uint8_t)HRT_TIMER_SLEEP;
     sleepq_insert(g_current, ticks);
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
@@ -638,6 +738,7 @@ hrt_delay_result_t hrt_delay_until(const hrt_tick_t deadline,
 
     t->wake_tick = deadline;
     t->state = HRT_SLEEP;
+    g_timer_kind[current] = (uint8_t)HRT_TIMER_SLEEP;
     sleepq_insert(current, distance);
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
@@ -920,20 +1021,38 @@ int hrt__sleep_tick(void) {
     while (g_sleep_head != HRT_SLEEP_NONE && g_sleep_delta[g_sleep_head] == 0u) {
         const int id = (int)g_sleep_head;
         _hrt_tcb_t *t = hrt__tcb(id);
+        const hrt_timer_kind_t timer_kind = (hrt_timer_kind_t)g_timer_kind[id];
+        const hrt_wait_cancel_fn_t cancel_fn = g_wait_cancel[id];
+        void *const wait_context = g_wait_context[id];
+
         g_sleep_head = g_sleep_next[id];
         g_sleep_next[id] = HRT_SLEEP_NONE;
         g_sleep_delta[id] = 0u;
+        timer_clear_locked(id);
 
 #if HARDRT_DEBUG == 1
         if (t == NULL) {
             hrt_error(ERR_TCB_NULL);
             continue;
         }
-        if (t->state != HRT_SLEEP) {
-            hrt_error(ERR_INVALID_TASK);
+#endif
+
+        if (timer_kind == HRT_TIMER_WAIT) {
+#if HARDRT_DEBUG == 1
+            if (t->state != HRT_BLOCKED) hrt_error(ERR_INVALID_TASK);
+#endif
+            if (cancel_fn == NULL || cancel_fn(wait_context, id) != 0) {
+                hrt_error(ERR_INVALID_STATE);
+            }
+            g_wait_result[id] = HRT_WAIT_TIMEOUT;
+        } else if (timer_kind == HRT_TIMER_SLEEP) {
+#if HARDRT_DEBUG == 1
+            if (t->state != HRT_SLEEP) hrt_error(ERR_INVALID_TASK);
+#endif
+        } else {
+            hrt_error(ERR_INVALID_STATE);
             continue;
         }
-#endif
 
         /* Once one wake in this expiry batch has established that PendSV is
          * required, later wakes cannot revoke that decision. Keep their O(K)

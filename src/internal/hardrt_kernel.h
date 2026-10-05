@@ -34,6 +34,8 @@ typedef enum {
     HRT_EXITED
 } hrt_state_t;
 
+typedef int (*hrt_wait_cancel_fn_t)(void *context, int task_id);
+
 /* Kernel-private task control block. Ports may access this only through the
  * private core/port contract; applications must never depend on its layout. */
 typedef struct {
@@ -77,6 +79,12 @@ void hrt__requeue_front_noreset(int id);
 void hrt__prepare_current_for_reschedule(void);
 int hrt__should_preempt_after_wake(int woken_id);
 int hrt__sleep_tick(void);
+int hrt__wait_timeout_arm_locked(int task_id,
+                                 hrt_tick_t distance,
+                                 hrt_wait_cancel_fn_t cancel_fn,
+                                 void *context);
+void hrt__wait_satisfied_locked(int task_id);
+hrt_wait_result_t hrt__wait_result_take_locked(int task_id);
 int hrt__pick_next_ready(void);
 void hrt__on_scheduler_entry(void);
 

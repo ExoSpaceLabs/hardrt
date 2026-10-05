@@ -53,6 +53,27 @@ public:
         return hrt_event_wait(&_event, mask, options, &matched);
     }
 
+    hrt_wait_result_t wait_any_until(const uint32_t mask,
+                                     uint32_t& matched,
+                                     const hrt_tick_t deadline,
+                                     const bool clear_on_exit = false) {
+        const unsigned options = clear_on_exit
+            ? static_cast<unsigned>(HRT_EVENT_CLEAR_ON_EXIT)
+            : static_cast<unsigned>(HRT_EVENT_WAIT_ANY);
+        return hrt_event_wait_until(&_event, mask, options, deadline, &matched);
+    }
+
+    hrt_wait_result_t wait_all_until(const uint32_t mask,
+                                     uint32_t& matched,
+                                     const hrt_tick_t deadline,
+                                     const bool clear_on_exit = false) {
+        unsigned options = static_cast<unsigned>(HRT_EVENT_WAIT_ALL);
+        if (clear_on_exit) {
+            options |= static_cast<unsigned>(HRT_EVENT_CLEAR_ON_EXIT);
+        }
+        return hrt_event_wait_until(&_event, mask, options, deadline, &matched);
+    }
+
     hrt_event_t* native_handle() {
         return &_event;
     }
@@ -95,8 +116,23 @@ public:
         return hrt_task_notify_wait(clear_on_entry, clear_on_exit, &value);
     }
 
+    static hrt_wait_result_t wait_until(uint32_t& value,
+                                        const hrt_tick_t deadline,
+                                        const uint32_t clear_on_entry = 0u,
+                                        const uint32_t clear_on_exit = 0u) {
+        return hrt_task_notify_wait_until(clear_on_entry, clear_on_exit,
+                                          deadline, &value);
+    }
+
     static uint32_t take(const bool clear_count_on_exit = false) {
         return hrt_task_notify_take(clear_count_on_exit ? 1 : 0);
+    }
+
+    static hrt_wait_result_t take_until(uint32_t& value,
+                                        const hrt_tick_t deadline,
+                                        const bool clear_count_on_exit = false) {
+        return hrt_task_notify_take_until(clear_count_on_exit ? 1 : 0,
+                                          deadline, &value);
     }
 
 private:

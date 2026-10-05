@@ -50,9 +50,9 @@ v0.5.1 additionally replaced the hosted POSIX `ucontext` execution model with pt
 
 The v0.5 physical qualification line reached **13 functional contracts + 38 benchmark images** on the NUCLEO-H755ZI-Q CM7 reference target.
 
-### v0.5.1 release housekeeping
+### v0.5.1 release record
 
-The release itself is published. Remaining release-record cleanup is tracked by #82, including attachment of retained physical qualification evidence and deletion of temporary release/fix branches. This housekeeping should be closed before accumulating new release debris, because apparently branches reproduce when nobody is watching.
+The 0.5.1 release is finalized and #82 is closed. Its historical qualification outcome and the later-discovered raw-evidence retention limitation are recorded explicitly in [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md). Branch cleanup is manual operator housekeeping and is not part of release finalization.
 
 ## Release progression to 1.0
 
@@ -64,9 +64,9 @@ The objective is to close the most important semantic gaps that prevent useful b
 
 Primary work:
 
-- common wrap-safe, statically bounded IPC timeout infrastructure (#68);
+- common wrap-safe, statically bounded IPC timeout infrastructure (#68): implemented across semaphore, queue send/receive, mutex, events and notifications on the 0.6 development line; physical H755 feature qualification remains before closure;
 - bounded mutex priority-inversion strategy, using priority inheritance, priority ceiling or another explicitly bounded model selected by analysis (#89);
-- absolute periodic timing through `hrt_delay_until()` or equivalent, including deadline/tick-wrap and missed-release semantics (#90);
+- absolute periodic timing through `hrt_delay_until()`, including deadline/tick-wrap and missed-release semantics (#90): implemented, hosted across all scheduler policies/internal+external tick, and physically qualified;
 - critical-section characterization needed to qualify synchronization behavior (#53);
 - queue-copy scaling measurement and an explicit queue item-size/design bound decision (#53, supported by #52);
 - initial periodic-release timing evidence tied to the new absolute timing primitive (#54);

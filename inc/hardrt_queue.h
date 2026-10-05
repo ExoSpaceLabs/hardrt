@@ -18,8 +18,8 @@ extern "C" {
  * - The queue copies items into an application-provided storage buffer.
  * - Keep item_size small. To move large payloads, queue pointers or
  *   indices into a separate buffer pool.
- * - hrt_queue_send/recv block forever (no timeout yet), matching the current
- *   semaphore feature set.
+ * - hrt_queue_send/recv block indefinitely.
+ * - hrt_queue_send_until/recv_until use one absolute, wrap-safe tick deadline.
  */
 
 typedef struct {
@@ -63,6 +63,18 @@ void hrt_queue_init(hrt_queue_t *q, void *storage, uint16_t capacity, size_t ite
 int hrt_queue_send(hrt_queue_t *q, const void *item);
 
 /**
+ * @brief Send until an absolute HardRT tick deadline.
+ *
+ * The queue is attempted immediately. If space exists the item is sent even
+ * when the deadline is due/past. Otherwise a future deadline blocks through
+ * the common timeout engine. A wake grants an opportunity rather than a
+ * reserved slot, so barging retries retain the original absolute deadline.
+ */
+hrt_wait_result_t hrt_queue_send_until(hrt_queue_t *q,
+                                       const void *item,
+                                       hrt_tick_t deadline);
+
+/**
  * @brief Try to send without blocking.
  * @return 0 on success, -1 if full.
  */
@@ -88,6 +100,17 @@ int hrt_queue_try_send_from_isr(hrt_queue_t *q, const void *item, int *need_swit
  * @note This is a RUNNING-application-task operation.
  */
 int hrt_queue_recv(hrt_queue_t *q, void *out);
+
+/**
+ * @brief Receive until an absolute HardRT tick deadline.
+ *
+ * The queue is attempted immediately. If data exists it is received even when
+ * the deadline is due/past. Otherwise a future deadline blocks through the
+ * common timeout engine. Barging retries retain the original deadline.
+ */
+hrt_wait_result_t hrt_queue_recv_until(hrt_queue_t *q,
+                                       void *out,
+                                       hrt_tick_t deadline);
 
 /**
  * @brief Try to receive without blocking.

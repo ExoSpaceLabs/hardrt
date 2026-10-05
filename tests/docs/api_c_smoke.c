@@ -35,16 +35,20 @@ int hardrt_doc_c_smoke(void) {
     hrt_sem_init(&sem, 0u);
     hrt_sem_init_counting(&sem, 0u, 4u);
     (void)hrt_sem_try_take(&sem);
+    (void)hrt_sem_take_until(&sem, 1u);
     (void)hrt_sem_give(&sem);
     (void)hrt_sem_give_from_isr(&sem, &need_switch);
 
     hrt_mutex_init(&mutex);
     (void)hrt_mutex_try_lock(&mutex);
+    (void)hrt_mutex_lock_until(&mutex, 1u);
     (void)hrt_mutex_unlock(&mutex);
 
     hrt_queue_init(&queue, queue_storage, 4u, sizeof(queue_storage[0]));
     (void)hrt_queue_try_send(&queue, &queue_storage[0]);
+    (void)hrt_queue_send_until(&queue, &queue_storage[0], 1u);
     (void)hrt_queue_try_recv(&queue, &queue_storage[0]);
+    (void)hrt_queue_recv_until(&queue, &queue_storage[0], 1u);
     (void)hrt_queue_try_send_from_isr(&queue, &queue_storage[0], &need_switch);
     (void)hrt_queue_try_recv_from_isr(&queue, &queue_storage[0], &need_switch);
     (void)hrt_queue_count(&queue);
@@ -58,12 +62,16 @@ int hardrt_doc_c_smoke(void) {
     (void)hrt_event_wait(&event, 0x3u,
                          HRT_EVENT_WAIT_ALL | HRT_EVENT_CLEAR_ON_EXIT,
                          &matched);
+    (void)hrt_event_wait_until(&event, 0x3u, HRT_EVENT_WAIT_ALL,
+                               1u, &matched);
 
     (void)hrt_task_notify(0, 0x1u, HRT_NOTIFY_SET_BITS);
     (void)hrt_task_notify_from_isr(0, 0x2u, HRT_NOTIFY_OVERWRITE,
                                    &need_switch);
     (void)hrt_task_notify_wait(0u, UINT32_MAX, &notify_value);
+    (void)hrt_task_notify_wait_until(0u, UINT32_MAX, 1u, &notify_value);
     (void)hrt_task_notify_take(1);
+    (void)hrt_task_notify_take_until(1, 1u, &notify_value);
 
     (void)hrt_init(&cfg);
     (void)attr;
