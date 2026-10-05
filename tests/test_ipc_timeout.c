@@ -190,6 +190,41 @@ static void test_timed_waits_reject_non_task_context(void) {
                     "timed notification take is task-context only");
 }
 
+static void test_timed_waits_reject_invalid_arguments(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+    const hrt_config_t cfg = external_cfg(HRT_SCHED_PRIORITY);
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg), "init invalid-argument timeout test");
+
+    int item = 7;
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_sem_take_until(NULL, 1u),
+                    "timed semaphore rejects null object");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_queue_send_until(NULL, &item, 1u),
+                    "timed queue send rejects null queue");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_queue_send_until(&g_queue, NULL, 1u),
+                    "timed queue send rejects null item");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_queue_recv_until(NULL, &item, 1u),
+                    "timed queue receive rejects null queue");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_queue_recv_until(&g_queue, NULL, 1u),
+                    "timed queue receive rejects null output");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_mutex_lock_until(NULL, 1u),
+                    "timed mutex rejects null object");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_event_wait_until(NULL, 1u, HRT_EVENT_WAIT_ANY,
+                                         1u, NULL),
+                    "timed event wait rejects null event");
+    T_ASSERT_EQ_INT(HRT_WAIT_INVALID_ARGUMENT,
+                    hrt_event_wait_until(&g_event, 0u, HRT_EVENT_WAIT_ANY,
+                                         1u, NULL),
+                    "timed event wait rejects zero mask");
+}
+
 static void ambiguous_contract_task(void *arg) {
     (void)arg;
     const hrt_tick_t ambiguous = hrt_tick_now() + HRT_TICK_HALF_RANGE;
@@ -797,6 +832,129 @@ static void test_timed_queue_send_rearms_after_barging(void) {
                     "timed sender preserved original item across rearm");
 }
 
+static void timed_rx_deadline_waiter(void *arg) {
+    (void)arg;
+    int value = -1;
+    g_result_a = hrt_queue_recv_until(&g_queue, &value, 5u);
+    g_observed_tick = hrt_tick_now();
+    g_barger_value = value;
+    stop_from_task();
+}
+
+static void timed_rx_deadline_middle(void *arg) {
+    (void)arg;
+    hrt_tick_from_isr();
+    hrt_tick_from_isr();
+    const int value = 11;
+    (void)hrt_queue_send(&g_queue, &value);
+    hrt_yield();
+}
+
+static void timed_rx_deadline_barger(void *arg) {
+    (void)arg;
+    int value = -1;
+    if (hrt_queue_try_recv(&g_queue, &value) == 0) {
+        g_barged = 1;
+        g_middle_value = value;
+    }
+    for (int i = 0; i < 3; ++i) hrt_tick_from_isr();
+    hrt_yield();
+}
+
+static void test_timed_queue_receive_rearm_preserves_deadline(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+    const hrt_config_t cfg = external_cfg(HRT_SCHED_RR);
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "init timed RX deadline-preservation test");
+
+    const hrt_task_attr_t attr = { .priority = HRT_PRIO0, .timeslice = 0u };
+    T_ASSERT_TRUE(hrt_create_task(timed_rx_deadline_waiter, NULL, g_stack_a,
+                                  STACK_WORDS, &attr) >= 0 &&
+                  hrt_create_task(timed_rx_deadline_middle, NULL, g_stack_b,
+                                  STACK_WORDS, &attr) >= 0 &&
+                  hrt_create_task(timed_rx_deadline_barger, NULL, g_stack_c,
+                                  STACK_WORDS, &attr) >= 0,
+                  "created timed RX deadline-preservation tasks");
+    hrt_start();
+
+    T_ASSERT_EQ_INT(1, g_barged,
+                    "RX barger consumed the wake-producing item");
+    T_ASSERT_EQ_INT(11, g_middle_value,
+                    "RX barger observed wake-producing item");
+    T_ASSERT_EQ_INT(HRT_WAIT_TIMEOUT, g_result_a,
+                    "RX waiter times out at original deadline after barging");
+    T_ASSERT_EQ_UINT(5u, g_observed_tick,
+                     "RX rearm did not extend absolute deadline");
+    T_ASSERT_EQ_INT(0, g_queue.rx_wait,
+                    "RX deadline timeout leaves no stale waiter");
+}
+
+static void timed_tx_deadline_waiter(void *arg) {
+    (void)arg;
+    const int value = 22;
+    g_result_a = hrt_queue_send_until(&g_queue, &value, 5u);
+    g_observed_tick = hrt_tick_now();
+    stop_from_task();
+}
+
+static void timed_tx_deadline_middle(void *arg) {
+    (void)arg;
+    hrt_tick_from_isr();
+    hrt_tick_from_isr();
+    int value = -1;
+    (void)hrt_queue_recv(&g_queue, &value);
+    g_middle_value = value;
+    hrt_yield();
+}
+
+static void timed_tx_deadline_barger(void *arg) {
+    (void)arg;
+    const int value = 33;
+    if (hrt_queue_try_send(&g_queue, &value) == 0) g_barged = 1;
+    for (int i = 0; i < 3; ++i) hrt_tick_from_isr();
+    hrt_yield();
+}
+
+static void test_timed_queue_send_rearm_preserves_deadline(void) {
+    hrt__test_reset_scheduler_state();
+    reset_fixture();
+    const hrt_config_t cfg = external_cfg(HRT_SCHED_RR);
+    T_ASSERT_EQ_INT(HRT_OK, hrt_init(&cfg),
+                    "init timed TX deadline-preservation test");
+
+    const int initial = 11;
+    T_ASSERT_EQ_INT(0, hrt_queue_try_send(&g_queue, &initial),
+                    "prefilled queue for TX deadline-preservation test");
+
+    const hrt_task_attr_t attr = { .priority = HRT_PRIO0, .timeslice = 0u };
+    T_ASSERT_TRUE(hrt_create_task(timed_tx_deadline_waiter, NULL, g_stack_a,
+                                  STACK_WORDS, &attr) >= 0 &&
+                  hrt_create_task(timed_tx_deadline_middle, NULL, g_stack_b,
+                                  STACK_WORDS, &attr) >= 0 &&
+                  hrt_create_task(timed_tx_deadline_barger, NULL, g_stack_c,
+                                  STACK_WORDS, &attr) >= 0,
+                  "created timed TX deadline-preservation tasks");
+    hrt_start();
+
+    T_ASSERT_EQ_INT(11, g_middle_value,
+                    "TX middle receiver removed original item");
+    T_ASSERT_EQ_INT(1, g_barged,
+                    "TX barger consumed newly available capacity");
+    T_ASSERT_EQ_INT(HRT_WAIT_TIMEOUT, g_result_a,
+                    "TX waiter times out at original deadline after barging");
+    T_ASSERT_EQ_UINT(5u, g_observed_tick,
+                     "TX rearm did not extend absolute deadline");
+    T_ASSERT_EQ_INT(0, g_queue.tx_wait,
+                    "TX deadline timeout leaves no stale waiter");
+
+    int final = -1;
+    T_ASSERT_EQ_INT(0, hrt_queue_try_recv(&g_queue, &final),
+                    "barger's item remains queued after timed sender expires");
+    T_ASSERT_EQ_INT(33, final,
+                    "timed sender did not overwrite barger's item at expiry");
+}
+
 static void internal_tick_sem_waiter(void *arg) {
     (void)arg;
     const hrt_tick_t deadline = hrt_tick_now() + 3u;
@@ -833,6 +991,7 @@ static void test_internal_tick_drives_ipc_timeout(void) {
 static const test_case_t CASES[] = {
     {"IPC timeout: due deadline has try semantics", test_immediate_deadline_contract},
     {"IPC timeout: timed waits reject non-task context", test_timed_waits_reject_non_task_context},
+    {"IPC timeout: timed waits reject invalid arguments", test_timed_waits_reject_invalid_arguments},
     {"IPC timeout: exact half-range is rejected everywhere", test_half_range_deadline_rejected_by_all_timed_waits},
     {"IPC timeout: fixed-priority semaphore expiry", test_sem_timeout_fixed_priority},
     {"IPC timeout: global-RR semaphore expiry", test_sem_timeout_global_rr},
@@ -848,6 +1007,8 @@ static const test_case_t CASES[] = {
     {"IPC timeout: notification take succeeds before deadline", test_notification_take_success_before_deadline},
     {"IPC timeout: timed queue receive rearms after barging", test_timed_queue_receive_rearms_after_barging},
     {"IPC timeout: timed queue send rearms after barging", test_timed_queue_send_rearms_after_barging},
+    {"IPC timeout: timed queue receive rearm preserves deadline", test_timed_queue_receive_rearm_preserves_deadline},
+    {"IPC timeout: timed queue send rearm preserves deadline", test_timed_queue_send_rearm_preserves_deadline},
     {"IPC timeout: internal tick drives expiry", test_internal_tick_drives_ipc_timeout},
 };
 
