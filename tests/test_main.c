@@ -52,6 +52,7 @@ int main(void) {
     APPEND_GROUP(get_tests_rr_sleep);
     APPEND_GROUP(get_tests_sleep_queue);
     APPEND_GROUP(get_tests_delay_until);
+    APPEND_GROUP(get_tests_ipc_timeout);
     APPEND_GROUP(get_tests_priority);
     APPEND_GROUP(get_tests_preemption_contract);
     APPEND_GROUP(get_tests_posix_async_preemption);
