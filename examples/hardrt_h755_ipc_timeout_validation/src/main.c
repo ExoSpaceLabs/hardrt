@@ -46,6 +46,7 @@ static volatile hrt_ipc_timeout_validation_result_t g_result;
 static volatile uint32_t g_irq_count;
 static volatile uint32_t g_stage;
 static volatile uint32_t g_producer_runs;
+static volatile int g_validation_task_id = -1;
 
 extern void SystemInit(void);
 extern uint32_t SystemCoreClock;
@@ -219,14 +220,15 @@ static void validation_task(void *arg)
         (uint32_t)hrt_task_notify_wait_until(0u, 0u, notify_deadline, &value);
     if (g_result.notify_wait_timeout != (uint32_t)HRT_WAIT_TIMEOUT) validation_stop(217u);
 
-    const int self = hrt__get_current();
-    if (hrt_task_notify(self, 0x55u, HRT_NOTIFY_OVERWRITE) != 0) validation_stop(218u);
+    const int self = g_validation_task_id;
+    if (self < 0) validation_stop(218u);
+    if (hrt_task_notify(self, 0x55u, HRT_NOTIFY_OVERWRITE) != 0) validation_stop(219u);
     value = 0u;
     g_result.notify_recovery =
         (uint32_t)hrt_task_notify_wait_until(0u, UINT32_MAX,
                                              hrt_tick_now(), &value);
     if (g_result.notify_recovery != (uint32_t)HRT_WAIT_OK || value != 0x55u) {
-        validation_stop(219u);
+        validation_stop(220u);
     }
 
     /* 8. Counting-notification expiry and recovery. */
@@ -234,17 +236,17 @@ static void validation_task(void *arg)
     value = 0u;
     g_result.notify_take_timeout =
         (uint32_t)hrt_task_notify_take_until(1, take_deadline, &value);
-    if (g_result.notify_take_timeout != (uint32_t)HRT_WAIT_TIMEOUT) validation_stop(220u);
+    if (g_result.notify_take_timeout != (uint32_t)HRT_WAIT_TIMEOUT) validation_stop(221u);
 
-    if (hrt_task_notify(self, 0u, HRT_NOTIFY_INCREMENT) != 0) validation_stop(221u);
+    if (hrt_task_notify(self, 0u, HRT_NOTIFY_INCREMENT) != 0) validation_stop(222u);
     value = 0u;
     g_result.notify_take_recovery =
         (uint32_t)hrt_task_notify_take_until(1, hrt_tick_now(), &value);
     if (g_result.notify_take_recovery != (uint32_t)HRT_WAIT_OK || value != 1u) {
-        validation_stop(222u);
+        validation_stop(223u);
     }
 
-    if (g_producer_runs != 1u) validation_stop(223u);
+    if (g_producer_runs != 1u) validation_stop(224u);
     validation_stop(0u);
 }
 
@@ -284,8 +286,10 @@ int main(void)
                         &holder_attr) < 0) {
         validation_stop(2u);
     }
-    if (hrt_create_task(validation_task, NULL, stack_validation, STACK_WORDS,
-                        &validation_attr) < 0) {
+    g_validation_task_id =
+        hrt_create_task(validation_task, NULL, stack_validation, STACK_WORDS,
+                        &validation_attr);
+    if (g_validation_task_id < 0) {
         validation_stop(3u);
     }
     if (hrt_create_task(producer_task, NULL, stack_producer, STACK_WORDS,
