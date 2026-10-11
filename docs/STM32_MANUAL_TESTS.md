@@ -118,7 +118,7 @@ For release evidence, use clean tracked HardRT source and a clean recorded STM32
 
 ## Functional validation: 15 contracts
 
-The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **15 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
+The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **16 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -219,7 +219,7 @@ The runner records:
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
-- functional `N/15 PASS`, failure and not-run counts
+- functional `N/16 PASS`, failure and not-run counts
 - benchmark `N/38 PASS`, failure and not-run counts
 - established timing min/avg/max
 - event/notification ISR and event-scan timing min/avg/max

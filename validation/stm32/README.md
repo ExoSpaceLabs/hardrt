@@ -6,7 +6,7 @@ Use one manual entry point for physical-board validation:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **15 functional contracts** plus **38 hardware benchmark images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
+The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **38 hardware benchmark images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
 
 Development runs are written under:
 
@@ -85,7 +85,8 @@ The board/OpenOCD probe is a prerequisite and is reported separately.
 12. external TIM2-driven tick contract
 13. stable periodic-delay contract (`hrt_delay_until()` phase stability + explicit miss/lateness)
 14. common IPC timeout contract (semaphore success/disarm plus semaphore, queue RX/TX, mutex, event and notification expiry/unlink/recovery)
-15. BASEPRI critical-section contract
+15. bounded mutex priority-inheritance contract (transitive donation through two mutexes, fixed-priority execution ordering, direct FIFO handoff)
+16. BASEPRI critical-section contract
 
 ## Hardware benchmark matrix
 

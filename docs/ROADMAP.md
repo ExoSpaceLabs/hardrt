@@ -65,7 +65,7 @@ The objective is to close the most important semantic gaps that prevent useful b
 Primary work:
 
 - common wrap-safe, statically bounded IPC timeout infrastructure (#68): implemented across semaphore, queue send/receive, mutex, events and notifications on the 0.6 development line; physical H755 feature qualification remains before closure;
-- bounded mutex priority-inversion strategy, using priority inheritance, priority ceiling or another explicitly bounded model selected by analysis (#89);
+- bounded mutex priority inversion (#89): bounded transitive priority inheritance is implemented on the 0.6 feature branch, with statically bounded held ownership and wait-chain walks; physical H755 feature qualification and timing characterization are still required;
 - absolute periodic timing through `hrt_delay_until()`, including deadline/tick-wrap and missed-release semantics (#90): implemented, hosted across all scheduler policies/internal+external tick, and physically qualified;
 - critical-section characterization needed to qualify synchronization behavior (#53);
 - queue-copy scaling measurement and an explicit queue item-size/design bound decision (#53, supported by #52);
