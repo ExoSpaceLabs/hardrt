@@ -48,7 +48,11 @@ typedef struct {
     uint32_t notify_value;
     uint16_t timeslice_cfg;
     uint16_t slice_left;
-    uint8_t prio;
+    uint8_t prio;              /* effective scheduling priority */
+    uint8_t base_prio;         /* creation priority */
+    uint8_t held_mutex_count;
+    hrt_mutex_t *held_mutexes[HARDRT_MAX_MUTEXES_HELD];
+    hrt_mutex_t *waiting_mutex;
     uint8_t state;
     uint8_t slot_state;
     uint8_t notify_pending;
@@ -74,6 +78,8 @@ int hrt__get_current(void);
 int hrt__current_running_app_task(void);
 void hrt__set_current(int id);
 void hrt__make_ready(int id);
+void hrt__pi_set_effective_priority_locked(int id, uint8_t priority);
+int hrt__pi_should_reschedule_locked(void);
 void hrt__requeue_noreset(int id);
 void hrt__requeue_front_noreset(int id);
 void hrt__prepare_current_for_reschedule(void);
@@ -107,6 +113,9 @@ int hrt__test_ready_occurrences(int id);
 int hrt__test_task_ready_queued(int id);
 uint32_t hrt__test_ready_prio_mask(void);
 int hrt__test_task_state(int id);
+uint8_t hrt__test_task_base_priority(int id);
+uint8_t hrt__test_task_effective_priority(int id);
+uint8_t hrt__test_task_held_mutex_count(int id);
 int hrt__test_slot_state(int id);
 void hrt__test_reset_kernel_state(void);
 int hrt__test_kernel_state(void);
