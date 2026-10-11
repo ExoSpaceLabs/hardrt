@@ -91,26 +91,28 @@ BEGIN { print "id,bytes,count,api_min,api_avg,api_max,masked_min,masked_avg,mask
 
 REPORT="$RUN/report.md"
 {
-  echo "# HardRT STM32H755 diagnostic synchronization timing"
-  echo
-  echo "- UTC: `$(date -u --iso-8601=seconds)`"
-  echo "- HardRT SHA: `$SHA`"
-  echo "- Tracked source: `$( [[ -z "$(git status --porcelain --untracked-files=no)" ]] && echo clean || echo DIRTY )`"
-  echo "- STM32CubeH7 SHA: `$(git -C "$STM32CUBE_H7_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)`"
-  echo "- Toolchain: `$(arm-none-eabi-gcc --version | head -n1)`"
-  echo "- Board: NUCLEO-H755ZI-Q, CM7, external tick (no active tick ISR)"
-  echo "- Samples per operation: $SAMPLES (plus 32 discarded warm-ups)"
-  echo "- Profile: HARDRT_CORTEXM_CRIT_PROFILE=ON (diagnostic library)"
-  echo "- Raw CSV: `sync_dwt.csv`"
-  echo "- Raw debugger/build/probe logs: `raw/`"
-  echo "- Result: **PASS**"
-  echo
-  echo "The masked window begins after raising BASEPRI and ends before restoring"
-  echo "it. It excludes boundary instructions and includes profiling overhead."
-  echo "API cycles include call/return, BASEPRI entry/exit, and profiling overhead."
-  echo "These are non-interfered observations, not production WCET or a"
-  echo "numerical mutex blocking-time bound. Contended PI/timeout and IRQ"
-  echo "interference characterization are separate outstanding #53 work."
+  printf '%s\n\n' '# HardRT STM32H755 diagnostic synchronization timing'
+  printf -- '- UTC: `%s`\n' "$(date -u --iso-8601=seconds)"
+  printf -- '- HardRT SHA: `%s`\n' "$SHA"
+  if [[ -z "$(git status --porcelain --untracked-files=no)" ]]; then
+    printf '%s\n' '- Tracked source: `clean`'
+  else
+    printf '%s\n' '- Tracked source: `DIRTY`'
+  fi
+  printf -- '- STM32CubeH7 SHA: `%s`\n' "$(git -C "$STM32CUBE_H7_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+  printf -- '- Toolchain: `%s`\n' "$(arm-none-eabi-gcc --version | head -n1)"
+  printf '%s\n' '- Board: NUCLEO-H755ZI-Q, CM7, external tick (no active tick ISR)'
+  printf -- '- Samples per operation: %s (plus 32 discarded warm-ups)\n' "$SAMPLES"
+  printf '%s\n' '- Profile: HARDRT_CORTEXM_CRIT_PROFILE=ON (diagnostic library)'
+  printf '%s\n' '- Raw CSV: `sync_dwt.csv`'
+  printf '%s\n' '- Raw debugger/build/probe logs: `raw/`'
+  printf '%s\n\n' '- Result: **PASS**'
+  printf '%s\n' 'The masked window begins after raising BASEPRI and ends before restoring'
+  printf '%s\n' 'it. It excludes boundary instructions and includes profiling overhead.'
+  printf '%s\n' 'API cycles include call/return, BASEPRI entry/exit, and profiling overhead.'
+  printf '%s\n' 'These are non-interfered observations, not production WCET or a'
+  printf '%s\n' 'numerical mutex blocking-time bound. Contended PI/timeout and IRQ'
+  printf '%s\n' 'interference characterization are separate outstanding #53 work.'
 } > "$REPORT"
 echo "[BENCH] PASS, 14 metrics x $SAMPLES samples"
 echo "[BENCH] report: $REPORT"
