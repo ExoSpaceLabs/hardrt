@@ -29,10 +29,23 @@ guarantee must select one of the two priority-aware schedulers.
 - On enqueue/removal/handoff, effective priority is recalculated and
   propagated through the blocked-owner chain. Wait-for cycles are detected
   and rejected before a task blocks.
+- **Concrete bounded propagation algorithm:** after each wait-graph mutation,
+  recompute the affected owner's effective priority by scanning its at-most
+  M held mutex references and at-most N FIFO waiters per mutex. If that
+  effective priority changes and this owner is itself blocked waiting on a
+  mutex, repeat at the next owner in that task's single waiting-on edge.
+  Stop when the value is unchanged, the chain ends, or N owners have been
+  visited. This is a correct incremental update because the only dependency
+  edges that can change value after a single enqueue/unlink/handoff are those
+  along that owner chain. On handoff, recompute **both** old-owner and new-owner
+  chains. Wait-for cycles are rejected before publishing a blocked edge.
 - At most N distinct application owners can be visited; each recalculation
-  visits at most M held mutexes times N waiters. Upper structural bound
-  O(M*N*N), M = HARDRT_MAX_MUTEXES_HELD, N = HARDRT_APP_MAX_TASKS.
-  READY requeue is bounded O(N). No periodic all-task scan is introduced.
+  visits at most M held mutexes times N waiters. Upper structural bound is
+  **N*M*N = O(M*N²)** bounded waiter inspections per affected owner chain,
+  plus O(N) cycle checking and READY requeue. A handoff recomputing two chains
+  therefore has no more than **2*N*M*N** inspections plus bounded queue
+  operations. The implementation uses no recursion and no periodic TCB scan.
+  These are structural loop counts, **not** cycle/WCET guarantees.
 
 ## Scheduler and lifetime invariants
 
@@ -75,3 +88,7 @@ cycle and held-capacity rejection, READY migration, all policies, retained
 PRIORITY_RR quantum, and runtime policy switching. Run strict/UBSan and
 Cortex-M cross-builds. Require physical H755 functional validation before
 merging. Full 0.6 release requires unfiltered physical benchmark evidence.
+
+## Relation to the original design review
+
+The original pre-implementation review considered a full `N-1`-pass fixed-point recomputation with an O(N³*M) bound. The implementation uses the tighter bounded **incremental chain propagation** specified above instead. The safe substitution depends on two enforced invariants: each blocked task waits on no more than one mutex, and cycles are rejected before wait-graph mutation. The hosting tests must exercise nested/transitive donation, timer-driven withdrawal, FIFO handoff, and runtime policy switching. The original full recomputation remains a fallback design if those invariants cannot be established. Timing evidence under #52/#53 is still required before making configuration-specific WCET claims.
