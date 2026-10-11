@@ -46,7 +46,7 @@ Both development and release-evidence directories are gitignored deliberately. *
 
 Normally the hardware-qualified `develop` SHA is promoted unchanged to `main`. If only release automation/documentation changes follow qualification, the later release SHA is permitted solely under the release-only diff policy in [QUALIFICATION.md](QUALIFICATION.md). In either case, the hardware-qualified SHA remains recorded in `qualification.md` and in the packaged evidence.
 
-The tag-driven Release workflow builds the software packages and creates the GitHub Release as a draft. Physical evidence is then packaged, attached, verified, and the release is published by `scripts/finalize_release.sh`.
+The tag-driven Release workflow builds the software packages. `scripts/finalize_release.sh` verifies the release-source relationship and complete retained physical evidence **locally**; it never authenticates to a hosting service, uploads assets, publishes a release, or deletes remote branches. Publication and branch cleanup remain separate manual operator decisions.
 
 ## Package the physical evidence
 
