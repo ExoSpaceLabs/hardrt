@@ -104,6 +104,40 @@ BENCHMARK_TOTAL="$(sed -nE 's/^- Hardware benchmarks: \*\*([0-9]+)\*\*.*/\1/p' "
   exit 1
 }
 
+# Prevent packaging an old/partial 38-case report using a newer release
+# runner that mandates the 14 synchronization metrics too. This also catches
+# mismatches when later versions extend the frozen suite.
+CURRENT_RUNNER="$ROOT_DIR/scripts/stm32_manual_test_full.sh"
+EXPECTED_FUNCTIONAL="$(sed -nE 's/^FUNCTIONAL_TOTAL=([0-9]+)$/\1/p' "$CURRENT_RUNNER" | head -n1)"
+EXPECTED_BENCHMARK="$(sed -nE 's/^BENCHMARK_TOTAL=([0-9]+)$/\1/p' "$CURRENT_RUNNER" | head -n1)"
+if [[ ! "$EXPECTED_FUNCTIONAL" =~ ^[1-9][0-9]*$ ||
+      ! "$EXPECTED_BENCHMARK" =~ ^[1-9][0-9]*$ ||
+      "$FUNCTIONAL_TOTAL" != "$EXPECTED_FUNCTIONAL" ||
+      "$BENCHMARK_TOTAL" != "$EXPECTED_BENCHMARK" ]]; then
+  echo "Qualification totals do not match the active full hardware runner:" >&2
+  echo "  reported: functional=$FUNCTIONAL_TOTAL benchmark=$BENCHMARK_TOTAL" >&2
+  echo "  expected: functional=$EXPECTED_FUNCTIONAL benchmark=$EXPECTED_BENCHMARK" >&2
+  echo "Run the unfiltered qualification from the frozen candidate SHA." >&2
+  exit 1
+fi
+
+# For the extended matrix, the single diagnostic image provides 14 required
+# rows and must be retained as raw, auditable evidence.
+if (( BENCHMARK_TOTAL >= 52 )); then
+  [[ -s "$RAW_DIR/sync_benchmark_gdb.log" && -s "$RAW_DIR/sync_benchmark_metrics.csv" ]] || {
+    echo "Missing raw synchronization benchmark evidence" >&2; exit 1;
+  }
+  grep -Fqx 'RESULT: PASS' "$RAW_DIR/sync_benchmark_gdb.log" || {
+    echo "Synchronization benchmark did not report PASS" >&2; exit 1;
+  }
+  SYNC_ROWS="$(grep -c '^BENCH ' "$RAW_DIR/sync_benchmark_gdb.log" || true)"
+  CSV_ROWS="$(grep -c '^[0-9]' "$RAW_DIR/sync_benchmark_metrics.csv" || true)"
+  if [[ "$SYNC_ROWS" != 14 || "$CSV_ROWS" != 14 ]]; then
+    echo "Expected 14 retained synchronization benchmark rows, got GDB=$SYNC_ROWS CSV=$CSV_ROWS" >&2
+    exit 1
+  fi
+fi
+
 require_report_line "- Functional contracts passed: **$FUNCTIONAL_TOTAL / $FUNCTIONAL_TOTAL**"
 require_report_line '- Functional contracts failed: **0**'
 require_report_line '- Functional contracts not run: **0**'
