@@ -1125,6 +1125,12 @@ int hrt__sleep_tick(void) {
         if (should_switch) trigger_pendsv = 1u;
     }
 
+    /* Mutex timeout cancellation may withdraw an inherited priority from the
+     * RUNNING owner, even when the expiring waiter itself does not outrank it.
+     * Check the priority bitmap only on an expiry batch, not on every tick. */
+    if (trigger_pendsv == 0u && hrt__pi_should_reschedule_locked() != 0) {
+        trigger_pendsv = 1u;
+    }
     return (int)trigger_pendsv;
 }
 
