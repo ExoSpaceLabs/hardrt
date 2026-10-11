@@ -64,13 +64,13 @@ The objective is to close the most important semantic gaps that prevent useful b
 
 Primary work:
 
-- common wrap-safe, statically bounded IPC timeout infrastructure (#68): implemented across semaphore, queue send/receive, mutex, events and notifications on the 0.6 development line; physical H755 feature qualification remains before closure;
-- bounded mutex priority inversion (#89): bounded transitive priority inheritance is implemented on the 0.6 feature branch, with statically bounded held ownership and wait-chain walks; physical H755 feature qualification and timing characterization are still required;
+- common wrap-safe, statically bounded IPC timeout infrastructure (#68): **complete and merged** across semaphore, queue send/receive, mutex, events and notifications; hosted and physical H755 feature qualification passed;
+- bounded mutex priority inversion (#89): **feature complete and merged**, using statically bounded transitive inheritance and ownership tracking; hosted and physical H755 feature qualification passed, while numerical timing/blocking characterization remains under #52/#53;
 - absolute periodic timing through `hrt_delay_until()`, including deadline/tick-wrap and missed-release semantics (#90): implemented, hosted across all scheduler policies/internal+external tick, and physically qualified;
-- critical-section characterization needed to qualify synchronization behavior (#53);
+- critical-section characterization needed to qualify synchronization behavior (#53): uncontended semaphore/mutex and queue-size DWT baseline integrated as 14 mandatory hardware benchmark metrics; contended PI/timeout and interference characterization remain outstanding;
 - queue-copy scaling measurement and an explicit queue item-size/design bound decision (#53, supported by #52);
 - initial periodic-release timing evidence tied to the new absolute timing primitive (#54);
-- full hosted/cross-build regression and unfiltered STM32H755 physical qualification on the frozen 0.6 release candidate.
+- full hosted/cross-build regression and **unfiltered STM32H755 physical qualification (16 functional + 52 benchmark metrics over 39 images)** on the frozen 0.6 release candidate.
 
 0.6 establishes the semantics required for deeper timing proof. It must not present measured maxima as universal WCET guarantees.
 
