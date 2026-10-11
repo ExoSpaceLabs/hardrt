@@ -81,13 +81,8 @@ grep -qx 'RESULT: PASS' "$RAW/gdb.log" || { echo "Benchmark failed" >&2; exit 1;
 [[ "$(grep -c '^BENCH ' "$RAW/gdb.log")" == 14 ]] || { echo "Expected 14 benchmark rows" >&2; exit 1; }
 
 CSV="$RUN/sync_dwt.csv"
-awk '
-BEGIN { print "id,bytes,count,api_min,api_avg,api_max,masked_min,masked_avg,masked_max" }
-/^BENCH / {
-  delete field
-  for(i=2;i<=NF;i++){ split($i,z,"=");field[z[1]]=z[2] }
-  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n",field["id"],field["bytes"],field["count"],field["api_min"],field["api_avg"],field["api_max"],field["masked_min"],field["masked_avg"],field["masked_max"]
-}' "$RAW/gdb.log" > "$CSV"
+awk -v target="$SAMPLES" -v csv="$CSV" \
+  -f "$ROOT/scripts/parse_stm32_sync_benchmark.awk" "$RAW/gdb.log"
 
 REPORT="$RUN/report.md"
 {
