@@ -266,22 +266,31 @@ int hrt_mutex_unlock(hrt_mutex_t *m) {
     if (me < 0) return -1;
 
     hrt_port_crit_enter();
-    if (!m->locked || m->owner != me || detach_locked(me, m) != 0) {
+    if (!m->locked || m->owner != me) {
         hrt_error(ERR_MUTEX_OWNER);
+        hrt_port_crit_exit();
+        return -1;
+    }
+
+    /* Validate the prospective handoff before detaching the old owner.
+     * A corrupted queue must never leave a locked mutex without a tracker. */
+    const int prospective = m->count_wait != 0u ? (int)m->q[m->head] : -1;
+    if (prospective >= 0 &&
+        (!can_own_locked(prospective) ||
+         hrt__tcb(prospective)->waiting_mutex != m)) {
+        hrt_error(ERR_INVALID_STATE);
+        hrt_port_crit_exit();
+        return -1;
+    }
+    if (detach_locked(me, m) != 0) {
         hrt_port_crit_exit();
         return -1;
     }
 
     const int waiter = waitq_pop(m);
     if (waiter >= 0) {
-        /* All lock waiters were admitted only when their held capacity was
-         * available, and a blocked task cannot acquire another mutex. */
-        if (!can_own_locked(waiter) ||
-            hrt__tcb(waiter)->waiting_mutex != m) {
-            hrt_error(ERR_INVALID_STATE);
-            hrt_port_crit_exit();
-            return -1;
-        }
+        /* Waiters are admitted only with spare ownership capacity;
+         * a blocked task cannot acquire another mutex. */
         m->owner = (int16_t)waiter;
         attach_locked(waiter, m);
         hrt__tcb(waiter)->waiting_mutex = NULL;
