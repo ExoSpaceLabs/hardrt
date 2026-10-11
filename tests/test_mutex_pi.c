@@ -220,6 +220,88 @@ static void test_timeout_withdraws_donation(void) {
     T_ASSERT_EQ_INT(0, state_stage, "timed-out waiter is unlinked");
 }
 
+/* With two mutex waiters, expiry of the highest donor must restore the
+ * owner only to the next-highest remaining waiter, not its base priority. */
+static volatile int multi_wait_high_result;
+static volatile int multi_wait_mid_acquired;
+static volatile int multi_wait_prio_after_expiry;
+static volatile int multi_wait_remaining;
+static void multi_wait_high(void *arg) {
+    (void)arg;
+    multi_wait_high_result = hrt_mutex_lock_until(&lock_a, hrt_tick_now() + 3u);
+}
+static void multi_wait_middle(void *arg) {
+    (void)arg;
+    const int rc = hrt_mutex_lock(&lock_a);
+    multi_wait_mid_acquired = (rc == 0);
+    if (rc == 0) (void)hrt_mutex_unlock(&lock_a);
+    stop_test();
+}
+static void multi_wait_owner(void *arg) {
+    (void)arg;
+    low_id = hrt__get_current();
+    T_ASSERT_EQ_INT(0, hrt_mutex_lock(&lock_a), "multi-donor owner locks");
+    mid_id = make_task(multi_wait_middle, stack_b, HRT_PRIO1);
+    high_id = make_task(multi_wait_high, stack_c, HRT_PRIO0);
+    T_ASSERT_TRUE(mid_id >= 0 && high_id >= 0, "created two priority donors");
+    hrt_yield();
+    T_ASSERT_EQ_INT(2, lock_a.count_wait, "both priority donors blocked");
+    T_ASSERT_EQ_INT(HRT_PRIO0, hrt__test_task_effective_priority(low_id),
+                    "highest waiter boosts owner");
+    for (int i = 0; i < 3; ++i) hrt_tick_from_isr();
+    multi_wait_prio_after_expiry = hrt__test_task_effective_priority(low_id);
+    multi_wait_remaining = lock_a.count_wait;
+    T_ASSERT_EQ_INT(0, hrt_mutex_unlock(&lock_a),
+                    "remaining FIFO donor receives ownership");
+}
+static void test_partial_donation_withdrawal(void) {
+    reset_case(HRT_SCHED_PRIORITY);
+    multi_wait_high_result = -7;
+    multi_wait_mid_acquired = 0;
+    multi_wait_prio_after_expiry = -7;
+    multi_wait_remaining = -7;
+    low_id = make_task(multi_wait_owner, stack_a, HRT_PRIO2);
+    T_ASSERT_TRUE(low_id >= 0, "created multi-donor owner");
+    hrt_start();
+    T_ASSERT_EQ_INT(HRT_WAIT_TIMEOUT, multi_wait_high_result,
+                    "highest donor times out without ownership");
+    T_ASSERT_EQ_INT(HRT_PRIO1, multi_wait_prio_after_expiry,
+                    "owner retains donation from remaining waiter");
+    T_ASSERT_EQ_INT(1, multi_wait_remaining,
+                    "only expired donor is unlinked");
+    T_ASSERT_EQ_INT(1, multi_wait_mid_acquired,
+                    "remaining donor eventually acquires mutex");
+}
+
+static void test_ready_mid_tail_migration(void) {
+    reset_case(HRT_SCHED_PRIORITY_RR);
+    const int a = make_task(competitor, stack_a, HRT_PRIO2);
+    const int b = make_task(competitor, stack_b, HRT_PRIO2);
+    const int d = make_task(competitor, stack_c, HRT_PRIO2);
+    T_ASSERT_TRUE(a >= 0 && b >= 0 && d >= 0,
+                  "created head, middle, and tail READY tasks");
+
+    hrt_port_crit_enter();
+    hrt__pi_set_effective_priority_locked(b, HRT_PRIO0);
+    hrt__pi_set_effective_priority_locked(d, HRT_PRIO1);
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(a),
+                    "unaffected FIFO head remains queued once");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(b),
+                    "migrated FIFO middle remains queued once");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(d),
+                    "migrated FIFO tail remains queued once");
+
+    hrt__pi_set_effective_priority_locked(b, HRT_PRIO2);
+    hrt__pi_set_effective_priority_locked(d, HRT_PRIO2);
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(a),
+                    "head retains exactly one membership after restores");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(b),
+                    "middle retains exactly one membership after restores");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(d),
+                    "tail retains exactly one membership after restores");
+    hrt_port_crit_exit();
+}
+
 static void cap_owner(void *arg) {
     (void)arg;
     static hrt_mutex_t held[HARDRT_MAX_MUTEXES_HELD + 1];
@@ -362,6 +444,8 @@ static const test_case_t CASES[] = {
     {"Mutex PI: transitive donation through two owners", test_transitive_chain},
     {"Mutex PI: wait-for cycle is rejected", test_wait_for_cycle_rejected},
     {"Mutex PI: timeout withdraws donation", test_timeout_withdraws_donation},
+    {"Mutex PI: timeout preserves remaining donor", test_partial_donation_withdrawal},
+    {"Mutex PI: READY middle/tail reprioritization", test_ready_mid_tail_migration},
     {"Mutex PI: held capacity rejects excess mutex", test_held_capacity},
     {"Mutex PI: runtime policy switch preserves ownership", test_policy_switch_while_held},
     {"Mutex PI: READY priority migration preserves membership", test_ready_migration_preserves_single_membership},
