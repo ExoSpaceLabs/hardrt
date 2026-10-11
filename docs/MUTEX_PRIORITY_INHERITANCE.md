@@ -33,7 +33,9 @@ The fixed point includes nested and chained donation. FIFO order determines mute
 
 Run propagation under the common kernel critical-section serialization from #68. Bound traversal explicitly by task count and owned-mutex capacity: no recursion, no unbounded linked walks, no heap allocation. Detect attempts to create a circular wait-for dependency *before publishing BLOCKED or timer membership* and fail deterministically without partial mutation. Cycles are not a supported runtime blocking mode.
 
-Suggested safe implementation strategy: a fixed-capacity iterative worklist with a hard bound derived from `HARDRT_APP_MAX_TASKS` and `HARDRT_MAX_OWNED_MUTEXES_PER_TASK`; prove convergence and bound the number of updates. A full fixed-point recomputation with an explicit finite pass bound is acceptable in 0.6 if its cost is measured and documented; optimizing average-case performance is secondary.
+The **initial implementation algorithm is a bounded fixed-point recomputation** after every wait-graph mutation. Initialize the effective-priority candidate of every used application task to its base priority, then perform exactly `N-1` relaxation passes. Each pass visits application task IDs in ascending order, visits no more than `M` owned-mutex references per task, and visits at most `N` FIFO waiters per mutex. A waiter donates its current candidate effective priority to the corresponding owner using `min()`. This computes the transitive minimum along every acyclic wait-for path of at most `N-1` edges. A cycle preflight is mandatory because cyclic lock waits are rejected, not treated as a stable supported blocking state. Store candidates in a statically sized `N`-entry scratch array; apply changed values only after completing relaxation, then update affected READY memberships atomically and request rescheduling as needed.
+
+The bound is **at most `(N-1)*N*M*N` waiter inspections** per full recomputation, plus O(N²) for bounded READY removal/rebucketing and O(N) cycle preflight. This conservative O(N³*M) bound is intentionally explicit rather than accidentally hiding iteration behind convergence. It must be included in the #53 critical-section/time characterization; optimization is allowed later only if it preserves the same semantics and an equally explicit bound.
 
 ## Scheduler membership and quantum
 
@@ -61,7 +63,7 @@ The selected FIFO waiter may have inherited another priority; direct-handoff and
 
 Let `N = HARDRT_APP_MAX_TASKS` and `M = HARDRT_MAX_OWNED_MUTEXES_PER_TASK`.
 
-Static mutex metadata is O(N*M) references plus existing bounded per-mutex FIFO storage. Each owner reference and waiter scan is bounded by M and N respectively. Priority recomputation must ship with a **measured, explicit finite bound** as a function of N, M and priority classes. It must not rely on arbitrary application-created mutex counts.
+Static mutex metadata is O(N*M) references plus existing bounded per-mutex FIFO storage. Each owner reference and waiter scan is bounded by M and N respectively. The initial priority recomputation has an explicit structural upper bound of `(N-1)*N*M*N` waiter inspections plus bounded READY-queue operations, to be measured on the target under #53. This is not a cycle-count/WCET claim. It must not rely on arbitrary application-created mutex counts.
 
 A structural bound on the kernel protocol **alone is not a wall-clock blocking bound**. The application must independently bound time spent inside each owned critical section, hold a consistent lock acquisition order or rely on cycle rejection, and constrain higher-priority interference/IRQ behavior. Under those assumptions PI prevents unrelated medium-priority work from preempting a boosted low-priority owner; blocked chains are finite when the application graph is acyclic. Record the resulting configuration-specific response-time assumptions instead of calling observed maxima WCET.
 
