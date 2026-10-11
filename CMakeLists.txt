@@ -13,6 +13,11 @@ option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)
 option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable UBSan on POSIX tests" OFF)
+option(HARDRT_CORTEXM_CRIT_PROFILE "Diagnostic Cortex-M outer BASEPRI profiling (not for release)" OFF)
+
+if(HARDRT_CORTEXM_CRIT_PROFILE AND NOT HARDRT_PORT STREQUAL "cortex_m")
+  message(FATAL_ERROR "HARDRT_CORTEXM_CRIT_PROFILE requires HARDRT_PORT=cortex_m")
+endif()
 
 if(HARDRT_ENABLE_CPP)
   enable_language(CXX)
@@ -171,6 +176,11 @@ target_include_directories(${LIB_NAME}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
+
+if(HARDRT_CORTEXM_CRIT_PROFILE)
+  target_compile_definitions(${LIB_NAME} PRIVATE HARDRT_CORTEXM_CRIT_PROFILE=1)
+  message(WARNING "Diagnostic BASEPRI DWT instrumentation enabled: timing results are NOT production WCET")
+endif()
 
 if(HARDRT_PORT STREQUAL "posix")
   find_package(Threads REQUIRED)
