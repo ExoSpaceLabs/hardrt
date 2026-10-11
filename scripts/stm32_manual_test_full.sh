@@ -482,7 +482,7 @@ sync_benchmark_case() {
   local prefix=timing_sync_benchmark
   local elf="$ROOT_DIR/examples/hardrt_h755_sync_benchmark/build-cortex_m/hardrt_h755_sync_benchmark.elf"
   local glog="$RAW/sync_benchmark_gdb.log" csv="$RAW/sync_benchmark_metrics.csv"
-  local criterion="Diagnostic DWT critical-section baseline: exactly 10000 configured samples per metric, accurate queue copies, API/masked min <= avg <= max, 14 complete metrics."
+  local criterion="Diagnostic DWT critical-section baseline: $TIMING_SAMPLES samples per metric, verified queue copies, API/masked min <= avg <= max, 14 complete metrics."
   local failure="" id bytes count api_min api_avg api_max mask_min mask_avg mask_max
   local -a labels=(
     sem_take_available sem_give_uncontended mutex_lock_uncontended mutex_unlock_uncontended
@@ -551,7 +551,7 @@ sync_benchmark_case() {
     return 0
   fi
   while IFS=, read -r id bytes count api_min api_avg api_max mask_min mask_avg mask_max; do
-    [[ "$id" == id ]] && continue
+    if [[ "$id" == id ]]; then continue; fi
     record "DWT sync_${labels[$id]} timing" PASS "$criterion" \
       "raw/sync_benchmark_metrics.csv" \
       "bytes=$bytes count=$count min=$api_min cycles, avg=$api_avg cycles, max=$api_max cycles; masked=$mask_min / $mask_avg / $mask_max cycles."
