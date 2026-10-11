@@ -272,6 +272,89 @@ static void test_policy_switch_while_held(void) {
                     "policy changes left mutex unlocked after release");
 }
 
+static void test_ready_migration_preserves_single_membership(void) {
+    reset_case(HRT_SCHED_PRIORITY_RR);
+    const int id = make_task(competitor, stack_a, HRT_PRIO2);
+    T_ASSERT_TRUE(id >= 0, "created READY task for priority migration");
+
+    hrt_port_crit_enter();
+    hrt__pi_set_effective_priority_locked(id, HRT_PRIO0);
+    T_ASSERT_EQ_INT(1, hrt__test_task_ready_queued(id),
+                    "boosted READY task is still queued");
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                    "boosted READY task has exactly one membership");
+    T_ASSERT_EQ_INT(HRT_PRIO0, hrt__test_task_effective_priority(id),
+                    "boosted READY task moved into higher priority bucket");
+
+    hrt__pi_set_effective_priority_locked(id, HRT_PRIO2);
+    T_ASSERT_EQ_INT(1, hrt__test_ready_occurrences(id),
+                    "restored READY task still has one membership");
+    T_ASSERT_EQ_INT(HRT_PRIO2, hrt__test_task_effective_priority(id),
+                    "READY task returned to base priority bucket");
+    hrt_port_crit_exit();
+}
+
+static void quantum_owner(void *arg) {
+    (void)arg;
+    const int me = hrt__get_current();
+    hrt_tick_from_isr();
+    low_quantum_before = (int)hrt__test_task_slice_left(me);
+    hrt_port_crit_enter();
+    hrt__pi_set_effective_priority_locked(me, HRT_PRIO0);
+    low_quantum_after = (int)hrt__test_task_slice_left(me);
+    hrt__pi_set_effective_priority_locked(me, HRT_PRIO2);
+    hrt_port_crit_exit();
+    result = (int)hrt__test_task_slice_left(me);
+    stop_test();
+}
+static void test_prio_rr_quantum_preserved_on_donation(void) {
+    reset_case(HRT_SCHED_PRIORITY_RR);
+    low_id = make_task(quantum_owner, stack_a, HRT_PRIO2);
+    T_ASSERT_TRUE(low_id >= 0, "created RR-quantum task");
+    hrt_start();
+    T_ASSERT_EQ_INT(4, low_quantum_before, "external tick consumed one quantum");
+    T_ASSERT_EQ_INT(4, low_quantum_after, "inheritance preserved remaining quantum");
+    T_ASSERT_EQ_INT(4, result, "withdrawal preserved remaining quantum");
+}
+
+static volatile int fifo_order[2];
+static volatile int fifo_count;
+static void fifo_first(void *arg) {
+    (void)arg;
+    T_ASSERT_EQ_INT(0, hrt_mutex_lock(&lock_a), "first FIFO waiter acquires");
+    fifo_order[fifo_count++] = 1;
+    T_ASSERT_EQ_INT(0, hrt_mutex_unlock(&lock_a), "first FIFO waiter unlocks");
+    hrt_yield();
+}
+static void fifo_second(void *arg) {
+    (void)arg;
+    T_ASSERT_EQ_INT(0, hrt_mutex_lock(&lock_a), "second FIFO waiter acquires");
+    fifo_order[fifo_count++] = 2;
+    T_ASSERT_EQ_INT(0, hrt_mutex_unlock(&lock_a), "second FIFO waiter unlocks");
+    stop_test();
+}
+static void fifo_owner(void *arg) {
+    (void)arg;
+    T_ASSERT_EQ_INT(0, hrt_mutex_lock(&lock_a), "FIFO owner locks first");
+    high_id = make_task(fifo_first, stack_b, HRT_PRIO0);
+    mid_id = make_task(fifo_second, stack_c, HRT_PRIO0);
+    T_ASSERT_TRUE(high_id >= 0 && mid_id >= 0, "created two FIFO waiters");
+    hrt_yield();
+    T_ASSERT_EQ_INT(2, lock_a.count_wait, "both waiters queued before handoff");
+    T_ASSERT_EQ_INT(0, hrt_mutex_unlock(&lock_a), "FIFO owner releases to first waiter");
+}
+static void test_multiple_waiters_preserve_fifo_handoff(void) {
+    reset_case(HRT_SCHED_PRIORITY_RR);
+    fifo_count = 0;
+    fifo_order[0] = fifo_order[1] = 0;
+    low_id = make_task(fifo_owner, stack_a, HRT_PRIO2);
+    T_ASSERT_TRUE(low_id >= 0, "created FIFO owner");
+    hrt_start();
+    T_ASSERT_EQ_INT(2, fifo_count, "both mutex waiters completed");
+    T_ASSERT_EQ_INT(1, fifo_order[0], "first FIFO waiter ran first");
+    T_ASSERT_EQ_INT(2, fifo_order[1], "second FIFO waiter ran second");
+}
+
 static const test_case_t CASES[] = {
     {"Mutex PI: low/medium/high inversion under PRIORITY", test_fixed_priority_inversion},
     {"Mutex PI: low/medium/high inversion under PRIORITY_RR", test_priority_rr_inversion},
@@ -280,7 +363,10 @@ static const test_case_t CASES[] = {
     {"Mutex PI: wait-for cycle is rejected", test_wait_for_cycle_rejected},
     {"Mutex PI: timeout withdraws donation", test_timeout_withdraws_donation},
     {"Mutex PI: held capacity rejects excess mutex", test_held_capacity},
-    {"Mutex PI: runtime policy switch preserves ownership", test_policy_switch_while_held}
+    {"Mutex PI: runtime policy switch preserves ownership", test_policy_switch_while_held},
+    {"Mutex PI: READY priority migration preserves membership", test_ready_migration_preserves_single_membership},
+    {"Mutex PI: PRIORITY_RR retains quantum on priority change", test_prio_rr_quantum_preserved_on_donation},
+    {"Mutex PI: multiple waiters preserve FIFO handoff", test_multiple_waiters_preserve_fifo_handoff}
 };
 
 const test_case_t *get_tests_mutex_pi(int *out_count) {
