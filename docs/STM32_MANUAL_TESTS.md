@@ -12,7 +12,7 @@ Run from the repository root:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-This is the only human-facing hardware qualification command. It owns build, flash, OpenOCD/GDB sessions, functional validation, all timing/profile images, result parsing, evidence capture, and final console/report summaries. Event/notification profiling is part of this runner rather than a second procedure.
+This is the canonical **release qualification** command. It owns build, flash, OpenOCD/GDB sessions, functional validation, all timing/profile images, result parsing, evidence capture, and final console/report summaries. Event/notification profiling is part of this runner rather than a second procedure.
 
 ### Modes
 
@@ -23,6 +23,22 @@ This is the only human-facing hardware qualification command. It owns build, fla
 ```
 
 The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
+
+## Development-only synchronization timing (#53)
+
+For outer BASEPRI-mask and queue-copy timing, use the separate
+[STM32 synchronization benchmark](SYNC_TIMING_BENCHMARK.md):
+
+```bash
+./scripts/stm32_sync_benchmark.sh \
+  /home/dev/STM32Cube/Repository/STM32CubeH7 --samples 10000
+```
+
+This is **not** an additional release benchmark or a substitute for the 38
+canonical timing images. It uses an opt-in instrumented Cortex-M library, emits
+14 min/mean/max API-cycle and masked-window metrics, and writes an independent
+SHA-keyed report/CSV under `validation/stm32/sync_benchmarks/`. No credentials
+or remote branch mutation are involved.
 
 ## Release branch and evidence handling
 
@@ -116,7 +132,7 @@ See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for the complete standardized relea
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 15 contracts
+## Functional validation: 16 contracts
 
 The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **16 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
 

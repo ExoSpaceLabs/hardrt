@@ -34,7 +34,8 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-periodic-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-basepri-validation.sh" \
-  "$ROOT_DIR/scripts/build-lib-stm32h7xx-sync-benchmark.sh"
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-sync-benchmark.sh" \
+  "$ROOT_DIR/scripts/stm32_sync_benchmark.sh"
 
 configure_library() {
   local build_dir="$1" install_dir="$2"; shift 2
