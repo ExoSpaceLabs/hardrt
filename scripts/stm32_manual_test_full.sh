@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=15
+FUNCTIONAL_TOTAL=16
 BENCHMARK_TOTAL=38
 
 NAMES=()
@@ -564,6 +564,20 @@ ipc_timeout_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+mutex_pi_case() {
+  local prefix=mutex_pi status=PASS notes=""
+  local title="Bounded mutex priority inheritance hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_mutex_pi_validation/build-cortex_m/hardrt_h755_mutex_pi_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="A high-priority task blocks on mutex A owned by a middle task; the middle task blocks on mutex B owned by a low task. Transitive donation lets the low owner run ahead of an unrelated higher-base-priority competitor. FIFO direct handoffs complete with both mutexes unlocked."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-mutex-pi-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/mutex_pi_validation.dbg" "$prefix"; then status=FAIL; notes="Mutex-PI GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|competitor_before_handoff=|ids:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 basepri_case() {
   local prefix=basepri_validation status=PASS notes=""
   local title="BASEPRI critical-section hardware contract"
@@ -614,6 +628,7 @@ run_functional_matrix() {
   external_tick_case
   periodic_delay_case
   ipc_timeout_case
+  mutex_pi_case
   basepri_case
 }
 
