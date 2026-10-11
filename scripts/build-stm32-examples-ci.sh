@@ -33,7 +33,8 @@ bash -n \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-validation.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-external-tick.sh" \
   "$ROOT_DIR/scripts/build-lib-stm32h7xx-periodic-validation.sh" \
-  "$ROOT_DIR/scripts/build-lib-stm32h7xx-basepri-validation.sh"
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-basepri-validation.sh" \
+  "$ROOT_DIR/scripts/build-lib-stm32h7xx-sync-benchmark.sh"
 
 configure_library() {
   local build_dir="$1" install_dir="$2"; shift 2
@@ -102,6 +103,19 @@ build_app hardrt_h755_periodic_validation "$ROOT_DIR/examples/hardrt_h755_period
 build_app hardrt_h755_ipc_timeout_validation "$ROOT_DIR/examples/hardrt_h755_ipc_timeout_validation" "$BASE_INSTALL"
 build_app hardrt_h755_mutex_pi_validation "$ROOT_DIR/examples/hardrt_h755_mutex_pi_validation" "$BASE_INSTALL"
 build_app hardrt_h755_basepri_validation "$ROOT_DIR/examples/hardrt_h755_basepri_validation" "$BASE_INSTALL"
+
+# The timing-image library is private and deliberately differs from production.
+SYNC_BUILD="$ROOT_DIR/build-cortex_m-sync-profile-ci"
+SYNC_INSTALL="$ROOT_DIR/install-cortexm-sync-profile-ci"
+rm -rf "$SYNC_BUILD" "$SYNC_INSTALL"
+cmake -S "$ROOT_DIR" -B "$SYNC_BUILD" -G "$GENERATOR" \
+  -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DHARDRT_PORT=cortex_m \
+  -DHARDRT_BUILD_TESTS=OFF -DHARDRT_BUILD_EXAMPLES=OFF \
+  -DHARDRT_CORTEXM_CRIT_PROFILE=ON -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
+cmake --build "$SYNC_BUILD" --parallel "$JOBS"
+cmake --install "$SYNC_BUILD" --prefix "$SYNC_INSTALL"
+build_app hardrt_h755_sync_benchmark "$ROOT_DIR/examples/hardrt_h755_sync_benchmark" "$SYNC_INSTALL" \
+  -DHARDRT_BENCH_SAMPLES=8
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
 
