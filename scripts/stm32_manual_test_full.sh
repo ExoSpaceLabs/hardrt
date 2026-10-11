@@ -15,7 +15,7 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=14
+FUNCTIONAL_TOTAL=15
 BENCHMARK_TOTAL=38
 
 NAMES=()
@@ -550,6 +550,20 @@ periodic_delay_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+ipc_timeout_case() {
+  local prefix=ipc_timeout status=PASS notes=""
+  local title="Common IPC timeout hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_ipc_timeout_validation/build-cortex_m/hardrt_h755_ipc_timeout_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Absolute timed waits cover semaphore success/disarm plus semaphore, queue RX/TX, mutex, event, notification wait and notification take expiry; every timeout unlinks cleanly and notification operations recover after timeout."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-timeout-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/ipc_timeout_validation.dbg" "$prefix"; then status=FAIL; notes="IPC-timeout GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|sem_success=|queue_rx_timeout=|notify_wait_timeout=|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 basepri_case() {
   local prefix=basepri_validation status=PASS notes=""
   local title="BASEPRI critical-section hardware contract"
@@ -599,6 +613,7 @@ run_functional_matrix() {
   ipc_case notification "Task notification hardware contract"
   external_tick_case
   periodic_delay_case
+  ipc_timeout_case
   basepri_case
 }
 

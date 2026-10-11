@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "hardrt.h"
 
 /** Producer actions supported by task notifications. */
 typedef enum {
@@ -48,6 +49,17 @@ int hrt_task_notify_wait(uint32_t clear_on_entry,
                          uint32_t *value);
 
 /**
+ * @brief Wait for a notification until an absolute HardRT tick deadline.
+ *
+ * Existing pending state is consumed immediately, including at a due/past
+ * deadline. Otherwise only a future deadline blocks.
+ */
+hrt_wait_result_t hrt_task_notify_wait_until(uint32_t clear_on_entry,
+                                             uint32_t clear_on_exit,
+                                             hrt_tick_t deadline,
+                                             uint32_t *value);
+
+/**
  * @brief Counting-notification convenience wait.
  *
  * Blocks until the calling task's notification value is non-zero. Returns the
@@ -59,6 +71,17 @@ int hrt_task_notify_wait(uint32_t clear_on_entry,
  * @return The value observed before consumption, or 0 for invalid task context.
  */
 uint32_t hrt_task_notify_take(int clear_count_on_exit);
+
+/**
+ * @brief Counting-notification take with an absolute deadline.
+ *
+ * On HRT_WAIT_OK, value receives the pre-consumption count. A zero value never
+ * satisfies the take. On timeout, a later notification remains pending for a
+ * subsequent operation.
+ */
+hrt_wait_result_t hrt_task_notify_take_until(int clear_count_on_exit,
+                                             hrt_tick_t deadline,
+                                             uint32_t *value);
 
 #ifdef __cplusplus
 }

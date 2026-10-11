@@ -237,6 +237,10 @@ namespace hardrt {
             return hrt_sem_take(&_sem);
         }
 
+        hrt_wait_result_t take_until(const hrt_tick_t deadline) {
+            return hrt_sem_take_until(&_sem, deadline);
+        }
+
         /**
          * @brief Attempt to take the semaphore without blocking.
          * @return 0 on success, -1 when unavailable.
@@ -301,12 +305,20 @@ namespace hardrt {
             return hrt_queue_send(&_q, &item);
         }
 
+        hrt_wait_result_t send_until(const T& item, const hrt_tick_t deadline) {
+            return hrt_queue_send_until(&_q, &item, deadline);
+        }
+
         int try_send(const T& item) {
             return hrt_queue_try_send(&_q, &item);
         }
 
         int recv(T& out) {
             return hrt_queue_recv(&_q, &out);
+        }
+
+        hrt_wait_result_t recv_until(T& out, const hrt_tick_t deadline) {
+            return hrt_queue_recv_until(&_q, &out, deadline);
         }
 
         int try_recv(T& out) {
@@ -352,12 +364,20 @@ namespace hardrt {
             return hrt_queue_send(&_q, &item);
         }
 
+        hrt_wait_result_t send_until(const T& item, const hrt_tick_t deadline) {
+            return hrt_queue_send_until(&_q, &item, deadline);
+        }
+
         int try_send(const T& item) {
             return hrt_queue_try_send(&_q, &item);
         }
 
         int recv(T& out) {
             return hrt_queue_recv(&_q, &out);
+        }
+
+        hrt_wait_result_t recv_until(T& out, const hrt_tick_t deadline) {
+            return hrt_queue_recv_until(&_q, &out, deadline);
         }
 
         int try_recv(T& out) {
@@ -394,6 +414,10 @@ namespace hardrt {
 
         int lock() {
             return hrt_mutex_lock(&_m);
+        }
+
+        hrt_wait_result_t lock_until(const hrt_tick_t deadline) {
+            return hrt_mutex_lock_until(&_m, deadline);
         }
 
         int try_lock() {

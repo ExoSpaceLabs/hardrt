@@ -53,6 +53,34 @@ extern "C" {
 #endif
 
 #include "hardrt_cfg.h"
+
+/** Tick/deadline value in the wrapping HardRT tick domain. */
+typedef uint32_t hrt_tick_t;
+
+/**
+ * Absolute-deadline ordering is unambiguous only within half of the uint32_t
+ * tick domain. Applications must keep each intended future/past comparison
+ * within HRT_TICK_MAX_HORIZON ticks.
+ */
+#define HRT_TICK_HALF_RANGE UINT32_C(0x80000000)
+#define HRT_TICK_MAX_HORIZON UINT32_C(0x7FFFFFFF)
+
+/**
+ * Common result for finite IPC waits against an absolute HardRT tick deadline.
+ *
+ * Existing blocking APIs remain the indefinite-wait form. Existing try APIs
+ * remain non-blocking. The *_until APIs use this result so timeout is distinct
+ * from invalid arguments/context and internal publication failures.
+ */
+typedef enum {
+    HRT_WAIT_OK = 0,
+    HRT_WAIT_TIMEOUT = 1,
+    HRT_WAIT_INVALID_DEADLINE = -1,
+    HRT_WAIT_INVALID_CONTEXT = -2,
+    HRT_WAIT_INVALID_ARGUMENT = -3,
+    HRT_WAIT_ERROR = -4
+} hrt_wait_result_t;
+
 #include "hardrt_time.h"
 #include "hardrt_sem.h"
 #include "hardrt_mutex.h"
@@ -76,17 +104,6 @@ typedef enum {
     HRT_ERR_INVALID_STATE = -3,
     HRT_ERR_PORT_INIT = -4
 } hrt_status_t;
-
-/** Tick/deadline value in the wrapping HardRT tick domain. */
-typedef uint32_t hrt_tick_t;
-
-/**
- * Absolute-deadline ordering is unambiguous only within half of the uint32_t
- * tick domain. Applications must keep each intended future/past comparison
- * within HRT_TICK_MAX_HORIZON ticks.
- */
-#define HRT_TICK_HALF_RANGE UINT32_C(0x80000000)
-#define HRT_TICK_MAX_HORIZON UINT32_C(0x7FFFFFFF)
 
 /** Result of waiting for an absolute periodic release deadline. */
 typedef enum {

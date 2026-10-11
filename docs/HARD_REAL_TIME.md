@@ -64,7 +64,7 @@ A HardRT configuration can be described as hard real time only when relevant ker
 - deterministic waiter ordering/handoff;
 - bounded event waiter inspection;
 - O(1) notification producer work;
-- deterministic, bounded timeout bookkeeping for blocking APIs (#68);
+- deterministic, bounded timeout bookkeeping for blocking APIs: one absolute-deadline model, static timer storage, no full-TCB expiry scan, and bounded waiter unlink (#68);
 - explicit bounded priority-inversion strategy for mutexes (#89);
 - finite configuration-specific mutex blocking analysis;
 - queue-copy cost bounded by an explicit item-size/design contract rather than an unspecified application payload size.
@@ -134,9 +134,9 @@ Tracked by #91.
 
 0.6 must establish the semantic foundations needed before deeper timing proof is meaningful:
 
-- bounded common IPC timeout model (#68);
+- bounded common IPC timeout model (#68), implemented on the 0.6 development line and pending physical feature qualification;
 - bounded mutex priority-inversion model (#89);
-- stable-phase absolute periodic release timing (#90);
+- stable-phase absolute periodic release timing (#90), implemented and physically qualified;
 - synchronization-critical critical-section measurement (#53);
 - queue-copy scaling and explicit design/qualification bound (#53/#52);
 - initial physical periodic-release evidence (#54).
@@ -194,9 +194,9 @@ For every supported Cortex-M configuration, documentation must identify:
 
 The major open work is tracked by:
 
-- #68 common IPC timeouts;
+- #68 common IPC timeouts: implementation complete on the 0.6 development branch, with STM32H755 feature qualification required before closure;
 - #89 bounded mutex priority inversion;
-- #90 stable-phase periodic timing;
+- #90 stable-phase periodic timing: semantic feature complete; deeper release-jitter/interference work continues under #54;
 - #37 reproducible latency/qualification model;
 - #49 zero-cost timing/trace infrastructure;
 - #50 scheduler/context-switch timing;

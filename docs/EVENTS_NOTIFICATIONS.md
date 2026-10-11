@@ -14,8 +14,9 @@ Both mechanisms use the existing HardRT scheduler wake contract. They allocate n
 - ISR APIs never block and report the consolidated scheduling decision through `need_switch`, using the same meaning as semaphore and queue ISR APIs.
 - Application task IDs are the IDs returned by `hrt_create_task()`.
 - The private idle task is never a valid notification target and never joins an event wait list.
-- IPC-style functions return `0` on success and `-1` on invalid arguments/state or a rejected operation.
-- Timeout variants are outside this feature slice. Event and notification waits block indefinitely until satisfied.
+- Indefinite IPC-style functions retain their existing `0`/value success contracts.
+- Finite event/notification waits return `hrt_wait_result_t` and use the common absolute `hrt_tick_t` deadline model from #68.
+- A due/past deadline still checks already-satisfied event/notification state once before returning `HRT_WAIT_TIMEOUT`; the exact half-range deadline is invalid.
 
 ## Event flags
 
@@ -52,6 +53,7 @@ A task may appear at most once in one event wait list.
 - `hrt_event_set_from_isr()` performs the same state transition without directly switching context.
 - `hrt_event_clear()` clears selected bits and never wakes waiters.
 - `hrt_event_clear_from_isr()` is a bounded non-blocking clear operation and never requests a switch.
+- `hrt_event_wait_until()` is the finite-wait form. Timeout expiry removes the task from both the event waiter FIFO and the shared deadline queue before READY publication.
 - Setting or clearing a zero bit mask is a valid no-op.
 
 ## Task notifications
@@ -83,7 +85,7 @@ Valid targets are live application tasks with `HRT_SLOT_USED` and execution stat
 
 ### Wait
 
-`hrt_task_notify_wait(clear_on_entry, clear_on_exit, value)` operates on the calling task.
+`hrt_task_notify_wait(clear_on_entry, clear_on_exit, value)` operates on the calling task. `hrt_task_notify_wait_until(..., deadline, value)` adds the common absolute deadline without changing pending-value semantics.
 
 1. `clear_on_entry` bits are cleared before checking the pending flag.
 2. If a notification is already pending, the call returns immediately.
@@ -96,7 +98,7 @@ Notifications sent before the task waits are therefore preserved.
 
 ### Take
 
-`hrt_task_notify_take(clear_count_on_exit)` is the counting-notification convenience operation. It blocks until the notification value is non-zero and returns the pre-consumption value. If `clear_count_on_exit` is non-zero, the stored value becomes zero and pending is cleared. Otherwise the stored value is decremented by one; pending remains set while the decremented value is still non-zero and is cleared when the value reaches zero. Increment saturation prevents count rollover from silently becoming zero.
+`hrt_task_notify_take(clear_count_on_exit)` is the counting-notification convenience operation. `hrt_task_notify_take_until(..., deadline, value)` is its finite-wait form and returns the pre-consumption count through `value` on success. It blocks until the notification value is non-zero and returns the pre-consumption value. If `clear_count_on_exit` is non-zero, the stored value becomes zero and pending is cleared. Otherwise the stored value is decremented by one; pending remains set while the decremented value is still non-zero and is cleared when the value reaches zero. Increment saturation prevents count rollover from silently becoming zero.
 
 A successful producer may create a pending notification whose value is zero, for example `HRT_NOTIFY_OVERWRITE` with `value == 0`. That pending state is meaningful to `HRT_NOTIFY_NO_OVERWRITE`, but it does not satisfy counting `take()` until a later update makes the stored value non-zero.
 
@@ -106,7 +108,7 @@ ISR producers use the existing kernel critical-section contract. `need_switch` i
 
 ## Determinism and storage
 
-No operation allocates, recurses, or uses a hidden worker. Event-set cost is bounded by configured application task capacity. Task-notification producer cost is O(1).
+No operation allocates, recurses, or uses a hidden worker. Event-set cost is bounded by configured application task capacity. Task-notification producer cost is O(1). Finite waits reuse the kernel's intrusive delta timer queue: no-expiry tick work remains O(1), while timeout insertion/removal and event-waiter unlink are bounded by configured task capacity. Notification timeout unlink is O(1).
 
 For the default `HARDRT_APP_MAX_TASKS=8` configuration:
 
@@ -168,6 +170,10 @@ A full run executes the 13 functional contracts plus all 38 benchmark images, in
 
 The measurements are engineering timing characterizations, not formal WCET proofs. For release claims, the maximum observed event-set critical-section cost must be reported together with the waiter count and wake fan-out that produced it.
 
-## Timeout scope
+## Timeout contract
 
-Generic IPC timeout work is intentionally separate. Once the common timeout contract lands, event and notification timeout variants can use the same wrap-safe tick/deadline machinery rather than embedding a second timeout model here.
+HardRT 0.6 integrates event and notification finite waits with the same timeout engine used by semaphores, queues and mutexes.
+
+For a blocked timed waiter, producer satisfaction and timeout expiry are mutually exclusive kernel transitions under the same critical-section serialization. A producer processed first disarms the timeout before READY publication. An expiry processed first clears the event/notification waiter state before READY publication. A later producer then behaves as an ordinary update rather than waking the already-timed-out operation.
+
+The timeout engine performs no full-TCB scan and owns no worker task. Storage is static and bounded by the configured application-task capacity.

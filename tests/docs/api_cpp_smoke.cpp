@@ -27,6 +27,8 @@ int hardrt_doc_cpp_smoke() {
     (void)event.clear_from_isr(0x2u);
     (void)event.wait_any(0x1u, matched, false);
     (void)event.wait_all(0x3u, matched, true);
+    (void)event.wait_any_until(0x1u, matched, 1u, false);
+    (void)event.wait_all_until(0x3u, matched, 1u, true);
     (void)event.native_handle();
 
     (void)hardrt::TaskNotification::notify(
@@ -34,7 +36,9 @@ int hardrt_doc_cpp_smoke() {
     (void)hardrt::TaskNotification::notify_from_isr(
         0, 0x2u, hardrt::NotifyAction::overwrite, need_switch);
     (void)hardrt::TaskNotification::wait(value, 0u, UINT32_MAX);
+    (void)hardrt::TaskNotification::wait_until(value, 1u, 0u, UINT32_MAX);
     (void)hardrt::TaskNotification::take(true);
+    (void)hardrt::TaskNotification::take_until(value, 1u, true);
 
     (void)hardrt::System::init(cfg);
     (void)hardrt::System::tick_now();
@@ -48,17 +52,21 @@ int hardrt_doc_cpp_smoke() {
 
     hardrt::Semaphore sem(0u);
     (void)sem.try_take();
+    (void)sem.take_until(1u);
     (void)sem.give();
     (void)sem.give_from_isr(need_switch);
 
     hardrt::Mutex mutex;
     (void)mutex.try_lock();
+    (void)mutex.lock_until(1u);
     (void)mutex.unlock();
 
     hardrt::StaticQueue<uint32_t, 4> queue;
     uint32_t item = 1u;
     (void)queue.try_send(item);
+    (void)queue.send_until(item, 1u);
     (void)queue.try_recv(item);
+    (void)queue.recv_until(item, 1u);
     (void)queue.try_send_from_isr(item, need_switch);
     (void)queue.try_recv_from_isr(item, need_switch);
     (void)queue.native_handle();
