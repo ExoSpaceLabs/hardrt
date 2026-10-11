@@ -371,8 +371,9 @@ static void t_multi_giver(void *arg) {
 
 static void test_sem_counting_multi_waiter_fifo(void) {
     hrt__test_reset_scheduler_state();
+    g_watchdog_tripped = 0;
     g_multi_woke_count = 0;
-    for (int i = 0; i < 3; ++i) g_multi_order[i] = 0;
+    for (int i = 0; i < 4; ++i) g_multi_order[i] = 0;
 
     hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5};
     int r = hrt_init(&cfg);
