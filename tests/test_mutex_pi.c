@@ -59,6 +59,7 @@ static void high_waiter(void *arg) {
     (void)arg;
     high_result = hrt_mutex_lock(&lock_a);
     if (high_result == 0) {
+        saw_restore = (hrt__test_task_effective_priority(low_id) == HRT_PRIO2);
         got_handoff = 1;
         T_ASSERT_EQ_INT(high_id, lock_a.owner,
                         "direct mutex handoff gives the high waiter ownership");
