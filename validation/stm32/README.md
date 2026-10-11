@@ -6,7 +6,7 @@ Use one manual entry point for physical-board validation:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **38 hardware benchmark images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
+The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **52 benchmark metrics across 39 images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
 
 Development runs are written under:
 
@@ -34,7 +34,7 @@ For a release candidate:
 1. merge all target/build-affecting changes into `develop`;
 2. freeze the `develop` SHA after hosted/cross-build CI is green;
 3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
-4. require board probe PASS, every functional contract PASS, **38/38 benchmark PASS**, and Overall PASS;
+4. require board probe PASS, every functional contract PASS, **52/52 benchmark metric PASS**, and Overall PASS;
 5. inspect the report and raw logs;
 6. package the selected evidence without adding it to Git:
 
@@ -90,7 +90,8 @@ The board/OpenOCD probe is a prerequisite and is reported separately.
 
 ## Hardware benchmark matrix
 
-The benchmark suite contains **38 independently built/flashed images**:
+The benchmark suite contains **39 independently built/flashed images** and
+**52 mandatory metric results**. The original 38 images are preserved:
 
 ### Historical scheduler/semaphore set: 4
 
@@ -110,6 +111,14 @@ The benchmark suite contains **38 independently built/flashed images**:
 - `notify_isr_wake`
 
 The event-scan firmware validates the actual waiter load and expected/observed wake fan-out in addition to timing.
+
+### Synchronization critical-section baseline: 14 metrics, 1 image
+
+The final image measures semaphore take/give, mutex lock/unlock and queue
+send/receive at 4, 16, 64, 256, 1024 bytes. Each result row is counted
+independently. Missing/incomplete results fail the full suite. The image
+enables its own diagnostic BASEPRI DWT profile without instrumenting normal
+kernel builds. The raw log and CSV are retained in qualification evidence.
 
 ### Tick/sleeper scaling set: 18
 
