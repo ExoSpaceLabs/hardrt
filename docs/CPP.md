@@ -190,7 +190,7 @@ void worker_with_lock(void *arg) {
 }
 ```
 
-The wrapper exposes `lock()`, `lock_until(deadline)`, `try_lock()`, and `unlock()`. The timed form uses the common absolute-tick wait contract and preserves direct ownership handoff. Priority inheritance/ceiling remains separate work under #89; a timed lock does not itself modify task priority. The mutex remains non-recursive, owner-tracked and task-context-only, with no automatic owner-death recovery.
+The wrapper exposes `lock()`, `lock_until(deadline)`, `try_lock()`, and `unlock()`. The timed form uses the common absolute-tick wait contract and preserves direct ownership handoff. Under fixed-priority policies, mutex contention applies bounded transitive priority inheritance. Timed expiry withdraws donation atomically. Global RR ignores priorities. Held mutexes are bounded by `HARDRT_MAX_MUTEXES_HELD` (default 8). See [MUTEX_PRIORITY_INHERITANCE.md](MUTEX_PRIORITY_INHERITANCE.md) for details. The mutex remains non-recursive, owner-tracked and task-context-only, with no automatic owner-death recovery.
 
 ## Queues with external storage
 

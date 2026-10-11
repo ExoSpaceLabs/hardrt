@@ -100,6 +100,7 @@ build_app hardrt_h755_ipc_notification "$ROOT_DIR/examples/hardrt_h755_ipc_valid
 build_app hardrt_h755_external_tick "$ROOT_DIR/examples/hardrt_h755_external_tick" "$BASE_INSTALL"
 build_app hardrt_h755_periodic_validation "$ROOT_DIR/examples/hardrt_h755_periodic_validation" "$BASE_INSTALL"
 build_app hardrt_h755_ipc_timeout_validation "$ROOT_DIR/examples/hardrt_h755_ipc_timeout_validation" "$BASE_INSTALL"
+build_app hardrt_h755_mutex_pi_validation "$ROOT_DIR/examples/hardrt_h755_mutex_pi_validation" "$BASE_INSTALL"
 build_app hardrt_h755_basepri_validation "$ROOT_DIR/examples/hardrt_h755_basepri_validation" "$BASE_INSTALL"
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8

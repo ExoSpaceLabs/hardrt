@@ -73,6 +73,7 @@ int main(void) {
     APPEND_GROUP(get_tests_queue);
     APPEND_GROUP(get_tests_external_tick);
     APPEND_GROUP(get_tests_mutex);
+    APPEND_GROUP(get_tests_mutex_pi);
     APPEND_GROUP(get_tests_event);
     APPEND_GROUP(get_tests_notify);
     APPEND_GROUP(get_tests_signal_contract);

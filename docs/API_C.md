@@ -203,7 +203,7 @@ int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
 int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
 
-Mutexes are task-context-only, owner-tracked, non-recursive, and use FIFO waiters with direct handoff. `hrt_mutex_lock_until()` adds the common finite-wait deadline semantics without changing the ownership handoff model. Priority-inversion control remains separate work under #89; timed locking does not itself boost or otherwise alter task priority. Automatic owner-death recovery remains outside this contract. A task must release every mutex it owns before returning or deleting itself.
+Mutexes are task-context-only, owner-tracked, non-recursive, and use FIFO waiters with direct handoff. `hrt_mutex_lock_until()` adds the common finite-wait deadline semantics without changing the ownership handoff model. Bounded transitive priority inheritance boosts mutex owners under fixed-priority policies, including when a timed waiter blocks; timeout/unlock withdraws donation atomically. `HARDRT_MAX_MUTEXES_HELD` (default 8) limits concurrently owned mutexes per task. Global RR ignores priority, so its scheduler does not provide a priority-inversion blocking guarantee. See [MUTEX_PRIORITY_INHERITANCE.md](MUTEX_PRIORITY_INHERITANCE.md) for the static bounds, nested/chained behavior and schedulability assumptions. Automatic owner-death recovery remains outside this contract. A task must release every mutex it owns before returning or deleting itself.
 
 See [MUTEXES.md](MUTEXES.md).
 

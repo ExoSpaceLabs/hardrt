@@ -124,6 +124,7 @@ const test_case_t *get_tests_idle_behavior(int *out_count);
 const test_case_t *get_tests_semaphore(int *out_count);
 const test_case_t *get_tests_queue(int *out_count);
 const test_case_t *get_tests_mutex(int *out_count);
+const test_case_t *get_tests_mutex_pi(int *out_count);
 const test_case_t *get_tests_event(int *out_count);
 const test_case_t *get_tests_notify(int *out_count);
 const test_case_t *get_tests_signal_contract(int *out_count);

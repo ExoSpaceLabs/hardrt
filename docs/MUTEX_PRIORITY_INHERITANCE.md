@@ -1,88 +1,94 @@
-# HardRT 0.6 bounded mutex priority inheritance: implementation contract
+# Bounded mutex priority inheritance: 0.6 design
 
-Status: **design selected, implementation and physical qualification pending**. Tracked by [#89](https://github.com/ExoSpaceLabs/hardrt/issues/89) and 0.6 tracker #91. Baseline: `develop` commit `2790a604aae1bd5c37af5931f083573254674c27` (the merged #68 common IPC-timeout engine).
+## Protocol decision
 
-## Decision
+Select **bounded transitive priority inheritance (PI)** for
+`HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, retaining FIFO waiter
+handoff. Immediate priority-ceiling protocols can achieve tighter blocking
+bounds but require application-declared resource ceilings and global
+system-ceiling admission, a breaking change to transparent mutex acquisition.
+PI fits the existing API if held resources and wait chains have explicit
+static bounds.
 
-Select **bounded, transitive priority inheritance (PI)** for priority-aware policies `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`.
+`HRT_SCHED_RR` intentionally ignores priorities. PI metadata remains
+consistent if this policy is chosen, but **priority inversion cannot be
+bounded by PI in global RR**. Applications requiring the fixed-priority
+guarantee must select one of the two priority-aware schedulers.
 
-This preserves the existing `hrt_mutex_init`, `hrt_mutex_lock`, `hrt_mutex_lock_until`, FIFO waiter publication, non-recursive ownership and direct handoff. Immediate priority ceiling was considered, but would introduce application-supplied ceilings and/or system-ceiling lock-admission rules incompatible with the existing mutex contract. The selected PI protocol restores priorities when ownership/waiter dependencies disappear and propagates donation through bounded chains.
+## Static storage and finite algorithms
 
-**Global `HRT_SCHED_RR` ignores priority by design.** A boost may be recorded for an eventual policy transition, but cannot produce fixed-priority inversion protection under global RR. Never advertise a PI-based blocking bound for that scheduler policy.
+- `HARDRT_MAX_MUTEXES_HELD` defaults to 8; override at compile time.
+  Each application TCB stores at most that many pointers to owned mutexes,
+  a base priority, an effective priority and one waiting-on-mutex pointer.
+  Attempts to acquire or wait for an additional mutex fail **before
+  ownership or waiter state changes**.
+- Every mutex stores no more than `HARDRT_APP_MAX_TASKS` FIFO waiter IDs.
+  No global registry, dynamic allocation, timer task, or resource scan.
+- Effective priority is the most urgent (numerically smallest) of task base
+  priority and all effective priorities of waiters on its owned mutexes.
+- On enqueue/removal/handoff, effective priority is recalculated and
+  propagated through the blocked-owner chain. Wait-for cycles are detected
+  and rejected before a task blocks.
+- **Concrete bounded propagation algorithm:** after each wait-graph mutation,
+  recompute the affected owner's effective priority by scanning its at-most
+  M held mutex references and at-most N FIFO waiters per mutex. If that
+  effective priority changes and this owner is itself blocked waiting on a
+  mutex, repeat at the next owner in that task's single waiting-on edge.
+  Stop when the value is unchanged, the chain ends, or N owners have been
+  visited. This is a correct incremental update because the only dependency
+  edges that can change value after a single enqueue/unlink/handoff are those
+  along that owner chain. On handoff, recompute **both** old-owner and new-owner
+  chains. Wait-for cycles are rejected before publishing a blocked edge.
+- At most N distinct application owners can be visited; each recalculation
+  visits at most M held mutexes times N waiters. Upper structural bound is
+  **N*M*N = O(M*N²)** bounded waiter inspections per affected owner chain,
+  plus O(N) cycle checking and READY requeue. A handoff recomputing two chains
+  therefore has no more than **2*N*M*N** inspections plus bounded queue
+  operations. The implementation uses no recursion and no periodic TCB scan.
+  These are structural loop counts, **not** cycle/WCET guarantees.
 
-## Task and mutex metadata
+## Scheduler and lifetime invariants
 
-Maintain distinct `base_prio` and `effective_prio` per task. Priority 0 is highest. The scheduler READY lookup, preemption and priority-RR grouping use effective priority for priority-aware policies, while base priority is immutable across inheritance changes.
+- A READY task whose effective priority changes is removed from its **old**
+  priority FIFO before its priority field changes, then inserted in the
+  correct FIFO. One READY membership only, no quantum reset on priority
+  donation/withdrawal. FIFO order of unaffected same-priority tasks stays.
+- RUNNING/BLOCKED tasks change priority without queue membership changes.
+  For priority-aware policies, demoting a RUNNING owner after unlock may
+  require rescheduling if higher-priority READY tasks exist.
+- Policy transitions retain PI graph and priorities; the already documented
+  policy-change operation rebuilds READY structures and resets quantum.
+  Transient inheritance itself does not reset PRIORITY_RR remaining quantum.
+- Successful handoff first detaches ownership from old owner, attaches to
+  FIFO winner, clears winner's waiting edge, recomputes priorities, disarms
+  any timed wait, and publishes the winner READY exactly once.
+- Timed expiry unlinks the mutex FIFO waiter, clears its wait edge and
+  withdraws donation **before** READY publication. Producer wake and
+  timeout use one critical-section serialization. Neither may win twice.
+- Recursive lock and wait-for deadlock cycles are rejected. Tasks must
+  release held locks before exiting; robust owner-death recovery belongs
+  to #66. Reinitializing a locked mutex is invalid caller behavior.
 
-Each application TCB tracks `waiting_mutex` (or no mutex) and a statically bounded set of **owned mutex references**. The mutex keeps existing owner/FIFO metadata. No dynamic allocation is allowed.
+## Actual blocking guarantees
 
-Introduce an explicit `HARDRT_MAX_OWNED_MUTEXES_PER_TASK` compile-time limit, default chosen and documented by the implementation, and reject a lock **before** acquiring ownership if its owner-reference slot cannot be reserved. Both uncontended and direct-handoff paths must honor the limit. The maximum total simultaneously owned mutex instances is bounded by `HARDRT_APP_MAX_TASKS * HARDRT_MAX_OWNED_MUTEXES_PER_TASK`. This is a capacity limit, **not** a silent count of arbitrary external mutex objects.
+PI prevents unrelated medium-priority tasks from preempting a boosted
+lower-priority owner under fixed-priority scheduling. It does **not** alone
+prove a numerical worst-case blocking duration. The application must bound
+the execution of each critical section, nesting depth, IRQ interference,
+and any non-mutex blocking while owning a mutex. FIFO handoff can introduce
+multiple blocking terms. Characterizing the kernel's critical-section and
+handoff costs remains part of #52/#53; timing measurements are not WCET
+proofs.
 
-Mutex object lifetime is the caller's responsibility: it must remain valid while owned or waited upon. Destroy/reset of a live mutex is not safe. Owner-death recovery remains #66.
+## Test/qualification gate
 
-## Effective-priority rule
+Validate low/medium/high inversion, nested/transitive ownership, FIFO
+waiters, timed donation withdrawal, waiter timeout/unlock edge ordering,
+cycle and held-capacity rejection, READY migration, all policies, retained
+PRIORITY_RR quantum, and runtime policy switching. Run strict/UBSan and
+Cortex-M cross-builds. Require physical H755 functional validation before
+merging. Full 0.6 release requires unfiltered physical benchmark evidence.
 
-For task `T`, under priority-aware policies:
+## Relation to the original design review
 
-```text
-effective(T) = min(base(T), effective(W) for each waiter W
-                   on every mutex currently owned by T)
-```
-
-The fixed point includes nested and chained donation. FIFO order determines mutex handoff, **not** donation order; any waiter can cause donation. Expiring a timed high-priority waiter must withdraw its donation, potentially propagating a reduction along a chain.
-
-Run propagation under the common kernel critical-section serialization from #68. Bound traversal explicitly by task count and owned-mutex capacity: no recursion, no unbounded linked walks, no heap allocation. Detect attempts to create a circular wait-for dependency *before publishing BLOCKED or timer membership* and fail deterministically without partial mutation. Cycles are not a supported runtime blocking mode.
-
-The **initial implementation algorithm is a bounded fixed-point recomputation** after every wait-graph mutation. Initialize the effective-priority candidate of every used application task to its base priority, then perform exactly `N-1` relaxation passes. Each pass visits application task IDs in ascending order, visits no more than `M` owned-mutex references per task, and visits at most `N` FIFO waiters per mutex. A waiter donates its current candidate effective priority to the corresponding owner using `min()`. This computes the transitive minimum along every acyclic wait-for path of at most `N-1` edges. A cycle preflight is mandatory because cyclic lock waits are rejected, not treated as a stable supported blocking state. Store candidates in a statically sized `N`-entry scratch array; apply changed values only after completing relaxation, then update affected READY memberships atomically and request rescheduling as needed.
-
-The bound is **at most `(N-1)*N*M*N` waiter inspections** per full recomputation, plus O(N²) for bounded READY removal/rebucketing and O(N) cycle preflight. This conservative O(N³*M) bound is intentionally explicit rather than accidentally hiding iteration behind convergence. It must be included in the #53 critical-section/time characterization; optimization is allowed later only if it preserves the same semantics and an equally explicit bound.
-
-## Scheduler membership and quantum
-
-The existing READY structures have one intrusive link per task. Changing a READY task's effective priority must **atomically** remove it from its prior ready bucket and enqueue it in the new bucket, never temporarily let it appear twice or remain in the wrong bucket. The needed bounded arbitrary-READY-removal helper belongs in the scheduler core rather than the mutex module.
-
-For a RUNNING owner, changing effective priority does not itself reset `slice_left`. If the change makes a higher-priority READY task eligible, request reschedule using the standard preemption mechanism. For a blocked task, propagate donation but do not mark it READY.
-
-In `PRIORITY_RR`, retain the **remaining** quantum across temporary boosts, restorations and interruption by higher-priority work. Ordinary explicit yield and quantum exhaustion keep their documented semantics. `hrt_set_policy()` already rebuilds READY queues and intentionally resets quantums when changing scheduler policy; it must rebuild using effective priorities after PI metadata is consistent. Entering/leaving global RR must not leave stale priority bucket membership or destroy future donation dependencies.
-
-## Transition contract
-
-All transitions below occur under the kernel critical-section contract.
-
-1. **Uncontended lock:** preflight owner-reference capacity, set owner, link into owner's bounded held set. Base/effective priority unchanged unless an existing dependency demands recalculation.
-2. **Contended indefinite lock:** reject recursive/cyclic waits, publish FIFO waiter plus `waiting_mutex`, recompute effective priority through the owner chain, publish BLOCKED, reschedule.
-3. **Contended timed lock:** same order, and atomically arm the #68 timer. On timeout, unlink FIFO + clear `waiting_mutex` + withdraw donation **before** publishing READY. On producer wake, disarm timeout before READY.
-4. **Unlock with FIFO waiter:** remove mutex from old owner's held set; preflight/transfer into selected waiter's held set; clear new owner's `waiting_mutex`; perform inherited-priority recomputation for both owner graphs; hand off ownership directly; make waiter READY exactly once; preemption decision uses the final effective priorities.
-5. **Unlock without waiter:** remove old owner reference, release ownership, restore/recompute owner effective priority, and reschedule if a ready task is newly higher-priority.
-6. **Task exit:** retain existing ownership restrictions. Do not silently unlock, drop held-mutex tracking or recover application state. This is separate from #66.
-7. **Policy change:** retain wait-for/held metadata and exact donor graph; rebuild target-policy READY queues under the existing policy transition rule.
-
-The selected FIFO waiter may have inherited another priority; direct-handoff and cancellation must not assume queue order equals priority order.
-
-## Boundedness and qualified scope
-
-Let `N = HARDRT_APP_MAX_TASKS` and `M = HARDRT_MAX_OWNED_MUTEXES_PER_TASK`.
-
-Static mutex metadata is O(N*M) references plus existing bounded per-mutex FIFO storage. Each owner reference and waiter scan is bounded by M and N respectively. The initial priority recomputation has an explicit structural upper bound of `(N-1)*N*M*N` waiter inspections plus bounded READY-queue operations, to be measured on the target under #53. This is not a cycle-count/WCET claim. It must not rely on arbitrary application-created mutex counts.
-
-A structural bound on the kernel protocol **alone is not a wall-clock blocking bound**. The application must independently bound time spent inside each owned critical section, hold a consistent lock acquisition order or rely on cycle rejection, and constrain higher-priority interference/IRQ behavior. Under those assumptions PI prevents unrelated medium-priority work from preempting a boosted low-priority owner; blocked chains are finite when the application graph is acyclic. Record the resulting configuration-specific response-time assumptions instead of calling observed maxima WCET.
-
-Global RR has no priority-based mutex inversion guarantee. If the 0.6 qualification target needs a priority inversion bound, certify `PRIORITY` and/or `PRIORITY_RR`, not global RR.
-
-## Tests required before feature merge
-
-- Hosted low/medium/high classic inversion, donation and restoration.
-- FIFO multi-waiter donation, handoff and final effective-priority restoration.
-- Two+ held mutexes, nested mutexes, transitive donation and withdrawal.
-- Timed high-priority waiter expiry/donation withdrawal at the exact #68 arbitration boundary.
-- Cyclic waits rejected before state publication; waiter cancellation leaves no stale timer or owner reference.
-- Owner reference limit and failure paths leave mutex/task state unchanged.
-- READY reprioritization without duplicate intrusive membership.
-- All three policies and runtime policy changes while mutexes are owned.
-- Priority-RR remaining quantum preserved during boosts/restore; no unexpected reset.
-- Task exit/owner-death exclusions remain enforced.
-- Strict/UBSan, null/POSIX/Cortex-M, C/C++ API build and STM32H755 cross-build.
-- New physical NUCLEO-H755ZI-Q functional fixture for classic inversion, nested/timeout handoff and priority restoration; timing-path measurements integrated with #52/#53.
-- Full release candidate retains the unfiltered functional + 38 benchmark qualification gate, and must be rerun on the frozen 0.6 source SHA.
-
-**Merge policy:** This design document may merge independently. The kernel implementation must remain a separate PR and must not merge until the hosted/cross-build gates and physical H755 functional gate pass.
+The original pre-implementation review considered a full `N-1`-pass fixed-point recomputation with an O(N³*M) bound. The implementation uses the tighter bounded **incremental chain propagation** specified above instead. The safe substitution depends on two enforced invariants: each blocked task waits on no more than one mutex, and cycles are rejected before wait-graph mutation. The hosting tests must exercise nested/transitive donation, timer-driven withdrawal, FIFO handoff, and runtime policy switching. The original full recomputation remains a fallback design if those invariants cannot be established. Timing evidence under #52/#53 is still required before making configuration-specific WCET claims.
