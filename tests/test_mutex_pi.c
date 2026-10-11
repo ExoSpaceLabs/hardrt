@@ -242,8 +242,12 @@ static void multi_wait_owner(void *arg) {
     low_id = hrt__get_current();
     T_ASSERT_EQ_INT(0, hrt_mutex_lock(&lock_a), "multi-donor owner locks");
     mid_id = make_task(multi_wait_middle, stack_b, HRT_PRIO1);
+    T_ASSERT_TRUE(mid_id >= 0, "created medium priority donor");
+    hrt_yield();
+    T_ASSERT_EQ_INT(1, lock_a.count_wait,
+                    "medium donor is blocked before high donor arrives");
     high_id = make_task(multi_wait_high, stack_c, HRT_PRIO0);
-    T_ASSERT_TRUE(mid_id >= 0 && high_id >= 0, "created two priority donors");
+    T_ASSERT_TRUE(high_id >= 0, "created high priority donor");
     hrt_yield();
     T_ASSERT_EQ_INT(2, lock_a.count_wait, "both priority donors blocked");
     T_ASSERT_EQ_INT(HRT_PRIO0, hrt__test_task_effective_priority(low_id),
