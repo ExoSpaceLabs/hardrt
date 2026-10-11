@@ -112,8 +112,10 @@ for pattern, description in stale_patterns.items():
         fail(description)
 
 validation = (ROOT / "validation/stm32/README.md").read_text(encoding="utf-8")
-if "38 hardware benchmark images" not in validation:
-    fail("validation/stm32/README.md does not describe the 38-image release benchmark matrix")
+if "52 benchmark metrics across 39 images" not in validation:
+    fail("validation/stm32/README.md does not require the 52-metric / 39-image release benchmark matrix")
+if "original 38 images" not in validation:
+    fail("validation/stm32/README.md does not preserve the historical 38-image baseline")
 if "do not commit generated qualification evidence" not in validation.lower():
     fail("validation/stm32/README.md does not forbid committing generated qualification evidence")
 if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in validation:
@@ -135,6 +137,14 @@ if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in release_validation:
 if "scripts/finalize_release.sh" not in release_validation:
     fail("release qualification retention guidance does not document finalization")
 
+runner = (ROOT / "scripts/stm32_manual_test_full.sh").read_text(encoding="utf-8")
+if "BENCHMARK_TOTAL=52" not in runner or "FUNCTIONAL_TOTAL=16" not in runner:
+    fail("physical qualification runner totals are not 16 functional + 52 benchmark metrics")
+if "sync_benchmark_case" not in runner or "parse_stm32_sync_benchmark.awk" not in runner:
+    fail("physical qualification runner does not execute the 14-metric DWT synchronization image")
+package = (ROOT / "scripts/package_stm32_qualification.sh").read_text(encoding="utf-8")
+if "EXPECTED_BENCHMARK" not in package or "sync_benchmark_metrics.csv" not in package:
+    fail("release evidence packaging does not enforce the expanded benchmark matrix")
 qualification = (ROOT / "docs/QUALIFICATION.md").read_text(encoding="utf-8")
 if "tag `0.5.0` was created on `main`" not in qualification:
     fail("docs/QUALIFICATION.md does not preserve the repository's historical 0.5.0 tag convention")
