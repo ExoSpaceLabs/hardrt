@@ -1,8 +1,8 @@
 # STM32H755 synchronization/critical-section DWT benchmark
 
-Status: **development measurement only** for HardRT #53 and #52. It does not replace the 38-image canonical benchmark matrix or count as release qualification.
+Status: **required part of the full 0.6 release benchmark matrix** for #53 and #52. The original 38 benchmark images remain unchanged; one added diagnostic image supplies 14 additional required results. The standalone script remains a development-only scoped shortcut, not release qualification.
 
-## Run
+## Run the scoped development benchmark
 
 From the feature branch and a clean tracked source checkout with NUCLEO-H755ZI-Q / CM7 connected by ST-Link:
 
@@ -15,7 +15,7 @@ git pull --ff-only
   --samples 10000
 ```
 
-The runner probes the board, builds a **separate instrumented Cortex-M library**, flashes the firmware, drives OpenOCD and GDB, validates the 14 result rows and writes:
+The scoped runner probes the board, builds a **separate instrumented Cortex-M library**, flashes the firmware, drives OpenOCD and GDB, validates the 14 result rows and writes:
 
 ```text
 validation/stm32/sync_benchmarks/<UTC>_<short-SHA>/
@@ -27,7 +27,26 @@ validation/stm32/sync_benchmarks/<UTC>_<short-SHA>/
   raw/gdb.log
 ```
 
-All output is gitignored. The report records the exact HardRT SHA, STM32CubeH7 SHA, toolchain and clock. Send back the `report.md`, `sync_dwt.csv`, and raw logs when reviewing the results. This script needs **no account login** and never deletes a branch or publishes a release.
+All output is gitignored. The report records the exact HardRT SHA, STM32CubeH7 SHA, toolchain and clock. This script needs **no account login** and never deletes a branch or publishes a release.
+
+## Required full release campaign
+
+After merging all candidate changes into `develop`, freeze the exact SHA,
+require complete hosted/cross-build CI and run the unfiltered qualification:
+
+```bash
+./scripts/stm32_manual_test_full.sh \
+  /home/dev/STM32Cube/Repository/STM32CubeH7 --clean-builds
+```
+
+The canonical runner automatically builds/flashes this same synchronization
+image, parses all 14 GDB rows, counts them as 14 independent benchmark results
+and stores `raw/sync_benchmark_gdb.log` plus
+`raw/sync_benchmark_metrics.csv` within the main qualification tree.
+The required totals are **16/16 functional + 52/52 benchmark metrics**
+across **39 benchmark images**, board probe PASS, Overall PASS, clean
+source and full unfiltered evidence. Neither the previous standalone 14/14
+run nor `--only benchmark` is a release qualification.
 
 ## Metrics
 
@@ -63,4 +82,6 @@ Still outstanding before #53 can close:
 - full outermost BASEPRI edge-to-edge timing that accounts for instrumentation effects;
 - numeric configuration-specific mutex blocking analysis, including application-held critical sections and interference assumptions.
 
-The fully unfiltered **16 functional + 38 canonical benchmark** campaign remains a **separate** frozen 0.6.0 release candidate gate.
+The fully unfiltered **16 functional + 52 benchmark metric** campaign is the
+frozen 0.6.0 release candidate gate, including these 14 metrics. The earlier
+38-image set is retained for historical comparisons.
