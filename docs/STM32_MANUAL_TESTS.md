@@ -24,21 +24,24 @@ This is the canonical **release qualification** command. It owns build, flash, O
 
 The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
 
-## Development-only synchronization timing (#53)
+## Synchronization timing: integrated release matrix and scoped development shortcut
 
-For outer BASEPRI-mask and queue-copy timing, use the separate
-[STM32 synchronization benchmark](SYNC_TIMING_BENCHMARK.md):
+The canonical full/unfiltered runner includes all 14 synchronization metrics
+automatically within its benchmark suite. During development, just the same
+[STM32 synchronization image](SYNC_TIMING_BENCHMARK.md) can be run separately:
 
 ```bash
 ./scripts/stm32_sync_benchmark.sh \
   /home/dev/STM32Cube/Repository/STM32CubeH7 --samples 10000
 ```
 
-This is **not** an additional release benchmark or a substitute for the 38
-canonical timing images. It uses an opt-in instrumented Cortex-M library, emits
-14 min/mean/max API-cycle and masked-window metrics, and writes an independent
-SHA-keyed report/CSV under `validation/stm32/sync_benchmarks/`. No credentials
-or remote branch mutation are involved.
+The canonical suite includes **52 required benchmark metrics across 39 firmware
+images**: the historical 38 measurements/images plus the new 14 synchronized
+metrics in one additional build/flash image. The standalone command is a
+**development shortcut only**. It uses the same opt-in instrumented library
+and captures a separate SHA-keyed report/CSV under
+`validation/stm32/sync_benchmarks/`. Neither runner needs credentials or
+mutates remote branches.
 
 ## Release branch and evidence handling
 
@@ -150,7 +153,8 @@ The board/OpenOCD probe is a prerequisite, not a functional feature. The current
 12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep/tick accounting is correct, and awakened higher-priority work preempts.
 13. **Stable periodic delay hardware contract**: one persistent phase drives repeated five-tick releases while two ticks per period are consumed as task execution; exact-deadline behavior is on time; an intentional three-tick late call returns `HRT_DELAY_MISSED` with the expected lateness and does not sleep or rebase phase.
 14. **Common IPC timeout hardware contract**: one external tick domain drives a producer-before-deadline semaphore success plus semaphore, queue receive/send, mutex, event, notification-wait and notification-take expiries; timed-out waiter membership is removed and notification operations recover after timeout.
-15. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+15. **Bounded mutex priority inheritance hardware contract**: transitive donation, release ordering and handoff.
+16. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
@@ -158,15 +162,28 @@ Timing measurements are deliberately not counted as functional contracts.
 
 The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started. The H755 validator configures TIM2 before scheduler start but enables the timer from the first dispatched application task.
 
-## Hardware benchmark suite: 38 images
+## Hardware benchmark suite: 52 metrics / 39 images
 
-Benchmark mode runs **38 separate build/flash images**:
+Benchmark mode runs **39 build/flash images** producing **52 mandatory
+benchmark metrics**. The previously qualified 38-image set remains unchanged:
 
 - 4 established scheduler/semaphore latency and switch measurements;
 - 16 v0.5 event/notification signal measurements;
-- 18 tick/sleeper scaling measurements.
+- 18 tick/sleeper scaling measurements;
+- **14 synchronization/BASEPRI-mask/queue-copy metrics** from one diagnostic image.
 
-Every image is rebuilt and flashed independently. Ordinary HardRT builds remain uninstrumented.
+Every image is rebuilt and flashed independently. The diagnostic image
+enables `HARDRT_CORTEXM_CRIT_PROFILE` only for itself; the normal kernel
+remains uninstrumented.
+
+The synchronization image produces 14 result rows (semaphore take/give,
+uncontended mutex lock/unlock, queue send/receive at 4/16/64/256/1024 bytes).
+It passes only when the firmware reports PASS, all 14 metric IDs and sizes
+are present and every row contains the configured number of valid samples.
+Each row is an independent PASS/FAIL case in the complete qualification report.
+Raw `sync_benchmark_gdb.log` and `sync_benchmark_metrics.csv` are retained
+inside the canonical release evidence archive. Failure of the diagnostic
+image fails all 14 metrics rather than silently skipping them.
 
 ### Established latency and switch benchmarks
 
@@ -236,12 +253,13 @@ The runner records:
 - STM32CubeH7 SHA/state
 - board probe result
 - functional `N/16 PASS`, failure and not-run counts
-- benchmark `N/38 PASS`, failure and not-run counts
+- benchmark `N/52 PASS`, failure and not-run counts
 - established timing min/avg/max
 - event/notification ISR and event-scan timing min/avg/max
 - signal waiter count and expected/observed wake fan-out
 - scheduler/PendSV breakdown
 - tick/sleeper scenario/capacity/wake metadata
+- synchronization masked-window and API-cycle min/avg/max per size/operation
 - RR trace/quantum evidence
 - raw build/OpenOCD/GDB log locations
 
