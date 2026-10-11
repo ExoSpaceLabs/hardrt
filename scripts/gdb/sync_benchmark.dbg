@@ -1,0 +1,57 @@
+set confirm off
+set pagination off
+set print pretty off
+set mem inaccessible-by-default off
+target extended-remote :3333
+monitor arm semihosting disable
+monitor reset halt
+
+break *hrt_error
+commands
+  silent
+  printf "RESULT: FAIL (hrt_error)\n"
+  bt
+  detach
+  quit
+end
+
+break *sync_benchmark_emit
+commands
+  silent
+  set $p = (unsigned int)$r0
+  set $pass = *(unsigned int*)($p + 0)
+  set $error = *(unsigned int*)($p + 4)
+  set $hz = *(unsigned int*)($p + 8)
+  set $samples = *(unsigned int*)($p + 12)
+  set $rows = *(unsigned int*)($p + 16)
+  set $enabled = *(unsigned int*)($p + 20)
+  printf "core_hz=%u samples=%u rows=%u profile=%u error=%u\n", $hz,$samples,$rows,$enabled,$error
+  printf "NOTE: diagnostic masked window excludes entry/exit instructions; API timing includes instrumentation.\n"
+  set $ok = ($pass == 1 && $error == 0 && $hz > 0 && $rows == 14 && $samples > 0 && $enabled == 1)
+  set $i = 0
+  while $i < 14
+    set $r = $p + 24 + $i * 36
+    set $id = *(unsigned int*)($r + 0)
+    set $bytes = *(unsigned int*)($r + 4)
+    set $count = *(unsigned int*)($r + 8)
+    set $a0 = *(unsigned int*)($r + 12)
+    set $a1 = *(unsigned int*)($r + 16)
+    set $a2 = *(unsigned int*)($r + 20)
+    set $c0 = *(unsigned int*)($r + 24)
+    set $c1 = *(unsigned int*)($r + 28)
+    set $c2 = *(unsigned int*)($r + 32)
+    printf "BENCH id=%u bytes=%u count=%u api_min=%u api_avg=%u api_max=%u masked_min=%u masked_avg=%u masked_max=%u\n", $id,$bytes,$count,$a0,$a1,$a2,$c0,$c1,$c2
+    if $id != $i || $count != $samples || $a0 > $a1 || $a1 > $a2 || $c0 > $c1 || $c1 > $c2 || $c0 > $a2
+      set $ok = 0
+    end
+    set $i = $i + 1
+  end
+  if $ok
+    printf "RESULT: PASS\n"
+  else
+    printf "RESULT: FAIL (invalid benchmark record)\n"
+  end
+  detach
+  quit
+end
+continue

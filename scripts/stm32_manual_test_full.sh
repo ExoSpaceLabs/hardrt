@@ -16,7 +16,7 @@ ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
 FUNCTIONAL_TOTAL=16
-BENCHMARK_TOTAL=38
+BENCHMARK_TOTAL=52
 
 NAMES=()
 STATUSES=()
@@ -33,7 +33,7 @@ Usage:
 Modes:
   no --only            Run ALL available tests: every functional hardware validation AND every hardware benchmark.
   --only functional    Run only functional hardware validation.
-  --only benchmark     Run only every hardware benchmark, one image at a time.
+  --only benchmark     Run all hardware benchmark cases (38 historical images plus one 14-metric synchronization image).
 
 The board probe is a prerequisite and is always run.
 
@@ -46,7 +46,7 @@ and published as a GitHub Release artifact from the matching X.Y.Z tag.
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
   --output-dir DIR        Evidence root (default: validation/stm32).
-  --timing-samples N      Samples per benchmark image (default: 10000).
+  --timing-samples N      Samples per benchmark metric (default: 10000).
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
   --openocd-scripts DIR   OpenOCD scripts directory.
@@ -474,6 +474,48 @@ tick_benchmark_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+
+# The baseline synchronization image contains 14 independently verified metrics
+# but only one build/flash. Record each metric separately so partial output or
+# malformed GDB records can never pass the release 52-case qualification gate.
+sync_benchmark_case() {
+  local prefix=timing_sync_benchmark
+  local elf="$ROOT_DIR/examples/hardrt_h755_sync_benchmark/build-cortex_m/hardrt_h755_sync_benchmark.elf"
+  local glog="$RAW/sync_benchmark_gdb.log" csv="$RAW/sync_benchmark_metrics.csv"
+  local criterion="Diagnostic DWT critical-section baseline: $TIMING_SAMPLES samples per metric, verified queue copies, API/masked min <= avg <= max, 14 complete metrics."
+  local failure="" id bytes count api_min api_avg api_max mask_min mask_avg mask_max
+  local -a labels=(
+    sem_take_available sem_give_uncontended mutex_lock_uncontended mutex_unlock_uncontended
+    queue_send_4 queue_recv_4 queue_send_16 queue_recv_16
+    queue_send_64 queue_recv_64 queue_send_256 queue_recv_256
+    queue_send_1024 queue_recv_1024
+  )
+  echo; echo "========== DWT synchronization critical-section benchmarks (14 metrics) =========="
+  if ! run_logged "$RAW/sync_benchmark_build_flash.log" \
+       "$ROOT_DIR/scripts/build-lib-stm32h7xx-sync-benchmark.sh" --samples "$TIMING_SAMPLES"; then
+    failure="Diagnostic kernel/image build or flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/sync_benchmark.dbg" sync_benchmark; then
+    failure="GDB timing run failed or timed out."
+  elif ! awk -v target="$TIMING_SAMPLES" -v csv="$csv" \
+       -f "$ROOT_DIR/scripts/parse_stm32_sync_benchmark.awk" "$glog"; then
+    failure="Malformed/incomplete synchronization metrics or wrong sample count."
+  fi
+  if [[ -n "$failure" ]]; then
+    for id in "${!labels[@]}"; do
+      record "DWT sync_${labels[$id]} timing" FAIL "$criterion" \
+        "raw/sync_benchmark_*.log" "$failure"
+    done
+    return 0
+  fi
+  while IFS=, read -r id bytes count api_min api_avg api_max mask_min mask_avg mask_max; do
+    if [[ "$id" == id ]]; then continue; fi
+    record "DWT sync_${labels[$id]} timing" PASS "$criterion" \
+      "raw/sync_benchmark_metrics.csv" \
+      "bytes=$bytes count=$count min=$api_min cycles, avg=$api_avg cycles, max=$api_max cycles; masked=$mask_min / $mask_avg / $mask_max cycles."
+  done < "$csv"
+}
+
+
 preemption_case() {
   local case="$1" title="$2" prefix="preemption_$1" status=PASS notes=""
   local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
@@ -658,6 +700,10 @@ run_benchmarks() {
       tick_benchmark_case "$scenario" "$tasks"
     done
   done
+
+  # 14 independently checked metrics in one diagnostic image. These are
+  # mandatory for a full release candidate, optional only through scoped runs.
+  sync_benchmark_case
 }
 
 run_all_tests() {

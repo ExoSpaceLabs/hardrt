@@ -75,22 +75,41 @@ jobs:
           output_dir="$RUNNER_TEMP/qualification-package"
           mkdir -p "$run_dir/raw"
           printf 'synthetic raw evidence\n' > "$run_dir/raw/smoke.log"
+          # Synthetic parser fixture only: no physical qualification is implied.
+          {
+            echo 'core_hz=64000000 samples=8 rows=14 profile=1 error=0'
+            for (( i=0; i<14; ++i )); do
+              case "$i" in
+                0|1|2|3) bytes=0 ;;
+                4|5) bytes=4 ;;
+                6|7) bytes=16 ;;
+                8|9) bytes=64 ;;
+                10|11) bytes=256 ;;
+                12|13) bytes=1024 ;;
+              esac
+              printf 'BENCH id=%d bytes=%d count=8 api_min=100 api_avg=120 api_max=140 masked_min=20 masked_avg=30 masked_max=40\n' "$i" "$bytes"
+            done
+            echo 'RESULT: PASS'
+          } > "$run_dir/raw/sync_benchmark_gdb.log"
+          awk -v target=8 -v csv="$run_dir/raw/sync_benchmark_metrics.csv" \
+            -f scripts/parse_stm32_sync_benchmark.awk \
+            "$run_dir/raw/sync_benchmark_gdb.log"
           cat > "$run_dir/qualification.md" <<EOF
           # HardRT STM32H755 Hardware Qualification Report
 
           - HardRT SHA: \`$GITHUB_SHA\`
           - HardRT tracked source state: **clean**
-          - Functional contracts: **13**
-          - Hardware benchmarks: **38**
+          - Functional contracts: **16**
+          - Hardware benchmarks: **52**
           - Selected mode: **all tests (functional + benchmark)**
 
           ## Qualification verdict
 
           - Board probe: **PASS**
-          - Functional contracts passed: **13 / 13**
+          - Functional contracts passed: **16 / 16**
           - Functional contracts failed: **0**
           - Functional contracts not run: **0**
-          - Benchmarks passed: **38 / 38**
+          - Benchmarks passed: **52 / 52**
           - Benchmarks failed: **0**
           - Benchmarks not run: **0**
           - Overall: **PASS**
@@ -123,6 +142,26 @@ jobs:
           if bash scripts/package_stm32_qualification.sh \
             0.0.0 "$bad_run" --output-dir "$RUNNER_TEMP/bad-package"; then
             echo "Partial qualification unexpectedly packaged successfully"
+            exit 1
+          fi
+
+
+          missing_run="$RUNNER_TEMP/qualification-run-missing-sync"
+          cp -a "$run_dir" "$missing_run"
+          rm "$missing_run/raw/sync_benchmark_metrics.csv"
+          if bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$missing_run" --output-dir "$RUNNER_TEMP/missing-package"; then
+            echo "Missing synchronization metrics unexpectedly packaged successfully"
+            exit 1
+          fi
+
+          legacy_run="$RUNNER_TEMP/qualification-run-old-matrix"
+          cp -a "$run_dir" "$legacy_run"
+          sed -i 's/Hardware benchmarks: \*\*52\*\*/Hardware benchmarks: **38**/' "$legacy_run/qualification.md"
+          sed -i 's/Benchmarks passed: \*\*52 \/ 52\*\*/Benchmarks passed: **38 \/ 38**/' "$legacy_run/qualification.md"
+          if bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$legacy_run" --output-dir "$RUNNER_TEMP/legacy-package"; then
+            echo "Obsolete 38-metric release evidence unexpectedly packaged successfully"
             exit 1
           fi
 

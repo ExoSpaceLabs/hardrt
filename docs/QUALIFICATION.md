@@ -115,7 +115,38 @@ After the tag workflow has staged the draft release, finalize it with:
 
 The finalizer verifies the physical `.tar.xz` package and checksum locally and stops there. It does not require a hosting-service CLI or account authentication, and it never deletes or rewrites remote branches.
 
-## Current v0.5 matrix
+## Current 0.6 release-candidate matrix
+
+The complete frozen-candidate hardware gate is:
+
+```text
+Board probe PASS
+16/16 functional PASS
+52/52 benchmark metrics PASS (39 physical build/flash images)
+Overall PASS
+```
+
+The benchmark matrix retains all 38 historical image-level measurements and
+adds the mandatory 14-result synchronization diagnostic image for semaphore,
+mutex and queue-copy scaling. It is **one extra firmware image**, not 14
+separate board flashes. Normal production HardRT builds remain uninstrumented.
+The diagnostic image's raw GDB log and machine-readable CSV must be retained
+with the canonical evidence. The packaging helper rejects any report whose
+totals differ from the active runner or whose synchronization evidence is missing.
+
+The unfiltered `scripts/stm32_manual_test_full.sh` command is required for
+release qualification on the frozen `develop` SHA. `--only functional`,
+`--only benchmark`, and `scripts/stm32_sync_benchmark.sh` are explicitly
+**development-only** shortcuts, even if every selected test passes. Any
+source/test/build change after the hardware-qualified SHA outside the allowed
+release-documentation-only diff requires a new complete run.
+
+These diagnostic metrics are observations, not unconditional WCET bounds.
+Uncompleted #53 contended-inheritance, timeout-expiry, or IRQ-interference
+characterization must not be described as completed or proved by the
+uncontended synchronization baseline.
+
+## Historical v0.5 matrix
 
 The consolidated v0.5 runner contains:
 

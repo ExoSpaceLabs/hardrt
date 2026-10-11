@@ -25,8 +25,8 @@ Run the complete unfiltered STM32 qualification matrix:
 Release evidence requires:
 
 - board/OpenOCD probe PASS;
-- 13/13 functional contracts PASS;
-- 38/38 hardware benchmarks PASS;
+- **16/16** functional contracts PASS;
+- **52/52** benchmark metrics PASS (38 legacy images plus one 14-metric synchronization image);
 - Overall PASS;
 - clean tracked HardRT source recorded in `qualification.md`.
 

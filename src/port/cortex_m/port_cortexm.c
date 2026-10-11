@@ -135,12 +135,25 @@ static void _configure_fpu_context(void) {
 static uint32_t g_basepri_prev = 0;
 static volatile uint32_t g_cs_nest = 0;
 
+/* Diagnostic-only: the DWT window starts after raising BASEPRI and ends before
+ * restoring it. Results exclude entry/exit instruction overhead. The
+ * benchmark enables DWT before scheduling. Unprofiled builds are unchanged. */
+#if defined(HARDRT_CORTEXM_CRIT_PROFILE) && HARDRT_CORTEXM_CRIT_PROFILE
+#define HRT_DWT_CYCCNT (*(volatile uint32_t *)0xE0001004UL)
+volatile uint32_t hrt__bench_cs_last_cycles;
+volatile uint32_t hrt__bench_cs_outer_count;
+static uint32_t g_bench_cs_start;
+#endif
+
 void hrt_port_crit_enter(void) {
     const uint32_t prev = _get_BASEPRI();
     if (g_cs_nest == 0u) {
         g_basepri_prev = prev;
         _raise_BASEPRI(_prio_to_basepri(HARDRT_MAX_SYSCALL_IRQ_PRIO));
         _hrt_port_barrier();
+#if defined(HARDRT_CORTEXM_CRIT_PROFILE) && HARDRT_CORTEXM_CRIT_PROFILE
+        g_bench_cs_start = HRT_DWT_CYCCNT;
+#endif
     }
     g_cs_nest++;
 }
@@ -149,8 +162,15 @@ void hrt_port_crit_exit(void) {
     if (g_cs_nest == 0u) return;
     g_cs_nest--;
     if (g_cs_nest == 0u) {
+#if defined(HARDRT_CORTEXM_CRIT_PROFILE) && HARDRT_CORTEXM_CRIT_PROFILE
+        const uint32_t masked_end = HRT_DWT_CYCCNT;
+#endif
         _set_BASEPRI(g_basepri_prev);
         _hrt_port_barrier();
+#if defined(HARDRT_CORTEXM_CRIT_PROFILE) && HARDRT_CORTEXM_CRIT_PROFILE
+        hrt__bench_cs_last_cycles = masked_end - g_bench_cs_start;
+        hrt__bench_cs_outer_count++;
+#endif
     }
 }
 

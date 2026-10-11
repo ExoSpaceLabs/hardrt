@@ -27,3 +27,4 @@ CMakeUserPresets.json
 # published as a GitHub Release artifact from the qualified vX.Y.Z tag.
 validation/stm32/20*/
 validation/stm32/releases/
+validation/stm32/sync_benchmarks/

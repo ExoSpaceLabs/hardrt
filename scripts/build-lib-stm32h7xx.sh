@@ -67,7 +67,10 @@ CMAKE_ARGS=(
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"
   -DHARDRT_BUILD_TESTS="$CTESTS"
   -DHARDRT_STALL_ON_ERROR=ON
+  -DHARDRT_CORTEXM_CRIT_PROFILE=OFF
 )
+# Explicit diagnostic OFF by default; opt-in --hardrt-cmake-arg overrides it.
+# Keep the normal scheduler/IPC image free of benchmark DWT hooks.
 CMAKE_ARGS+=("${HARDRT_EXTRA_CMAKE_ARGS[@]}")
 
 if [[ "$PORT" == "cortex_m" ]]; then
