@@ -343,9 +343,12 @@ if "hardrt-bundle" in linux_workflow:
 qualification_diff = (ROOT / "scripts/check_release_qualification_diff.py").read_text(encoding="utf-8")
 if "ALLOWED_EXACT" not in qualification_diff or "ALLOWED_PREFIXES" not in qualification_diff:
     fail("release qualification equivalence guard does not define a conservative allowlist")
-for forbidden in ('".github/workflows/"', '"scripts/package_stm32_qualification.sh"', '"CMakeLists.txt"'):
-    if forbidden in qualification_diff:
-        fail(f"release qualification equivalence guard incorrectly exempts build inputs: {forbidden}")
+if 'ALLOWED_EXACT = {"README.md", "RELEASE_NOTES.md"}' not in qualification_diff:
+    fail("0.6 qualified-input guard must permit only current documentation files")
+if 'ALLOWED_PREFIXES = ("docs/",)' not in qualification_diff:
+    fail("0.6 qualified-input guard must reject arbitrary non-doc changes")
+if 'HISTORICAL_051_SHAS' not in qualification_diff:
+    fail("legacy 0.5.1 release requires immutable audited SHA-pair verification")
 tagger = (ROOT / ".github/workflows/tag-release.yml").read_text(encoding="utf-8")
 for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualification: PASS",
                  "check_release_qualification_diff.py", "uses: ./.github/workflows/release.yml"):

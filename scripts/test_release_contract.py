@@ -86,5 +86,16 @@ class ReleaseInputEquivalenceTest(unittest.TestCase):
         self.evaluate({"examples/hardrt_h755_blinky/linker/flash.ld": "new\n"}, False)
 
 
+    def test_historical_exception_rejects_unrelated_shas(self) -> None:
+        self.git("commit", "--allow-empty", "-qm", "release metadata only")
+        tagged = self.git("rev-parse", "HEAD").stdout.strip()
+        result = subprocess.run(
+            [sys.executable, str(GUARD), self.qualified, tagged,
+             "--historical-0.5.1"],
+            cwd=self.root, text=True, capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0,
+                            msg="legacy policy must match audited 0.5.1 SHAs")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
