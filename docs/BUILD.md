@@ -178,7 +178,7 @@ Kernel/port-private headers are not installed.
 C:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
@@ -186,7 +186,7 @@ target_link_libraries(app PRIVATE HardRT::hardrt)
 C++ when the package was built with wrappers enabled:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```

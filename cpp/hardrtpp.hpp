@@ -171,7 +171,7 @@ namespace hardrt {
 
         /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.5.1").
+         * @return Version string (e.g., "0.6.0").
          */
         static const char* version_string() {
             return hrt_version_string();

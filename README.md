@@ -117,7 +117,7 @@ cmake --install build --prefix "$PWD/build/install"
 Consume from another CMake project:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
