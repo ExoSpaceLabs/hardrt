@@ -266,33 +266,3 @@ The runner records:
 A default full run is the only mode intended to become complete release evidence.
 
 See [QUALIFICATION.md](QUALIFICATION.md), [RELEASE_PROCESS.md](RELEASE_PROCESS.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).
-
-## DAS v0.1.0 external integration reference
-
-The current **16-functional/52-benchmark** STM32H755 qualification images use
-STM32CubeH7 directly and do **not** link DAS. They therefore cannot be
-retrospectively called DAS-backed timing results.
-
-For interoperability with DAS on STM32H755 CM7, HardRT now pins the actual
-[DAS v0.1.0](https://github.com/Inczert/device-abstraction-stack/releases/tag/v0.1.0)
-release in [`thirdparty/DAS.lock`](../thirdparty/DAS.lock):
-commit `8553d903a615fe99e2a3a434f876b51f9542fd46`. This
-explicit **tag + commit** reference cannot silently follow DAS `develop`
-or a moved tag.
-
-The separate cross-build/link-only integration check verifies the tag/commit,
-builds installed DAS 0.1.0 and current HardRT packages and links the tagged DAS
-UART example against both libraries:
-
-```bash
-./scripts/stm32_das_integration.sh /path/to/STM32CubeH7
-```
-
-To use a checkout rather than letting the script clone the tagged source
-under its generated build directory, pass `--das-root /path/to/das`. That
-checkout must match the pinned commit and have no modified tracked files.
-The same test is required in hosted Linux CI.
-
-**This is not a board-execution qualification.** A later conversion of the
-H755 physical fixtures to DAS must record a fresh full hardware run and
-recharacterize timing, particularly if DAS changes the clock profile.

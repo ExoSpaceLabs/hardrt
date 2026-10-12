@@ -355,30 +355,6 @@ for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualifica
     if required not in tagger:
         fail(f"auto tag workflow is missing mandatory release gate: {required}")
 
-# DAS v0.1.0 integration is pinned independently from HardRT's bare-metal
-# STM32CubeH7-based physical runner.
-das_lock = (ROOT / "thirdparty/DAS.lock").read_text(encoding="utf-8")
-for value in (
-    "DAS_REPOSITORY=https://github.com/Inczert/device-abstraction-stack.git",
-    "DAS_TAG=v0.1.0",
-    "DAS_SHA=8553d903a615fe99e2a3a434f876b51f9542fd46",
-):
-    if value not in das_lock:
-        fail(f"invalid released DAS reference: {value}")
-das_test = (ROOT / "tests/das_installed_consumer/CMakeLists.txt").read_text(encoding="utf-8")
-for value in (
-    "DAS 0.1.0 EXACT CONFIG REQUIRED",
-    "HardRT ${HARDRT_EXPECTED_VERSION} EXACT CONFIG REQUIRED",
-    "HardRT::hardrt das::das",
-):
-    if value not in das_test:
-        fail(f"DAS v0.1.0 consumer contract missing: {value}")
-das_ci = (ROOT / ".github/workflows/ci_posix.yml").read_text(encoding="utf-8")
-if "name: DAS v0.1.0 + HardRT CM7" not in das_ci:
-    fail("CI does not cross-build HardRT against released DAS v0.1.0")
-if "scripts/stm32_das_integration.sh" not in das_ci:
-    fail("DAS v0.1.0 CI integration runner missing")
-
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)
     for error in errors:

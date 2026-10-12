@@ -188,15 +188,3 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 ```
 
 The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. If the project later chooses to publish those files on a hosting service, that publication is separate from release finalization and does not change the qualified-source contract.
-
-## Pinning the external DAS release
-
-HardRT + DAS STM32H755 CM7 installed-consumer integration uses the released
-[DAS v0.1.0](https://github.com/Inczert/device-abstraction-stack/releases/tag/v0.1.0)
-at the checked source commit in
-[`thirdparty/DAS.lock`](../thirdparty/DAS.lock).
-Hosted CI compiles and links that source with HardRT; there is no dependency
-on a floating DAS development branch. The bare-metal HardRT 16/52 H755
-qualification suite still uses the separately pinned/recorded STM32CubeH7
-checkout, not DAS. A future change to use DAS inside the physical suite
-is build-affecting and needs fresh hardware timing evidence.

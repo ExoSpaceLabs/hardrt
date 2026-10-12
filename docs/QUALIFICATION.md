@@ -285,16 +285,3 @@ The two blinky cases retain a qualitative human check: both LEDs must visibly to
 ## Relationship to broader hard-real-time qualification
 
 Passing the v0.5 matrix demonstrates the tested H755 configuration satisfies the current behavioral contracts and provides measured timing evidence for the benchmark workloads. It does not establish universal WCET bounds. Analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, richer interference analysis, and complete machine-readable timing evidence remain 1.0-quality work.
-
-## Released DAS interoperation boundary
-
-HardRT's independent DAS STM32H755 CM7 consumer uses **DAS v0.1.0** from
-`Inczert/device-abstraction-stack` at the exact commit locked in
-[`thirdparty/DAS.lock`](../thirdparty/DAS.lock). The Linux CI integration
-test cross-builds the tagged DAS source against the current HardRT candidate.
-
-The established 16/52 physical qualification firmware is **not DAS-backed**;
-it links STM32CubeH7 directly and retains its own recorded Cube revision.
-An upgrade to the pinned DAS version is a reviewed external dependency change.
-Actual DAS-backed physical execution or timing claims require new board data,
-not merely a passing interop cross-build.

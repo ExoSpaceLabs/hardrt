@@ -1,4 +1,0 @@
-# HardRT STM32 CM7 integration baseline: the released DAS source.
-DAS_REPOSITORY=https://github.com/Inczert/device-abstraction-stack.git
-DAS_TAG=v0.1.0
-DAS_SHA=8553d903a615fe99e2a3a434f876b51f9542fd46

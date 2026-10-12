@@ -69,7 +69,6 @@ jobs:
           python3 scripts/check_release_qualification_diff.py HEAD HEAD
           python3 scripts/test_release_contract.py
 
-          bash -n scripts/stm32_das_integration.sh
           bash -n scripts/package_stm32_qualification.sh
           bash -n scripts/finalize_release.sh
           shellcheck scripts/package_stm32_qualification.sh scripts/finalize_release.sh
