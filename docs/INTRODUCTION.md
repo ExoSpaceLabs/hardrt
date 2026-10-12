@@ -6,15 +6,15 @@ The Cortex-M target is being developed toward an **explicitly qualified hard rea
 
 ## Scope
 
-HardRT 0.5.1 provides:
+HardRT 0.6.0 candidate provides:
 
 - static application-owned task stacks and bounded task capacity;
 - fixed-priority, global round-robin, and fixed-priority round-robin scheduling;
 - runtime task creation with EXITED-slot reclamation;
-- sleep, yield, deletion/return, tick/time queries, and runtime scheduler tuning;
+- sleep, phase-preserving absolute periodic delay, yield, deletion/return, tick/time queries, and runtime scheduler tuning;
 - binary and counting semaphores;
-- owner-tracked non-recursive mutexes;
-- fixed-capacity message queues;
+- owner-tracked non-recursive mutexes with bounded transitive priority inheritance under fixed-priority scheduling;
+- fixed-capacity message queues and common absolute-tick timeout variants across IPC;
 - 32-bit event flags;
 - per-task 32-bit notifications;
 - task and ISR producer operations where documented;
@@ -23,7 +23,7 @@ HardRT 0.5.1 provides:
 
 It intentionally does not provide a heap, filesystem, networking stack, device HAL, process isolation, or general-purpose operating-system services.
 
-Generic IPC timeouts, bounded mutex priority-inversion handling, owner-death recovery, absolute periodic release timing, tickless idle, and high-resolution timers are not part of v0.5.1.
+Owner-death recovery, tickless idle and high-resolution timers are not provided. Priority inheritance does not impose a global-RR inversion bound, and deterministic structure does not by itself prove WCET or schedulability.
 
 ## Design goals
 
@@ -37,7 +37,7 @@ Generic IPC timeouts, bounded mutex priority-inversion handling, owner-death rec
 | Hard-real-time progression | 0.6 adds bounded synchronization/periodic semantics; 0.7 deepens timing/interference qualification; 0.8 hardens the pre-1 API/kernel; 0.9 freezes and qualifies the 1.0 candidate. |
 | Reproducibility | Cortex-M timing claims are tied to explicit hardware/build/runtime evidence. |
 
-Static allocation and bounded data structures do not themselves prove application deadlines. Blocking synchronization calls can wait indefinitely in v0.5.1, mutexes do not yet bound priority inversion, continuously READY higher-priority tasks can starve lower-priority work, event-set cost depends on registered waiter count, and queue critical-section cost depends on payload size. These gaps are explicitly tracked on the path to 1.0 rather than hidden behind the project name.
+Static allocation and bounded data structures do not themselves prove application deadlines. Indefinite blocking APIs are still available; the 0.6 timed variants provide absolute-deadline alternatives. Priority inheritance mitigates inversion only for priority-aware policies, continuously READY higher-priority tasks can still starve lower-priority work, event-set cost depends on registered waiter count, and queue critical-section cost depends on payload size. These gaps are explicitly tracked on the path to 1.0 rather than hidden behind the project name.
 
 ## Scheduling model
 

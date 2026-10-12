@@ -5,7 +5,7 @@ HardRT uses `develop` as the integration/release-candidate branch and `main` as 
 The process intentionally separates three things:
 
 1. **hardware qualification**, performed manually on one frozen source SHA;
-2. **software staging**, performed automatically by `.github/workflows/release.yml` when the release tag is pushed;
+2. **software staging**, performed after successful current-`main` CI by automatic `VERSION`-driven tagging and a directly invoked reusable `.github/workflows/release.yml`;
 3. **physical-evidence retention**, performed locally by `scripts/finalize_release.sh`.
 
 This keeps hundreds of hardware logs out of Git while preserving the complete evidence set as one deterministic local archive. Publishing that archive to any hosting service is deliberately outside the finalizer.
@@ -40,20 +40,32 @@ Do not commit that directory.
 
 ## 2. Promote and tag
 
-Normally the hardware-qualified SHA is promoted unchanged to `main`. If release automation/documentation-only changes must follow qualification, they are allowed only under the narrow policy in [QUALIFICATION.md](QUALIFICATION.md) and must pass:
+Prepare root `VERSION` and release notes on `develop` **before** the final
+hardware run. Promote through an ordinary reviewed `develop -> main` GitHub
+PR merge; a fast-forward or direct push does **not** authorize automated
+tagging. The release PR must contain these exact human attestation lines:
 
-```bash
-python3 scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>
+```text
+Hardware-qualified SHA: <40-character develop commit SHA>
+Hardware qualification: PASS
 ```
 
-Before tagging, `main` and `develop` are aligned at the intended release commit.
-
-Create and push the non-v-prefixed tag:
+The operator must personally confirm the complete locally retained hardware
+report and raw evidence, not infer a physical PASS from GitHub CI. The merge
+will have a different SHA; release authorization requires:
 
 ```bash
-git tag X.Y.Z <release-sha>
-git push origin X.Y.Z
+python3 scripts/check_release_qualification_diff.py <qualified-develop-sha> <main-merge-sha>
 ```
+
+Only approved documentation changes may differ. The guard fails on changes to
+all other source/build/version/workflow/test inputs. After successful required
+Linux, Signal stress and Documentation CI **on the current `main` SHA**, the
+tagger checks the PR provenance and qualifications, creates non-v `VERSION`
+tag exactly once, and **calls** the reusable packaging workflow. It refuses
+stale CI, direct pushes, unrelated PRs, missing attestation, changed build inputs
+and an existing version tag at a different SHA. Version changes on `develop`
+do not trigger tagging.
 
 The permanent Release workflow then:
 
@@ -116,7 +128,7 @@ Requirements:
 - standard command-line tools and `git`;
 - the `X.Y.Z` tag already exists;
 - `origin/main` equals the release tag;
-- `origin/develop` contains the release tag and may already be ahead;
+- `origin/develop` contains the hardware-qualified `develop` commit; it need not contain the merge/tag commit;
 - the retained hardware run is a complete unfiltered PASS.
 
 Historical 0.5.1 is the sole exception. Its complete original run directory is no longer retained, and the later `release/0.5.1` staging branch was audited as an incomplete copy. When the supplied 0.5.1 run path is missing, the finalizer validates [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md), the immutable qualified/release SHAs, and the qualification-diff guard. It does **not** fabricate a full archive from the partial staging data.
@@ -129,7 +141,7 @@ The finalizer:
 2. validates tag/CMake version alignment;
 3. packages the retained hardware evidence through `package_stm32_qualification.sh`;
 4. validates the hardware-qualified SHA is an ancestor of the release tag;
-5. runs `check_release_qualification_diff.py` between the qualified SHA and release/tag SHA;
+5. runs `check_release_qualification_diff.py` to prove qualified build-input equivalence between the qualified SHA and distinct release/tag merge SHA;
 6. verifies the generated xz archive, expected archive contents, and SHA-256 checksum locally;
 7. reports finalization success without mutating remote branches.
 

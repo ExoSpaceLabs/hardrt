@@ -1,6 +1,6 @@
 # POSIX Test Suite
 
-The POSIX suite validates HardRT 0.5.1 core logic and Linux-hosted scheduler integration. It is not a Cortex-M timing test.
+The POSIX suite validates HardRT 0.6.0 candidate core logic and Linux-hosted scheduler integration. It is not a Cortex-M timing test.
 
 ## Execution model
 
@@ -46,6 +46,9 @@ The suite covers:
 - positive sleep conversion, sleeper FIFO/order, repeated sleep/wake cycles, and 32-bit tick wrap;
 - runtime policy/default-slice updates;
 - semaphore, queue, mutex, and external-tick contracts;
+- shared absolute-tick IPC timeouts, event/notification timed variants, deadline wrap and wake-vs-expiry serialization;
+- bounded transitive mutex priority inheritance, timeout donation withdrawal, chain-cycle rejection and scheduler-policy interaction;
+- phase-preserving periodic absolute release and late deadline diagnostics;
 - queue wake policy/barging/waiter-overflow edges;
 - event wait-any/wait-all, retained/clear-on-exit bits, overlapping/multiple waiters, invalid masks, pre-set events, and repeated set/clear cycles;
 - task-notification pending-before-wait, actions, clear masks, unrelated blocking, target-state handling, bursts, saturation, EXITED/unused/invalid targets, and slot reuse;
