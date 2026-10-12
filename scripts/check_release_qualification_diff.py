@@ -52,7 +52,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("qualified_sha", help="physically qualified develop commit")
     parser.add_argument("release_sha", nargs="?", default="HEAD", help="tagged main merge commit")
-    parser.add_argument("--historical-0.5.1", action="store_true",
+    parser.add_argument("--historical-0.5.1", action="store_true", dest="historical_051",
                         help="verify only the two frozen 0.5.1 SHAs using the archived policy")
     args = parser.parse_args()
 
@@ -63,23 +63,23 @@ def main() -> int:
     release = subprocess.check_output(
         ["git", "rev-parse", "--verify", f"{args.release_sha}^{{commit}}"], text=True
     ).strip()
-    if args.historical_0_5_1 and (qualified, release) != HISTORICAL_051_SHAS:
+    if args.historical_051 and (qualified, release) != HISTORICAL_051_SHAS:
         print("FAIL: 0.5.1 historical policy requires its original audited SHAs")
         return 1
     changed = changed_paths(qualified, release)
-    rejected = [path for path in changed if not allowed(path, args.historical_0_5_1)]
+    rejected = [path for path in changed if not allowed(path, args.historical_051)]
 
     print(f"qualified_sha={qualified}")
     print(f"release_sha={release}")
     print(f"changed_files={len(changed)}")
     for path in changed:
-        print(f"{'ALLOWED' if allowed(path, args.historical_0_5_1) else 'REJECTED'}: {path}")
+        print(f"{'ALLOWED' if allowed(path, args.historical_051) else 'REJECTED'}: {path}")
 
     if rejected:
         print("FAIL: unqualified build/test/source inputs differ. Requalify before release.")
         return 1
 
-    if args.historical_0_5_1:
+    if args.historical_051:
         print("PASS: immutable historical 0.5.1 qualified source policy")
     else:
         print("PASS: qualified build inputs are equivalent (commit SHAs may differ).")
