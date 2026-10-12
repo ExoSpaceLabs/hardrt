@@ -217,7 +217,14 @@ git merge-base --is-ancestor "$QUALIFIED_SHA" "$TAG_SHA" || {
   exit 1
 }
 
-python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
+# Keep the archived 0.5.1 source/evidence record immutable; the narrowed
+# 0.6 build-input policy applies to all newer releases.
+if [[ "$VERSION" == "0.5.1" ]]; then
+  python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" \
+    "$QUALIFIED_SHA" "$TAG_SHA" --historical-0.5.1
+else
+  python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
+fi
 
 if (( HISTORICAL_RECORD_ONLY == 0 )); then
   OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
