@@ -1,6 +1,6 @@
 # Semaphores
 
-HardRT v0.5 provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering. v0.4.0 used a less selective wake/reschedule rule.
+HardRT 0.6 provides binary and counting semaphores with application-owned static storage and FIFO waiter ordering. v0.4.0 used a less selective wake/reschedule rule.
 
 ## Modes
 
@@ -30,6 +30,7 @@ Current behavior:
 
 ```c
 int hrt_sem_take(hrt_sem_t *sem);
+hrt_wait_result_t hrt_sem_take_until(hrt_sem_t *sem, hrt_tick_t deadline);
 int hrt_sem_try_take(hrt_sem_t *sem);
 int hrt_sem_give(hrt_sem_t *sem);
 int hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
@@ -49,7 +50,7 @@ int hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 4. marks the task `HRT_BLOCKED`;
 5. requests rescheduling and transfers to the scheduler.
 
-There is currently no timeout variant.
+`hrt_sem_take_until()` is the absolute-tick finite-wait form. It attempts the token immediately even when the deadline is due/past; otherwise a due/past deadline returns `HRT_WAIT_TIMEOUT`, and a future deadline blocks in the bounded shared expiry queue. The result is `hrt_wait_result_t`, distinguishing timeout from invalid context/deadline and other errors.
 
 ### Task-context give
 
@@ -151,7 +152,7 @@ A semaphore does not carry payload data. When every produced item must be retain
 
 - FIFO waiter ordering.
 - Blocking take is task-context-only.
-- No timeout operations.
+- `hrt_sem_take_until()` provides finite absolute-deadline waits; indefinite `hrt_sem_take()` remains supported.
 - No cancellation API for a blocked waiter.
 - No priority ordering of waiter queues.
 - No dynamic allocation.

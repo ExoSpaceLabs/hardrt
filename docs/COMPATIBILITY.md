@@ -30,7 +30,7 @@ ABI compatibility is **not guaranteed across pre-1.0 minor releases**. Public sy
 The installed CMake package name and canonical targets are intended to remain stable:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
 
@@ -78,6 +78,20 @@ Accordingly, v0.5.1 is intended to remain source/API and ABI compatible with v0.
 The hosted backend is a Linux functional/scheduler validation port, not a hard-real-time target. It currently reserves process-wide `SIGALRM` for task preemption and `SIGUSR2` for task/timer wake-resume handling. Applications embedding the POSIX port must not independently install incompatible handlers or use those signals for unrelated process-level protocols while HardRT is active.
 
 The pthread backend also consumes host resources proportional to configured live tasks: one pthread per live application task, plus the scheduler/controller thread and, for an internal tick source, one timer pthread. These host resources are implementation details and are not part of the Cortex-M memory model.
+
+## v0.6.0 candidate compatibility boundary
+
+0.6.0 adds a common finite absolute-tick IPC wait result/deadline API,
+`hrt_delay_until()` stable-phase timing, and statically bounded transitive
+mutex priority inheritance. The PI design adds private TCB ownership/effective
+priority state. Public synchronization structures remain concrete; do **not**
+assume ABI equivalence with 0.5.x. Rebuild the kernel and application together
+against the same 0.6 headers, and use `find_package(HardRT 0.6 REQUIRED)`.
+Global RR remains priority-independent and has no PI inversion bound.
+
+The versioned CMake package name and exported target names are retained.
+The `VERSION` file is the sole source for CMake project, generated header,
+software asset version, and non-v-prefixed tag naming.
 
 ## 1.0 intent
 

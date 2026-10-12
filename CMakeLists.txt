@@ -3,7 +3,13 @@ cmake_minimum_required(VERSION 3.16)
 
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)
+# VERSION is the authoritative release version. Read on every CMake configuration.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HARDRT_VERSION)
+string(STRIP "${HARDRT_VERSION}" HARDRT_VERSION)
+if(NOT HARDRT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must contain exactly MAJOR.MINOR.PATCH: '${HARDRT_VERSION}'")
+endif()
+project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)
 
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)

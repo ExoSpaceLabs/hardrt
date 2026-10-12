@@ -134,8 +134,8 @@ Tracked by #91.
 
 0.6 must establish the semantic foundations needed before deeper timing proof is meaningful:
 
-- bounded common IPC timeout model (#68), implemented on the 0.6 development line and pending physical feature qualification;
-- bounded mutex priority-inversion model (#89), implemented on the 0.6 feature branch and awaiting physical functional qualification;
+- bounded common IPC timeout model (#68), implemented and physically functionally validated in the 0.6 development line;
+- bounded transitive mutex priority-inversion model (#89), implemented and physically functionally validated on H755 for fixed-priority policies;
 - stable-phase absolute periodic release timing (#90), implemented and physically qualified;
 - synchronization-critical critical-section measurement (#53);
 - queue-copy scaling and explicit design/qualification bound (#53/#52);
@@ -194,8 +194,8 @@ For every supported Cortex-M configuration, documentation must identify:
 
 The major open work is tracked by:
 
-- #68 common IPC timeouts: implementation complete on the 0.6 development branch, with STM32H755 feature qualification required before closure;
-- #89 bounded mutex priority inversion: bounded transitive PI design and hosted implementation are in progress; physical validation and #53 timing characterization remain;
+- #68 common IPC timeouts: implementation merged, hosted suite and hardware feature validation passed; deeper timeout-expiry timing bounds remain under #53;
+- #89 bounded mutex priority inversion: bounded transitive PI merged and physical functional validation passed; application-specific numerical blocking and #53 timing characterization remain;
 - #90 stable-phase periodic timing: semantic feature complete; deeper release-jitter/interference work continues under #54;
 - #37 reproducible latency/qualification model;
 - #49 zero-cost timing/trace infrastructure;

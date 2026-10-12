@@ -4,12 +4,9 @@ Status: **required part of the full 0.6 release benchmark matrix** for #53 and #
 
 ## Run the scoped development benchmark
 
-From the feature branch and a clean tracked source checkout with NUCLEO-H755ZI-Q / CM7 connected by ST-Link:
+From a clean `develop` checkout (or an active scoped development branch) with NUCLEO-H755ZI-Q / CM7 connected by ST-Link:
 
 ```bash
-git switch feature/h755-sync-critical-benchmarks
-git pull --ff-only
-
 ./scripts/stm32_sync_benchmark.sh \
   /home/dev/STM32Cube/Repository/STM32CubeH7 \
   --samples 10000
@@ -85,3 +82,18 @@ Still outstanding before #53 can close:
 The fully unfiltered **16 functional + 52 benchmark metric** campaign is the
 frozen 0.6.0 release candidate gate, including these 14 metrics. The earlier
 38-image set is retained for historical comparisons.
+
+## 0.6 queue payload policy
+
+The core does not impose an arbitrary global `item_size` maximum. For the
+reference H755/64 MHz diagnostic profile, 1024-byte send/receive occupies an
+observed ~20.5 us instrumented masked window (13xx cycles). This is **not**
+a system-wide worst-case bound. An application with tight interrupt latency
+requirements should normally queue **pointers or buffer indices** instead of
+copying large payloads under BASEPRI, retaining explicit static buffer lifetime
+and ownership rules. Applications qualifying copy queues must choose their
+maximum item size and establish their own IRQ/critical-section budget.
+
+This is a 0.6 **engineering usage decision**, not proof of unaffected
+higher-priority execution. Controlled interference and complete latency bounds
+remain tracked under #53/#52/#54 for 0.7.
