@@ -31,6 +31,55 @@ def tracked_markdown() -> list[Path]:
 
 MARKDOWN = tracked_markdown()
 
+# Current-release capability and version assertions are evaluated against
+# root VERSION, not hard-coded against the previous historical release.
+version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+if not re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+", version):
+    fail(f"root VERSION is not semantic MAJOR.MINOR.PATCH: {version!r}")
+cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+if 'file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HARDRT_VERSION)' not in cmake:
+    fail("CMake must read root VERSION when configuring the project")
+if 'project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)' not in cmake:
+    fail("CMake project version must derive from VERSION")
+
+current_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+if f"**Development release candidate:** `{version}`" not in current_readme:
+    fail("README candidate version does not match root VERSION")
+status = (ROOT / "docs/MODULE_STATUS.md").read_text(encoding="utf-8")
+if f"HardRT **{version} candidate**" not in status:
+    fail("Module status does not describe the current VERSION")
+intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
+if f"HardRT {version} candidate provides:" not in intro:
+    fail("Introduction version does not match root VERSION")
+notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+if f"# HardRT v{version} Release Notes" not in notes:
+    fail("No current VERSION release-note section")
+for header, symbols in {
+    "inc/hardrt.h": ("hrt_delay_until", "HRT_WAIT_TIMEOUT"),
+    "inc/hardrt_sem.h": ("hrt_sem_take_until",),
+    "inc/hardrt_mutex.h": ("hrt_mutex_lock_until", "HARDRT_MAX_MUTEXES_HELD"),
+    "inc/hardrt_queue.h": ("hrt_queue_send_until", "hrt_queue_recv_until"),
+    "inc/hardrt_event.h": ("hrt_event_wait_until",),
+    "inc/hardrt_notify.h": ("hrt_task_notify_wait_until", "hrt_task_notify_take_until"),
+}.items():
+    text = (ROOT / header).read_text(encoding="utf-8")
+    for symbol in symbols:
+        if symbol not in text:
+            fail(f"missing implemented v0.6 public API {symbol} in {header}")
+for doc, words in {
+    "README.md": ("absolute-tick IPC timeout engine", "priority inheritance", "52 benchmark metrics"),
+    "docs/MUTEXES.md": ("hrt_mutex_lock_until", "transitive priority inheritance"),
+    "docs/MODULE_STATUS.md": ("finite-wait", "transitive PI", "52/52"),
+}.items():
+    body = (ROOT / doc).read_text(encoding="utf-8")
+    for word in words:
+        if word not in body:
+            fail(f"{doc} fails to document implemented 0.6 feature: {word}")
+for required in ("VERSION", ".github/workflows/tag-release.yml", "scripts/test_release_contract.py"):
+    if not (ROOT / required).is_file():
+        fail(f"missing root version / automatic tagging release gate: {required}")
+
+
 for source in MARKDOWN:
     text = source.read_text(encoding="utf-8")
     for match in LINK_RE.finditer(text):
@@ -206,8 +255,8 @@ if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if "HardRT 0.5.1 provides:" not in intro:
-    fail("introduction does not describe the current 0.5.1 feature contract")
+if f"HardRT {version} candidate provides:" not in intro:
+    fail("introduction does not describe the current VERSION feature contract")
 if "maps HardRT application tasks to pthreads" not in intro:
     fail("introduction does not describe the corrected pthread-backed POSIX model")
 
@@ -241,8 +290,8 @@ if "humanity" in release_notes.lower():
     fail("release notes contain conversational/editorial text")
 
 documentation = (ROOT / "docs/DOCUMENTATION.md").read_text(encoding="utf-8")
-if "configures/builds HardRT 0.5.1" not in documentation:
-    fail("documentation-gate description is not aligned to HardRT 0.5.1")
+if "configures/builds the HardRT version from root `VERSION`" not in documentation:
+    fail("documentation-gate description must derive version from VERSION")
 
 cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 if "project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)" not in cmake:
