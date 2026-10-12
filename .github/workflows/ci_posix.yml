@@ -217,3 +217,49 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           BUILD_TYPE=${{ matrix.build_type }} ./scripts/build-stm32-examples-ci.sh
+
+  # Distinct from the physical 16+52 STM32CubeH7 qualification matrix.
+  das-release-interop:
+    name: DAS v0.1.0 + HardRT CM7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Checkout published DAS source
+        uses: actions/checkout@v5
+        with:
+          repository: Inczert/device-abstraction-stack
+          ref: v0.1.0
+          path: .ci/das
+          fetch-depth: 1
+      - name: Checkout pinned STM32 CMSIS Core
+        uses: actions/checkout@v5
+        with:
+          repository: STMicroelectronics/STM32CubeH7
+          ref: f5c0b7a2b1f6eb26fde150f72edb2d7deb647066
+          path: .ci/STM32CubeH7
+          sparse-checkout: |
+            Drivers/CMSIS/Core/Include
+            Drivers/CMSIS/Include
+          sparse-checkout-cone-mode: false
+      - name: Checkout pinned STM32 CMSIS Device
+        uses: actions/checkout@v5
+        with:
+          repository: STMicroelectronics/cmsis-device-h7
+          ref: e8d40ae6e2fa06afe5b46d24756f141b363342a7
+          path: .ci/cmsis-device-h7
+      - name: Assemble fixed CMSIS header layout
+        run: |
+          mkdir -p .ci/STM32CubeH7/Drivers/CMSIS/Device/ST/STM32H7xx
+          ln -s "$GITHUB_WORKSPACE/.ci/cmsis-device-h7/Include" \
+            .ci/STM32CubeH7/Drivers/CMSIS/Device/ST/STM32H7xx/Include
+      - name: Install GNU ARM cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi ninja-build
+      - name: Verify DAS release commit and link HardRT consumer
+        run: |
+          bash scripts/stm32_das_integration.sh \
+            "$GITHUB_WORKSPACE/.ci/STM32CubeH7" \
+            --das-root "$GITHUB_WORKSPACE/.ci/das" \
+            --build-root "$RUNNER_TEMP/hardrt-das-interop"

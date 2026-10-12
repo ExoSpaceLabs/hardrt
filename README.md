@@ -216,3 +216,13 @@ See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md) and [ROADMAP.md](docs/ROADMAP.md
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+## DAS v0.1.0 STM32 interoperability
+
+The HardRT+DAS CM7 integration test uses the published
+[DAS v0.1.0](https://github.com/Inczert/device-abstraction-stack/releases/tag/v0.1.0)
+source, verified against the exact commit in `thirdparty/DAS.lock`.
+Run `scripts/stm32_das_integration.sh /path/to/STM32CubeH7` to cross-build
+the installed-package UART example. The existing **16+52** H755 hardware
+qualification remains a separate STM32CubeH7-only matrix, not a DAS
+integration test.

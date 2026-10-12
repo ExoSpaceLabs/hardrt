@@ -256,3 +256,20 @@ The published v0.5.0 hardware evidence remains historical evidence and was not r
 The physical run required board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The resulting commit is the hardware-qualified source SHA. Release-automation/documentation-only follow-up changes were allowed to advance the release/tag SHA without repeating hardware qualification only when `scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>` passed and hosted/cross-build/documentation CI remained green. Any other post-qualification change requires a new full hardware run.
 
 The 0.5.1 asset layout is historical. The architecture-qualified POSIX, draft-release, compressed physical-evidence, and finalizer contract applies to releases after 0.5.1.
+
+## DAS v0.1.0 interoperability reference
+
+The supported released DAS baseline for CM7 interoperability is
+[DAS v0.1.0](https://github.com/Inczert/device-abstraction-stack/releases/tag/v0.1.0)
+at commit `8553d903a615fe99e2a3a434f876b51f9542fd46`,
+recorded in [`thirdparty/DAS.lock`](../thirdparty/DAS.lock).
+The CI-covered link test is:
+
+```bash
+./scripts/stm32_das_integration.sh /path/to/STM32CubeH7
+```
+
+It clones DAS from the release when a checkout is not supplied, verifies
+tag and commit, builds DAS and HardRT as installed packages, and links
+DAS's tagged UART example against current HardRT. It does not replace the
+16/52 physical hardware matrix, which currently uses STM32CubeH7 directly.
