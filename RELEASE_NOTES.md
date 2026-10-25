@@ -1,8 +1,10 @@
 # HardRT v0.6.0 Release Notes
 
 HardRT 0.6.0 is a pre-1.0 minor release focused on statically bounded
-synchronization and phase-stable timing. The candidate is **not published**
-until the corrected frozen source passes the complete hardware release gate.
+synchronization and phase-stable timing. The final NUCLEO-H755ZI-Q CM7
+qualification passed on source `bf903a50b984572a04e1c201b79ecac4f0d58b6e`
+(16/16 functional contracts, 52/52 benchmark metrics). The immutable `0.6.0`
+tag identifies release commit `ee82ec28083b3b1f292139629aa89c84e30ad9dd`.
 
 ## Added and changed
 

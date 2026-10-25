@@ -6,7 +6,7 @@ The Cortex-M target is being developed toward an **explicitly qualified hard rea
 
 ## Scope
 
-HardRT 0.6.0 candidate provides:
+HardRT 0.6.0 provides:
 
 - static application-owned task stacks and bounded task capacity;
 - fixed-priority, global round-robin, and fixed-priority round-robin scheduling;

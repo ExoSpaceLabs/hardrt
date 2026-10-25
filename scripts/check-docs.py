@@ -43,13 +43,17 @@ if 'project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)' not in cmake:
     fail("CMake project version must derive from VERSION")
 
 current_readme = (ROOT / "README.md").read_text(encoding="utf-8")
-if f"**Development release candidate:** `{version}`" not in current_readme:
-    fail("README candidate version does not match root VERSION")
+if f"**Current source version:** `{version}`" not in current_readme:
+    fail("README current source version does not match root VERSION")
+if "a final run is required on the corrected release-version candidate" in current_readme:
+    fail("README incorrectly describes completed 0.6 hardware qualification as pending")
 status = (ROOT / "docs/MODULE_STATUS.md").read_text(encoding="utf-8")
-if f"HardRT **{version} candidate**" not in status:
+if f"HardRT **{version}**" not in status:
     fail("Module status does not describe the current VERSION")
+if "require a fresh frozen candidate before publication" in status:
+    fail("Module status incorrectly describes completed 0.6 qualification as pending")
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if f"HardRT {version} candidate provides:" not in intro:
+if f"HardRT {version} provides:" not in intro:
     fail("Introduction version does not match root VERSION")
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 if f"# HardRT v{version} Release Notes" not in notes:
@@ -272,7 +276,7 @@ if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if f"HardRT {version} candidate provides:" not in intro:
+if f"HardRT {version} provides:" not in intro:
     fail("introduction does not describe the current VERSION feature contract")
 if "maps HardRT application tasks to pthreads" not in intro:
     fail("introduction does not describe the corrected pthread-backed POSIX model")
@@ -303,6 +307,8 @@ if "fresh full STM32H755 physical qualification run" not in release_notes:
     fail("0.5.1 release notes omit the required physical qualification gate")
 if "scripts/check_release_qualification_diff.py" not in release_notes:
     fail("0.5.1 release notes omit the release-only post-qualification diff guard")
+if "The candidate is **not published**" in release_notes:
+    fail("current VERSION release notes still claim physical qualification is pending")
 if "humanity" in release_notes.lower():
     fail("release notes contain conversational/editorial text")
 
@@ -335,13 +341,13 @@ if f'Version string (e.g., "{version}")' not in cpp_header:
 release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 for required in (
     "workflow_call:",
-    "Verify tag, current main and qualified inputs",
+    "Verify immutable tag and main ancestry",
     "ubuntu-24.04-arm",
     "hardrt-posix-linux-amd64-",
     "hardrt-posix-linux-arm64-",
     "scripts/extract_release_notes.py",
     "SHA256SUMS",
-    "draft: true",
+    "draft: false",
     "softprops/action-gh-release@v2",
 ):
     if required not in release_workflow:
@@ -367,10 +373,20 @@ if 'ALLOWED_PREFIXES = ("docs/",)' not in qualification_diff:
 if 'HISTORICAL_051_SHAS' not in qualification_diff:
     fail("legacy 0.5.1 release requires immutable audited SHA-pair verification")
 tagger = (ROOT / ".github/workflows/tag-release.yml").read_text(encoding="utf-8")
-for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualification: PASS",
-                 "check_release_qualification_diff.py", "uses: ./.github/workflows/release.yml"):
+for required in ("workflow_run:", "github.event.workflow_run.head_branch == 'main'",
+                 "git tag -a", "gh release edit", "uses: ./.github/workflows/release.yml"):
     if required not in tagger:
         fail(f"auto tag workflow is missing mandatory release gate: {required}")
+
+if 'Existing $version published: no action' not in tagger:
+    fail("auto tag workflow must be idempotent when VERSION is already published")
+if 'finalize=true' not in tagger or 'gh release edit "$TAG" --notes-file release-notes.md --draft=false' not in tagger:
+    fail("auto tag workflow must publish pending draft releases automatically")
+if 'git merge-base --is-ancestor "$release_sha" "$CI_SHA"' not in tagger:
+    fail("auto tag workflow must preserve existing tag ancestry")
+if 'all main CI' not in tagger and 'for workflow in "Linux" "Signal stress" "Documentation"' not in tagger:
+    fail("auto tag workflow must require all three main CI runs")
+
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)

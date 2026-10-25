@@ -197,7 +197,7 @@ The generated package version uses CMake `SameMinorVersion`. For pre-1.0 release
 
 ## Tag-driven release build
 
-Root `VERSION` is the project/package/tag source of truth. Change it only on `develop`; do not tag from that change alone. Following complete manually approved hardware qualification, a reviewed `develop -> main` merge and successful current-main Linux, Signal stress and Documentation CI, `.github/workflows/tag-release.yml` automatically creates the non-v `X.Y.Z` tag and directly invokes reusable `.github/workflows/release.yml`. The tagger verifies qualified build-input equivalence between the tested commit and the different merge/tag SHA, not identical Git commit IDs. The software stage validates POSIX natively on amd64/arm64, installed consumers and Cortex-M packages, generates checksums and creates a **draft** GitHub Release.
+Root `VERSION` is the project/package/tag source of truth. Qualify the final firmware source on hardware before promotion, update `VERSION` and matching release notes, and merge to `main`. When current-main Linux, Signal stress and Documentation CI all succeed, `.github/workflows/tag-release.yml` automatically creates the immutable non-v `X.Y.Z` tag. Reusable `.github/workflows/release.yml` builds and validates native amd64/arm64 POSIX, installed consumers and Cortex-M packages, computes checksums and **publishes** the GitHub Release, without a draft or additional operator command. Existing drafts are verified and published automatically. Later maintenance commits with the same `VERSION` leave its immutable tag untouched.
 
 The generated software assets are:
 
@@ -223,16 +223,13 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz
 hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 ```
 
-Then finish publication with:
+Optional local evidence verification after the automatic publication:
 
 ```bash
-./scripts/finalize_release.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha> \
-  --cleanup-branches
+./scripts/finalize_release.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
 ```
 
-The finalizer verifies the retained physical archive and its checksum and checks qualified-build-input equivalence. It does **not** upload evidence, publish the draft release or remove branches; operator evidence attachment and release publication are separate.
+The finalizer verifies retained physical logs and their checksum; it is not a publication gate. CI cannot retrieve hardware logs stored only on the operator's machine and does not attach or fabricate them. Branch cleanup is separate.
 
 ## v0.5.1 corrective-patch gate
 
