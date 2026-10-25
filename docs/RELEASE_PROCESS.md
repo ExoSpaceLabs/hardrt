@@ -1,6 +1,6 @@
 # Release process
 
-HardRT uses `develop` as the integration/release-candidate branch and `main` as released history. Release tags use `X.Y.Z` without a `v` prefix.
+HardRT uses `develop` as the integration/release-candidate branch and `main` as released history. Application-dependent numerical mutex blocking claims require the independent evidence described in [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md); 0.6 does not automatically certify application `H`/`D` budgets. Release tags use `X.Y.Z` without a `v` prefix.
 
 The process intentionally separates three things:
 

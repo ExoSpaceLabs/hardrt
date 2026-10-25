@@ -66,7 +66,7 @@ A HardRT configuration can be described as hard real time only when relevant ker
 - O(1) notification producer work;
 - deterministic, bounded timeout bookkeeping for blocking APIs: one absolute-deadline model, static timer storage, no full-TCB expiry scan, and bounded waiter unlink (#68);
 - bounded transitive priority inheritance for fixed-priority mutexes (#89), with explicit resource tracking limits and application WCET assumptions;
-- finite configuration-specific mutex blocking analysis;
+- finite configuration-specific mutex blocking analysis, with explicit, independently justified ownership/interference bounds (see [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md));
 - queue-copy cost bounded by an explicit item-size/design contract rather than an unspecified application payload size.
 
 ### Periodic timing behavior

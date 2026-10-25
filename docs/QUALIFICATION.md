@@ -142,6 +142,11 @@ source/test/build change after the hardware-qualified SHA outside the allowed
 release-documentation-only diff requires a new complete run.
 
 These diagnostic metrics are observations, not unconditional WCET bounds.
+The conditional mutex blocking calculator described in
+[MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md) **requires independently
+proven application-level ownership and dispatch bounds**. It does not convert
+the diagnostic maxima into a validated STM32H755 WCET, and does not change
+the required physical 16/52 qualification matrix.
 Uncompleted #53 contended-inheritance, timeout-expiry, or IRQ-interference
 characterization must not be described as completed or proved by the
 uncontended synchronization baseline.

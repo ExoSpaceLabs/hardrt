@@ -68,7 +68,9 @@ jobs:
           grep -Fqx "# HardRT v$version Release Notes" <(head -n 1 "$RUNNER_TEMP/release-notes.md")
           python3 scripts/check_release_qualification_diff.py HEAD HEAD
           python3 scripts/test_release_contract.py
+          python3 scripts/test_mutex_blocking_bound.py
 
+          python3 scripts/mutex_blocking_bound.py --help >/dev/null
           bash -n scripts/package_stm32_qualification.sh
           bash -n scripts/finalize_release.sh
           shellcheck scripts/package_stm32_qualification.sh scripts/finalize_release.sh

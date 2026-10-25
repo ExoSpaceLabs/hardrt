@@ -59,7 +59,7 @@ When a blocked task resumes after direct handoff, it already owns the mutex. The
 
 `hrt_mutex_lock_until()` uses an **absolute wrapping tick deadline** with `hrt_wait_result_t`. It always attempts an immediately available mutex once, even when the deadline is already due; otherwise an expired deadline returns `HRT_WAIT_TIMEOUT`. Blocking uses the shared finite-timeout engine, with waiter unlink and donation withdrawal serialized before READY publication.
 
-`HARDRT_MAX_MUTEXES_HELD` (default 8, supported 1..32) bounds how many mutexes a task may own; acquisitions fail before mutation when the limit is exceeded. Owner donation propagates through at most the statically bounded task chain; cycles are rejected. A task's base and effective priorities differ while inheritance applies. Under global RR no PI bound is offered. These are **structural bounds**, not numerical WCET or application critical-section bounds.
+`HARDRT_MAX_MUTEXES_HELD` (default 8, supported 1..32) bounds how many mutexes a task may own; acquisitions fail before mutation when the limit is exceeded. Owner donation propagates through at most the statically bounded task chain; cycles are rejected. A task's base and effective priorities differ while inheritance applies. Under global RR no PI bound is offered. These are **structural bounds**, not numerical WCET or application critical-section bounds. For a conservative finite **application-specific** blocking budget under explicit separately proven elapsed-time assumptions, see [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md).
 
 ## Unlock
 
