@@ -171,7 +171,7 @@ Use that only when intentionally regenerating the retained evidence package. Rel
 
 HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-For 0.5.1, the finalizer validates the immutable git relationship between the qualified source, release tag, `main`, and current `develop`. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), applies the immutable 0.5.1 historical evidence record and version-specific qualification policy, and reports that no complete raw archive is retained.
+For 0.5.1, the finalizer validates the immutable historical tag SHA, that the tag remains on the **ancestry** of current `main` (which correctly advances for newer releases), and the qualified source ancestry in `develop`. The strict `tag == origin/main` requirement remains in force for **every current release, including 0.6.0 and later**. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), applies the immutable 0.5.1 historical evidence record and version-specific qualification policy, and reports that no complete raw archive is retained.
 
 The October 2026 cleanup audit established that `release/0.5.1` contains only a truncated staging copy: 78 raw files are recoverable, `qualification.md` is absent, and the gzip stream is incomplete. That branch is therefore not treated as full qualification evidence and can be retired after the historical record has been verified.
 
