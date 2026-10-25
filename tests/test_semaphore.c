@@ -201,6 +201,7 @@ static void test_sem_double_give_binary(void) {
 
 /* ---- Case 5: give_from_isr wakes waiter and sets need_switch ---- */
 static volatile int g_isr_woke = 0;
+static int g_isr_need_switch = -1;
 static hrt_sem_t g_sem_isr;
 
 static void t_isr_waiter(void *arg) {
@@ -218,10 +219,15 @@ static void t_isr_giver(void *arg) {
     (void) arg;
     for (;;) {
         hrt_sleep(10);
-        int need = 0;
-        hrt_sem_give_from_isr(&g_sem_isr, &need);
+        /*
+         * The ISR path writes need_switch before it requests preemption.
+         * Keep that observation in test-owned storage: the high-priority
+         * waiter can stop the hosted scheduler before this lower-priority
+         * giver resumes. Assertions from a suspended giver may otherwise
+         * execute during the next test case and report a false failure.
+         */
+        hrt_sem_give_from_isr(&g_sem_isr, &g_isr_need_switch);
         /* After ISR give, a switch is only pended; yield so scheduler can run waiter. */
-        T_ASSERT_EQ_INT(1, need, "give_from_isr should set need_switch when a waiter exists");
         hrt_yield();
         hrt_sleep(1000);
     }
@@ -230,6 +236,7 @@ static void t_isr_giver(void *arg) {
 static void test_sem_give_from_isr_sets_need_switch_and_wakes(void) {
     hrt__test_reset_scheduler_state();
     g_isr_woke = 0;
+    g_isr_need_switch = -1;
     g_watchdog_tripped = 0;
     hrt_sem_init(&g_sem_isr, 0);
 
@@ -249,6 +256,7 @@ static void test_sem_give_from_isr_sets_need_switch_and_wakes(void) {
 
     T_ASSERT_EQ_INT(0, g_watchdog_tripped, "watchdog should not trip in ISR give test");
     T_ASSERT_EQ_INT(1, g_isr_woke, "waiter should wake after give_from_isr");
+    T_ASSERT_EQ_INT(1, g_isr_need_switch, "give_from_isr should set need_switch when a waiter exists");
 }
 
 /* ---- Case 6: counting semaphore accumulates and saturates ---- */
