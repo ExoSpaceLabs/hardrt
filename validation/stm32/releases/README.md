@@ -1,6 +1,6 @@
 # Release qualification packages
 
-`validation/stm32/releases/` is the optional local retention area for one selected physical qualification package per release, for example:
+`validation/stm32/releases/` is the gitignored local retention area for the **required selected physical qualification package** of each release (0.6.0 and later), for example:
 
 ```text
 validation/stm32/releases/0.5.0/
@@ -23,15 +23,17 @@ For a release:
    ```
 
 5. promote/tag the release according to [`docs/QUALIFICATION.md`](../../../docs/QUALIFICATION.md);
-6. let `.github/workflows/release.yml` create the draft GitHub Release and software packages;
-7. publish the physical evidence and finish branch cleanup with:
+6. let the automatic tag workflow invoke `.github/workflows/release.yml` to stage a **draft** GitHub Release and software packages;
+7. after the tag exists, verify source equivalence and the retained evidence locally with:
 
    ```bash
    ./scripts/finalize_release.sh \
      X.Y.Z \
-     validation/stm32/<UTC>_<short-sha> \
-     --cleanup-branches
+     validation/stm32/<UTC>_<short-sha>
    ```
+
+8. attach the resulting physical `.tar.xz` archive and its checksum to the draft GitHub Release, verify the release artifacts, and **publish manually**;
+9. only **after** publication, review and delete fully merged temporary branches separately. The finalizer never deletes branches or uploads/publishes assets; its historical `--cleanup-branches` option is a deprecated no-op.
 
 The package helper creates only:
 

@@ -135,14 +135,14 @@ Do not assemble release evidence by manually running individual examples. The su
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-It owns board probing, build/flash cycles, functional validation, timing collection, and evidence packaging. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
+It owns board probing, build/flash cycles, functional validation, timing collection and **raw evidence capture**, but does **not** package the release archive. After a clean full PASS, package the retained run separately with `scripts/package_stm32_qualification.sh 0.6.0 validation/stm32/<UTC>_<short-sha>`; later `scripts/finalize_release.sh` verifies the tagged release and local evidence. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Using HardRT from another CMake project
 
 After installing a target-specific HardRT build:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 target_link_libraries(my_firmware PRIVATE HardRT::hardrt)
 ```
 

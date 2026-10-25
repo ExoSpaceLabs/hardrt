@@ -125,6 +125,6 @@ Representative v0.4.0 H755 measurements at 64 MHz are retained only for historic
 
 Observed latency depends on critical-section duration, interrupt interference, already-ready higher-priority tasks, scheduler policy, waiter population, queue payload-copy size, compiler/placement/cache effects, and floating-point context requirements.
 
-The v0.5 hardware suite provides reproducible engineering evidence for its recorded configuration. Analytical critical-section bounds, bounded mutex priority inversion, queue-copy scaling, richer interference analysis, and fully machine-readable qualification metadata remain 1.0-quality work.
+The v0.5 hardware suite provides historical reproducible engineering evidence for its recorded configuration. In 0.6, **bounded transitive mutex priority inheritance is implemented**, and the 14-result STM32 synchronization diagnostic measures *observed uncontended* semaphore/mutex and queue-copy size scaling (4–1024 bytes), as described in [SYNC_TIMING_BENCHMARK.md](SYNC_TIMING_BENCHMARK.md). The detailed values belong in the separately retained SHA-keyed hardware qualification report/CSV rather than being copied into tracked documentation. Application-specific numerical mutex blocking, IRQ interference, contended handoff/timeout timing, and analytical worst-case bounds remain 0.7+ work (see [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md)).
 
 A measured maximum is not a WCET proof.
