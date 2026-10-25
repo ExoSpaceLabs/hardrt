@@ -307,6 +307,8 @@ if "fresh full STM32H755 physical qualification run" not in release_notes:
     fail("0.5.1 release notes omit the required physical qualification gate")
 if "scripts/check_release_qualification_diff.py" not in release_notes:
     fail("0.5.1 release notes omit the release-only post-qualification diff guard")
+if "The candidate is **not published**" in release_notes:
+    fail("current VERSION release notes still claim physical qualification is pending")
 if "humanity" in release_notes.lower():
     fail("release notes contain conversational/editorial text")
 
@@ -375,6 +377,11 @@ for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualifica
                  "check_release_qualification_diff.py", "uses: ./.github/workflows/release.yml"):
     if required not in tagger:
         fail(f"auto tag workflow is missing mandatory release gate: {required}")
+
+if 'Post-release main maintenance: VERSION $tag already tagged' not in tagger:
+    fail("auto tag workflow must skip already-tagged VERSION on ordinary main maintenance")
+if 'New develop -> main release promotion requires a VERSION bump' not in tagger:
+    fail("auto tag workflow must reject a second release promotion at the same VERSION")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)
