@@ -44,6 +44,9 @@ jobs:
       - name: Build strict UBSan POSIX tests
         run: cmake --build build-signal-stress --parallel
 
-      - name: Run deterministic signal stress suite
+      - name: Run deterministic signal stress suite with isolation regression
         timeout-minutes: 3
-        run: ctest -V --test-dir build-signal-stress -R '^hardrt_tests$' --timeout 120 --output-on-failure
+        # Repeated process restarts expose test-lifecycle contamination and
+        # POSIX scheduling races without rerunning individual cases in isolation.
+        run: ctest --test-dir build-signal-stress -R '^hardrt_tests
+ --repeat until-fail:20 --timeout 120 --output-on-failure
