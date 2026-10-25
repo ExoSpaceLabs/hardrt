@@ -2,13 +2,16 @@
 
 HardRT uses `develop` as the integration/release-candidate branch and `main` as released history. Application-dependent numerical mutex blocking claims require the independent evidence described in [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md); 0.6 does not automatically certify application `H`/`D` budgets. Release tags use `X.Y.Z` without a `v` prefix.
 
-The process intentionally separates three things:
+The release handoff is **fully automated after the hardware-qualified source has
+been merged to `main`**. The operator runs hardware tests before promotion.
+After that, root `VERSION` and successful current-`main` CI drive the
+immutable tag, native amd64/arm64 and Cortex-M packages, checksums and the
+**published** GitHub Release, without a second CLI or manual publication step.
 
-1. **hardware qualification**, performed manually on one frozen source SHA;
-2. **software staging**, performed after successful current-`main` CI by automatic `VERSION`-driven tagging and a directly invoked reusable `.github/workflows/release.yml`;
-3. **physical-evidence retention**, performed locally by `scripts/finalize_release.sh`.
-
-This keeps hundreds of hardware logs out of Git while preserving the complete evidence set as one deterministic local archive. Publishing that archive to any hosting service is deliberately outside the finalizer.
+Physical raw evidence remains retained off-repository, because GitHub-hosted
+runners cannot access files stored only on an operator's machine. Optional
+archive packaging is available below, but it is **not a release-publication
+dependency**. CI must not claim it physically repeated the board qualification.
 
 ## 0.6 acceptance boundary
 
@@ -48,48 +51,39 @@ validation/stm32/<UTC>_<short-sha>/
 
 Do not commit that directory.
 
-## 2. Promote and tag
+## 2. Merge to main: automatic tag and publication
 
-Prepare root `VERSION` and release notes on `develop` **before** the final
-hardware run. Promote through an ordinary reviewed `develop -> main` GitHub
-PR merge; a fast-forward or direct push does **not** authorize automated
-tagging. The release PR must contain these exact human attestation lines:
+Before promotion, confirm the full qualification report and record the exact
+source SHA with the release review. Update `VERSION` and the corresponding
+`RELEASE_NOTES.md` section. Merge the qualified source into `main`.
 
-```text
-Hardware-qualified SHA: <40-character develop commit SHA>
-Hardware qualification: PASS
-```
+No post-merge operator step is required. The automatic workflow:
 
-The operator must personally confirm the complete locally retained hardware
-report and raw evidence, not infer a physical PASS from GitHub CI. The merge
-will have a different SHA; release authorization requires:
+1. Waits for **Linux**, **Signal stress** and **Documentation** push CI to all
+   pass on the same *current* `main` commit.
+2. Reads root `VERSION` and validates its matching release-note section.
+3. If a newer non-`v` tag does not yet exist, creates the immutable
+   `X.Y.Z` tag on that `main` commit. Old tags are never moved.
+4. Builds and tests the native amd64 and native arm64 POSIX packages,
+   Cortex-M package and `SHA256SUMS`; any failure blocks publication.
+5. **Publishes** the GitHub Release automatically. It does **not** leave a
+   draft waiting for a human to click Publish.
+6. If a tagged version already has a draft, verifies its four software
+   assets and checksums and publishes that draft automatically. A version
+   already published is an idempotent no-op.
 
-```bash
-python3 scripts/check_release_qualification_diff.py <qualified-develop-sha> <main-merge-sha>
-```
+Normal post-release maintenance can advance `main` without rewriting the
+existing tag or creating another release. Publishing the *next* version
+requires changing `VERSION` to a newer value; it does not depend on the
+merge shape, PR text, or a separate finalization command. The hardware
+qualification occurs **before** merging and is not silently replaced by CI.
 
-Only approved documentation changes may differ. The guard fails on changes to
-all other source/build/version/workflow/test inputs. After successful required
-Linux, Signal stress and Documentation CI **on the current `main` SHA**, the
-tagger checks the PR provenance and qualifications, creates non-v `VERSION`
-tag exactly once, and **calls** the reusable packaging workflow. It refuses
-stale CI, direct pushes, unrelated PRs, missing attestation, changed build inputs
-and an existing version tag at a different SHA. Version changes on `develop`
-do not trigger tagging.
+The workflow never publishes from `develop`, a pull request, stale CI, or a
+partially passing CI matrix. Because the uploaded raw hardware evidence is
+not present in the repository, automatic publication includes the software
+release assets, not an invented physical test archive.
 
-The permanent Release workflow then:
-
-1. validates version/ref alignment;
-2. executes the hosted POSIX validation suite natively on Linux amd64;
-3. executes the same hosted POSIX validation suite natively on Linux arm64;
-4. builds and validates an installed POSIX package separately on each architecture;
-5. builds the Cortex-M package;
-6. creates architecture-qualified deterministic archives and one `SHA256SUMS` file;
-7. creates a **draft** GitHub Release containing the software assets.
-
-The workflow does not publish a combined bundle. The POSIX install tree contains compiled architecture-specific objects, so its archive name must always identify the Linux architecture.
-
-## 3. Package physical qualification evidence
+## 3. Optional local physical-evidence archival
 
 Package the selected passing hardware run locally:
 
@@ -123,39 +117,27 @@ The archive contains the original `qualification.md`, every raw build/OpenOCD/GD
 
 The local retention path is gitignored. The archive and checksum are retained evidence files, not tracked source files.
 
-## 4. Finalize the release locally
+## 4. Optional local evidence verification
 
-After the release tag exists and the complete hardware qualification run has been retained, run:
+If the complete original local hardware run is retained, the operator may
+invoke the archival helper. This is **not** needed to publish a release:
 
 ```bash
-./scripts/finalize_release.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha>
+./scripts/finalize_release.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
 ```
 
-Requirements:
+The script verifies the existing immutable tag, its ancestry on current
+`main`, source equivalence and report completeness, then validates the
+generated archive and checksum. It never changes GitHub Releases, tags, or
+branches. Unlike the obsolete equality guard, it continues to work after
+`main` advances past the tagged release.
 
-- standard command-line tools and `git`;
-- the `X.Y.Z` tag already exists;
-- `origin/main` equals the release tag;
-- `origin/develop` contains the hardware-qualified `develop` commit; it need not contain the merge/tag commit;
-- the retained hardware run is a complete unfiltered PASS.
+The historical `0.5.1` exception still validates its exact audited SHAs
+and reports missing complete raw evidence rather than fabricating it.
 
-Historical 0.5.1 is the sole exception. Its complete original run directory is no longer retained, and the later `release/0.5.1` staging branch was audited as an incomplete copy. When the supplied 0.5.1 run path is missing, the finalizer validates [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md), the immutable qualified/release SHAs, and the qualification-diff guard. It does **not** fabricate a full archive from the partial staging data.
-
-The finalizer has no hosting-service CLI/API dependency. It does not require an account login, inspect release pages, or upload assets.
-
-The finalizer:
-
-1. refreshes `main`, `develop`, and the release tag from `origin`;
-2. validates tag/CMake version alignment;
-3. packages the retained hardware evidence through `package_stm32_qualification.sh`;
-4. validates the hardware-qualified SHA is an ancestor of the release tag;
-5. runs `check_release_qualification_diff.py` to prove qualified build-input equivalence between the qualified SHA and distinct release/tag merge SHA;
-6. verifies the generated xz archive, expected archive contents, and SHA-256 checksum locally;
-7. reports finalization success without mutating remote branches.
-
-Branch cleanup is deliberately **outside** the finalizer. After finalization, the release operator reviews and deletes temporary branches manually using the hosting UI or ordinary git. The finalizer never performs a remote push, never asks for branch-cleanup credentials, and never deletes refs.
+Branch cleanup is deliberately **outside** the finalizer. Keep `main`,
+`develop`, tags and unique-commit branches; delete obsolete fully merged
+branches only after verifying their ancestry.
 
 ## Existing local evidence and retries
 
@@ -171,7 +153,7 @@ Use that only when intentionally regenerating the retained evidence package. Rel
 
 HardRT 0.5.1 predates the current release-evidence workflow. Its software release artifacts remain historical and are not rewritten by the local finalizer.
 
-For 0.5.1, the finalizer validates the immutable historical tag SHA, that the tag remains on the **ancestry** of current `main` (which correctly advances for newer releases), and the qualified source ancestry in `develop`. The strict `tag == origin/main` requirement remains in force for **every current release, including 0.6.0 and later**. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), applies the immutable 0.5.1 historical evidence record and version-specific qualification policy, and reports that no complete raw archive is retained.
+For 0.5.1, the finalizer validates the immutable historical tag SHA, that the tag remains on the **ancestry** of current `main` (which correctly advances for newer releases), and the qualified source ancestry in `develop`. For every release the immutable tag must remain on the ancestry of current `main`; tag equality is not required after subsequent merges. If the original complete run directory is available, it is packaged normally. If it is missing, the finalizer instead verifies the committed [historical qualification record](QUALIFICATION_0_5_1.md), applies the immutable 0.5.1 historical evidence record and version-specific qualification policy, and reports that no complete raw archive is retained.
 
 The October 2026 cleanup audit established that `release/0.5.1` contains only a truncated staging copy: 78 raw files are recoverable, `qualification.md` is absent, and the gzip stream is incomplete. That branch is therefore not treated as full qualification evidence and can be retired after the historical record has been verified.
 
@@ -197,4 +179,4 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz
 hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 ```
 
-The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. If the project later chooses to publish those files on a hosting service, that publication is separate from release finalization and does not change the qualified-source contract.
+The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. Optional publication of operator-retained physical logs is independent of the automatic software-release publication and does not change the qualified-source contract.
