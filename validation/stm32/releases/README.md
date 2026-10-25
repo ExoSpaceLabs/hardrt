@@ -1,6 +1,6 @@
 # Release qualification packages
 
-`validation/stm32/releases/` is the optional local retention area for one selected physical qualification package per release, for example:
+`validation/stm32/releases/` is the gitignored local retention area for the **required selected physical qualification package** of each release (0.6.0 and later), for example:
 
 ```text
 validation/stm32/releases/0.5.0/
