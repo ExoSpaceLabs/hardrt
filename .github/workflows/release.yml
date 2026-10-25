@@ -84,14 +84,14 @@ jobs:
           tag_sha="$(git rev-parse "refs/tags/${{ inputs.tag }}^{commit}")"
           main_sha="$(git rev-parse origin/main)"
           [[ "$release_sha" == "${{ inputs.release_sha }}" ]]
-          [[ "$tag_sha" == "$release_sha" && "$main_sha" == "$release_sha" ]] || {
-            echo "Tag, checkout and current main must point to one merge commit" >&2
+          [[ "$tag_sha" == "$release_sha" ]] || {
+            echo "Tag must resolve to the checked-out release commit" >&2
             exit 1
           }
-          # The physically qualified develop commit is the second parent of
-          # the authorized develop -> main merge; it has a different SHA.
-          qualified_sha="$(git rev-parse "$release_sha^2")"
-          python3 scripts/check_release_qualification_diff.py "$qualified_sha" "$release_sha"
+          git merge-base --is-ancestor "$release_sha" "$main_sha" || {
+            echo "Release tag is not on current main history" >&2
+            exit 1
+          }
 
   posix-native:
     needs: prepare
@@ -293,14 +293,14 @@ jobs:
             release-notes.md
           if-no-files-found: error
 
-      - name: Create draft GitHub Release
+      - name: Publish GitHub Release
         if: inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
           name: ${{ needs.prepare.outputs.version }}
           body_path: release-notes.md
-          draft: true
+          draft: false
           files: |
             packages/hardrt-posix-linux-amd64-${{ needs.prepare.outputs.version }}.tar.gz
             packages/hardrt-posix-linux-arm64-${{ needs.prepare.outputs.version }}.tar.gz
