@@ -48,3 +48,13 @@ A later temporary branch, `release/0.5.1`, attempted to stage the evidence as fi
 Therefore the staged branch is **not** a complete physical qualification archive and must never be represented as one. HardRT does not synthesize missing raw evidence or generate a canonical `hardrt-stm32-qualification-0.5.1.tar.xz` from that partial copy.
 
 This historical record preserves the qualification outcome and exact source/release identities while explicitly recording that the full raw archive was not successfully retained. Releases after 0.5.1 remain subject to the normal rule: missing complete qualification evidence is a finalization failure.
+
+## Historical-tag validation after subsequent releases
+
+The historical 0.5.1 finalizer check remains usable after `main` advances to
+0.6 and beyond: its immutable `0.5.1` tag stays on the ancestry of current
+`main`. Requiring the old tag to equal the **current** tip of `main` would make
+all later releases fail the Documentation CI historical smoke test. Only this
+exact audited 0.5.1 tag has the historical exception. All current release
+tags still require `tag SHA == origin/main SHA` and the full unfiltered physical
+evidence package.

@@ -154,12 +154,22 @@ TAG_SHA="$(git rev-parse "refs/tags/${VERSION}^{commit}")"
 MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
 DEVELOP_SHA="$(git rev-parse refs/remotes/origin/develop)"
 
-[[ "$TAG_SHA" == "$MAIN_SHA" ]] || {
-  echo "Release tag does not equal origin/main:" >&2
-  echo "  tag $VERSION: $TAG_SHA" >&2
-  echo "  origin/main: $MAIN_SHA" >&2
-  exit 1
-}
+# A *current* release must be exactly at main. Immutable historical
+# 0.5.1 is the sole exception: once main advances, its tag is necessarily
+# behind main but must retain the audited SHA and stay on main ancestry.
+# This exception does not authorize a new 0.6+ release from a stale tag.
+if [[ "$TAG_SHA" != "$MAIN_SHA" ]]; then
+  if [[ "$VERSION" == "0.5.1" &&
+        "$TAG_SHA" == "43dddffbfacdf2b1ed01b33940ac8f32a14d334d" ]] &&
+        git merge-base --is-ancestor "$TAG_SHA" "$MAIN_SHA"; then
+    echo "Historical 0.5.1 immutable tag is an ancestor of current main (allowed)"
+  else
+    echo "Current release tag does not equal origin/main:" >&2
+    echo "  tag $VERSION: $TAG_SHA" >&2
+    echo "  origin/main: $MAIN_SHA" >&2
+    exit 1
+  fi
+fi
 
 # A normal develop -> main merge changes the tag commit SHA; develop
 # need not contain that new merge commit.
