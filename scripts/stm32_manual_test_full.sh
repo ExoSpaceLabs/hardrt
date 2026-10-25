@@ -874,7 +874,9 @@ echo "Overall    : $OVERALL"
 echo "Report     : $REPORT"
 echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_MODE" ]]; then
-  echo "Release evidence: manually copy/move this full run to validation/stm32/releases/X.Y.Z/."
+  echo "Release evidence: retain this full run; package it with:"
+  echo "  ./scripts/package_stm32_qualification.sh $(cat VERSION) $RUN_DIR"
+  echo "Do not copy raw logs into tracked Git paths or treat this development run as a tagged release."
 else
   echo "Filtered run: useful evidence, but not complete release qualification evidence."
 fi

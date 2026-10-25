@@ -244,6 +244,23 @@ for required in (
 if "hardrt-bundle" in release_process:
     fail("release process still references the removed combined bundle")
 
+# Catch contradictory operator instructions that previously survived the
+# generic Markdown/link and release helper smoke checks.
+release_evidence_guide = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
+if "--cleanup-branches" in release_evidence_guide and "deprecated no-op" not in release_evidence_guide:
+    fail("release evidence guide implies finalizer automatically removes branches")
+if "promoted unchanged to `main`" in manual:
+    fail("hardware guide incorrectly equates a qualified develop SHA with a required two-parent main promotion")
+cross = (ROOT / "docs/CROSSCOMPILE.md").read_text(encoding="utf-8")
+if "timing collection, and evidence packaging" in cross:
+    fail("cross-compile guide incorrectly claims the STM32 runner packages release evidence")
+runner = (ROOT / "scripts/stm32_manual_test_full.sh").read_text(encoding="utf-8")
+if "manually copy/move this full run" in runner:
+    fail("STM32 runner still directs operators to copy evidence instead of packaging it")
+if "scripts/package_stm32_qualification.sh" not in runner:
+    fail("STM32 runner does not identify the release evidence packaging helper")
+
+
 signal_readme = (ROOT / "examples/hardrt_h755_dwt_timing/README.md").read_text(encoding="utf-8")
 if "HARDRT_CFG_MAX_TASKS=N+1" in signal_readme:
     fail("timing README still documents the invalid one-waiter N+1 capacity rule")
