@@ -347,7 +347,7 @@ for required in (
     "hardrt-posix-linux-arm64-",
     "scripts/extract_release_notes.py",
     "SHA256SUMS",
-    "draft: true",
+    "draft: false",
     "softprops/action-gh-release@v2",
 ):
     if required not in release_workflow:
@@ -373,15 +373,20 @@ if 'ALLOWED_PREFIXES = ("docs/",)' not in qualification_diff:
 if 'HISTORICAL_051_SHAS' not in qualification_diff:
     fail("legacy 0.5.1 release requires immutable audited SHA-pair verification")
 tagger = (ROOT / ".github/workflows/tag-release.yml").read_text(encoding="utf-8")
-for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualification: PASS",
-                 "check_release_qualification_diff.py", "uses: ./.github/workflows/release.yml"):
+for required in ("workflow_run:", "github.event.workflow_run.head_branch == 'main'",
+                 "git tag -a", "gh release edit", "uses: ./.github/workflows/release.yml"):
     if required not in tagger:
         fail(f"auto tag workflow is missing mandatory release gate: {required}")
 
-if 'Post-release main maintenance: VERSION $tag already tagged' not in tagger:
-    fail("auto tag workflow must skip already-tagged VERSION on ordinary main maintenance")
-if 'New develop -> main release promotion requires a VERSION bump' not in tagger:
-    fail("auto tag workflow must reject a second release promotion at the same VERSION")
+if 'Existing $version published: no action' not in tagger:
+    fail("auto tag workflow must be idempotent when VERSION is already published")
+if 'finalize=true' not in tagger or 'gh release edit "$TAG" --notes-file release-notes.md --draft=false' not in tagger:
+    fail("auto tag workflow must publish pending draft releases automatically")
+if 'git merge-base --is-ancestor "$release_sha" "$CI_SHA"' not in tagger:
+    fail("auto tag workflow must preserve existing tag ancestry")
+if 'all main CI' not in tagger and 'for workflow in "Linux" "Signal stress" "Documentation"' not in tagger:
+    fail("auto tag workflow must require all three main CI runs")
+
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)
