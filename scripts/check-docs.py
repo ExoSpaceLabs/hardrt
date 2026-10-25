@@ -43,13 +43,17 @@ if 'project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)' not in cmake:
     fail("CMake project version must derive from VERSION")
 
 current_readme = (ROOT / "README.md").read_text(encoding="utf-8")
-if f"**Development release candidate:** `{version}`" not in current_readme:
-    fail("README candidate version does not match root VERSION")
+if f"**Current source version:** `{version}`" not in current_readme:
+    fail("README current source version does not match root VERSION")
+if "a final run is required on the corrected release-version candidate" in current_readme:
+    fail("README incorrectly describes completed 0.6 hardware qualification as pending")
 status = (ROOT / "docs/MODULE_STATUS.md").read_text(encoding="utf-8")
-if f"HardRT **{version} candidate**" not in status:
+if f"HardRT **{version}**" not in status:
     fail("Module status does not describe the current VERSION")
+if "require a fresh frozen candidate before publication" in status:
+    fail("Module status incorrectly describes completed 0.6 qualification as pending")
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if f"HardRT {version} candidate provides:" not in intro:
+if f"HardRT {version} provides:" not in intro:
     fail("Introduction version does not match root VERSION")
 notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 if f"# HardRT v{version} Release Notes" not in notes:
@@ -272,7 +276,7 @@ if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if f"HardRT {version} candidate provides:" not in intro:
+if f"HardRT {version} provides:" not in intro:
     fail("introduction does not describe the current VERSION feature contract")
 if "maps HardRT application tasks to pthreads" not in intro:
     fail("introduction does not describe the corrected pthread-backed POSIX model")
