@@ -11,7 +11,7 @@
 
 The Cortex-M target is being developed toward an **explicitly qualified hard real-time RTOS contract**. The goal is deterministic, statically bounded kernel behavior with bounded synchronization/blocking and reproducible configuration-specific timing evidence suitable for schedulability analysis, not merely preemption or low average latency. See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md) and [ROADMAP.md](docs/ROADMAP.md).
 
-**Development release candidate:** `0.6.0` (published release remains `0.5.1` until tagging)
+**Current source version:** `0.6.0` (hardware-qualified; check GitHub Releases for publication status)
 
 ## Feature set
 
@@ -28,7 +28,7 @@ The Cortex-M target is being developed toward an **explicitly qualified hard rea
 - **CMake package:** installation and `find_package(HardRT)` consumption.
 - **Optional C++17 wrapper:** header-only task/IPC/signal wrappers enabled with `HARDRT_ENABLE_CPP`.
 
-The 0.6 candidate includes a shared absolute-tick IPC timeout engine (semaphores, queues, mutexes, events and notifications), bounded transitive priority inheritance for `HRT_SCHED_PRIORITY` / `HRT_SCHED_PRIORITY_RR`, and phase-preserving periodic release. **Global RR remains priority-agnostic**, so it offers no priority-inversion bound. Automatic mutex owner-death recovery, tickless idle and high-resolution timers remain unsupported. The bounded algorithms and measured critical-section maxima are not universal WCET guarantees.
+HardRT 0.6.0 includes a shared absolute-tick IPC timeout engine (semaphores, queues, mutexes, events and notifications), bounded transitive priority inheritance for `HRT_SCHED_PRIORITY` / `HRT_SCHED_PRIORITY_RR`, and phase-preserving periodic release. **Global RR remains priority-agnostic**, so it offers no priority-inversion bound. Automatic mutex owner-death recovery, tickless idle and high-resolution timers remain unsupported. The bounded algorithms and measured critical-section maxima are not universal WCET guarantees.
 
 ## Port behavior
 
@@ -189,7 +189,7 @@ The release-grade physical entry point for NUCLEO-H755ZI-Q / CM7 is:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The **0.6 candidate** hardware gate is **16 functional contracts + 52 benchmark metrics across 39 build/flash images**, including 14 DWT synchronization critical-section/copy metrics. The complete development run on `beb069db` passed 16/16 + 52/52; a final run is required on the corrected release-version candidate. Historical v0.5 runs used 13 functional contracts + 38 benchmarks and must not be reused as evidence for 0.6 or as universal WCET claims.
+The **0.6.0 hardware qualification** requires **16 functional contracts + 52 benchmark metrics across 39 build/flash images**, including 14 DWT synchronization critical-section/copy metrics. The complete unfiltered NUCLEO-H755ZI-Q CM7 run on qualified source `bf903a50b984572a04e1c201b79ecac4f0d58b6e` passed 16/16 functional and 52/52 benchmark metrics with board probe PASS and zero failures. The qualified `develop` source was promoted to `main` by release PR #110; a merge commit has a different SHA without necessarily changing qualified build inputs. Historical v0.5 runs used 13 functional contracts + 38 benchmarks and must not be reused as evidence for 0.6 or as universal WCET claims.
 
 See [QUALIFICATION.md](docs/QUALIFICATION.md), [STM32_MANUAL_TESTS.md](docs/STM32_MANUAL_TESTS.md), and [STATISTICS.md](docs/STATISTICS.md).
 
@@ -211,7 +211,7 @@ See [HARD_REAL_TIME.md](docs/HARD_REAL_TIME.md) and [ROADMAP.md](docs/ROADMAP.md
 
 ## Compatibility
 
-0.6.0 is a pre-1.0 minor release that adds deadline APIs and priority-inheritance state. Existing applications must rebuild against the new headers and library together; no cross-minor binary compatibility is claimed. The published 0.5.1 patch remains historical. See [COMPATIBILITY.md](docs/COMPATIBILITY.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md).
+0.6.0 is a pre-1.0 minor release that adds deadline APIs and priority-inheritance state. Existing applications must rebuild against the new headers and library together; no cross-minor binary compatibility is claimed. The 0.5.1 patch is historical; consult GitHub Releases to determine which version has been published. See [COMPATIBILITY.md](docs/COMPATIBILITY.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## License
 
