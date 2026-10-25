@@ -28,3 +28,19 @@ CMakeUserPresets.json
 validation/stm32/20*/
 validation/stm32/releases/
 validation/stm32/sync_benchmarks/
+
+# Local workspace state and generated build trees. Kept outside Git so a
+# frozen hardware qualification checkout remains clean without deleting data.
+/.idea/
+/.codex
+/build/
+/build-*/
+/install/
+/install-*/
+/cmake-build-*/
+/examples/hardrt_h755_*/build-cortex_m/
+/examples/hardrt_h755_*/cmake-build-*/
+
+# Older manually archived qualification ZIPs are retained locally. The
+# timestamped run directories and packaged release evidence are also ignored.
+/validation/stm32/*.zip
