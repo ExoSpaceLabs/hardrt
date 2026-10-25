@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.tag.outputs.release_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
       - name: Verify staged assets and publish the existing draft
         env:
           GH_TOKEN: ${{ github.token }}
