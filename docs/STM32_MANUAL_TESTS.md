@@ -63,9 +63,9 @@ The local evidence directory mirrors the repository `X.Y.Z` release-tag conventi
 
 Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run.** Hundreds of raw logs belong in the release evidence archive, not in Git history.
 
-A reviewed `develop -> main` **merge commit** is required for automated 0.6 tagging. The merge records history and therefore normally has a **different SHA** from the frozen hardware-qualified `develop` commit, even when its build/test inputs are byte-for-byte identical. The release guard in [QUALIFICATION.md](QUALIFICATION.md) allows only `README.md`, `RELEASE_NOTES.md` and `docs/**` to differ between the two trees; changes to scripts, workflows, `.gitignore`, file modes or any other path require fresh physical qualification. Record the tested `develop` SHA in `qualification.md`, the evidence package and the release PR attestation; never describe the later merge SHA as the directly tested hardware commit.
+Qualify the final source on the physical board **before** promoting it to `main`. Record the tested source SHA in `qualification.md` and retain the raw logs locally. A later merge commit has a different SHA from the directly tested source; do not describe it as the physical test commit. The standalone `check_release_qualification_diff.py` helper remains available to review build-input changes after a hardware run, but is not a second publication action.
 
-The tag-driven Release workflow builds the software packages. `scripts/finalize_release.sh` verifies the release-source relationship and complete retained physical evidence **locally**; it never authenticates to a hosting service, uploads assets, publishes a release, or deletes remote branches. Publication and branch cleanup remain separate manual operator decisions.
+Once the qualified source and root `VERSION` are on `main`, green Linux, Signal stress and Documentation CI automatically creates the immutable tag, builds architecture-specific software assets and **publishes** the release. No manual draft approval, evidence attachment, or local finalizer is required to publish. CI does not fabricate or upload the operator's physical logs.
 
 ## Package the physical evidence
 
@@ -100,9 +100,9 @@ The `.tar.xz` contains the complete `qualification.md`, all raw build/OpenOCD/GD
 
 The unpacked evidence directory and generated archive remain untracked.
 
-## Finalize the release
+## Optional local evidence verification
 
-Release finalization is hosting-neutral and branch-read-only. Run:
+Release publication is already automatic. For additional local verification, run:
 
 ```bash
 ./scripts/finalize_release.sh \
@@ -110,7 +110,7 @@ Release finalization is hosting-neutral and branch-read-only. Run:
   validation/stm32/<UTC>_<short-sha>
 ```
 
-The finalizer validates the release tag at `main`, the qualified source's ancestry in `develop` and the tagged merge, root `VERSION` (historical tags excepted), conservative qualified-build-input equivalence, and the retained physical evidence package/checksum where available. It never uploads assets, authenticates to a hosting service, or creates/deletes remote branches. Any publication or branch cleanup is a separate manual operator action.
+The optional finalizer verifies the immutable release tag is on `main` history, the qualified source ancestry and build-input equivalence, and the retained physical evidence archive/checksum. It never publishes releases, uploads assets or deletes branches. All release publication occurs automatically in GitHub Actions, independently of this local archival helper.
 
 The canonical future software assets are architecture-qualified:
 
