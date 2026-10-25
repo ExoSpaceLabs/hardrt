@@ -1,6 +1,6 @@
 # Module Status
 
-HardRT **0.6.0 candidate** public/runtime components (root `VERSION` is the build source of truth):
+HardRT **0.6.0** public/runtime components (root `VERSION` is the build source of truth):
 
 - [`inc/hardrt.h`](../inc/hardrt.h): lifecycle, tasks, scheduling, absolute periodic release, common finite-wait result and version/port identity.
 - [`inc/hardrt_time.h`](../inc/hardrt_time.h): application-owned external tick.
@@ -37,7 +37,7 @@ The full release-grade STM32H755 entry point remains:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-0.6 qualification requires **16/16 functional + 52/52 benchmark metrics across 39 build/flash images**, clean tracked source, probe PASS and raw evidence. The full `beb069db` developmental baseline passed; release-version and documentation changes require a fresh frozen candidate before publication. Qualified-source SHA and the `main` merge/tag SHA may differ only if the conservative qualified-build-input equivalence guard passes. Hardware evidence stays in locally retained archives and is attached to a draft GitHub release by the operator, not synthesized by CI.
+0.6 qualification requires **16/16 functional + 52/52 benchmark metrics across 39 build/flash images**, clean tracked source, probe PASS and raw evidence. The final complete unfiltered NUCLEO-H755ZI-Q CM7 run on `bf903a50b984572a04e1c201b79ecac4f0d58b6e` passed 16/16 functional and 52/52 benchmark metrics, with probe PASS and overall PASS. Promotion PR #110 merged this qualified source into `main`. Publication remains separately gated by tag, CI, software packages and operator-attached physical evidence. Qualified-source SHA and the `main` merge/tag SHA may differ only if the conservative qualified-build-input equivalence guard passes. Hardware evidence stays in locally retained archives and is attached to a draft GitHub release by the operator, not synthesized by CI.
 
 Historical published `0.5.0`/`0.5.1` contracts (13 functional + 38 benchmark cases) remain documented in [QUALIFICATION.md](QUALIFICATION.md) and [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md).
 
