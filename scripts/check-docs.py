@@ -341,7 +341,7 @@ if f'Version string (e.g., "{version}")' not in cpp_header:
 release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 for required in (
     "workflow_call:",
-    "Verify tag, current main and qualified inputs",
+    "Verify immutable tag and main ancestry",
     "ubuntu-24.04-arm",
     "hardrt-posix-linux-amd64-",
     "hardrt-posix-linux-arm64-",
