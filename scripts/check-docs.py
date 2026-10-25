@@ -31,6 +31,55 @@ def tracked_markdown() -> list[Path]:
 
 MARKDOWN = tracked_markdown()
 
+# Current-release capability and version assertions are evaluated against
+# root VERSION, not hard-coded against the previous historical release.
+version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+    fail(f"root VERSION is not semantic MAJOR.MINOR.PATCH: {version!r}")
+cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+if 'file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HARDRT_VERSION)' not in cmake:
+    fail("CMake must read root VERSION when configuring the project")
+if 'project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)' not in cmake:
+    fail("CMake project version must derive from VERSION")
+
+current_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+if f"**Development release candidate:** `{version}`" not in current_readme:
+    fail("README candidate version does not match root VERSION")
+status = (ROOT / "docs/MODULE_STATUS.md").read_text(encoding="utf-8")
+if f"HardRT **{version} candidate**" not in status:
+    fail("Module status does not describe the current VERSION")
+intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
+if f"HardRT {version} candidate provides:" not in intro:
+    fail("Introduction version does not match root VERSION")
+notes = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+if f"# HardRT v{version} Release Notes" not in notes:
+    fail("No current VERSION release-note section")
+for header, symbols in {
+    "inc/hardrt.h": ("hrt_delay_until", "HRT_WAIT_TIMEOUT"),
+    "inc/hardrt_sem.h": ("hrt_sem_take_until",),
+    "inc/hardrt_mutex.h": ("hrt_mutex_lock_until", "HARDRT_MAX_MUTEXES_HELD"),
+    "inc/hardrt_queue.h": ("hrt_queue_send_until", "hrt_queue_recv_until"),
+    "inc/hardrt_event.h": ("hrt_event_wait_until",),
+    "inc/hardrt_notify.h": ("hrt_task_notify_wait_until", "hrt_task_notify_take_until"),
+}.items():
+    text = (ROOT / header).read_text(encoding="utf-8")
+    for symbol in symbols:
+        if symbol not in text:
+            fail(f"missing implemented v0.6 public API {symbol} in {header}")
+for doc, words in {
+    "README.md": ("absolute-tick IPC timeout engine", "priority inheritance", "52 benchmark metrics"),
+    "docs/MUTEXES.md": ("hrt_mutex_lock_until", "transitive priority inheritance"),
+    "docs/MODULE_STATUS.md": ("finite-wait", "transitive PI", "52/52"),
+}.items():
+    body = (ROOT / doc).read_text(encoding="utf-8")
+    for word in words:
+        if word not in body:
+            fail(f"{doc} fails to document implemented 0.6 feature: {word}")
+for required in ("VERSION", ".github/workflows/tag-release.yml", "scripts/test_release_contract.py"):
+    if not (ROOT / required).is_file():
+        fail(f"missing root version / automatic tagging release gate: {required}")
+
+
 for source in MARKDOWN:
     text = source.read_text(encoding="utf-8")
     for match in LINK_RE.finditer(text):
@@ -206,8 +255,8 @@ if "pending notification whose value is zero" not in events:
     fail("task-notification documentation omits the zero-valued pending take edge case")
 
 intro = (ROOT / "docs/INTRODUCTION.md").read_text(encoding="utf-8")
-if "HardRT 0.5.1 provides:" not in intro:
-    fail("introduction does not describe the current 0.5.1 feature contract")
+if f"HardRT {version} candidate provides:" not in intro:
+    fail("introduction does not describe the current VERSION feature contract")
 if "maps HardRT application tasks to pthreads" not in intro:
     fail("introduction does not describe the corrected pthread-backed POSIX model")
 
@@ -241,35 +290,35 @@ if "humanity" in release_notes.lower():
     fail("release notes contain conversational/editorial text")
 
 documentation = (ROOT / "docs/DOCUMENTATION.md").read_text(encoding="utf-8")
-if "configures/builds HardRT 0.5.1" not in documentation:
-    fail("documentation-gate description is not aligned to HardRT 0.5.1")
+if "configures/builds the HardRT version from root `VERSION`" not in documentation:
+    fail("documentation-gate description must derive version from VERSION")
 
 cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-if "project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)" not in cmake:
-    fail("CMake project version is not 0.5.1")
+if 'project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)' not in cmake:
+    fail("CMake project version is not derived from VERSION")
 if "COMPATIBILITY SameMinorVersion" not in cmake:
     fail("pre-1.0 CMake package compatibility is not restricted to the same minor line")
 
-# Keep this consumer pinned to 0.5.0: a 0.5.1 SameMinorVersion package must
-# remain consumable by applications that requested the original 0.5 contract.
+# Installed C/C++ consumer must target the current pre-1.0 minor line,
+# which is intentionally incompatible with requests for the previous minor.
 installed_consumer = (ROOT / "tests/installed_consumer/CMakeLists.txt").read_text(encoding="utf-8")
-if "find_package(HardRT 0.5.0 REQUIRED)" not in installed_consumer:
-    fail("installed-package consumer is not validating 0.5.0 -> 0.5.1 patch compatibility")
+if f"find_package(HardRT {version} REQUIRED)" not in installed_consumer:
+    fail("installed-package consumer does not target the current VERSION")
 
 c_header = (ROOT / "inc/hardrt.h").read_text(encoding="utf-8")
-if 'semantic version string, for example "0.5.1"' not in c_header:
-    fail("C public header does not advertise the current 0.5.1 version-string example")
+if f'semantic version string, for example "{version}"' not in c_header:
+    fail("C public header version example is stale")
 
 cpp_header = (ROOT / "cpp/hardrtpp.hpp").read_text(encoding="utf-8")
 if 'Version string (e.g., "0.4.0")' in cpp_header:
     fail("C++ public header still advertises the 0.4.0 version-string example")
-if 'Version string (e.g., "0.5.1")' not in cpp_header:
-    fail("C++ public header does not advertise the current 0.5.1 version-string example")
+if f'Version string (e.g., "{version}")' not in cpp_header:
+    fail("C++ public header version example is stale")
 
 release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 for required in (
-    "tags:",
-    "Validate release tag and branch alignment",
+    "workflow_call:",
+    "Verify tag, current main and qualified inputs",
     "ubuntu-24.04-arm",
     "hardrt-posix-linux-amd64-",
     "hardrt-posix-linux-arm64-",
@@ -292,9 +341,19 @@ if "hardrt-bundle" in linux_workflow:
     fail("Linux CI still assembles the removed combined bundle")
 
 qualification_diff = (ROOT / "scripts/check_release_qualification_diff.py").read_text(encoding="utf-8")
-for helper in ("scripts/package_stm32_qualification.sh", "scripts/finalize_release.sh"):
-    if f'"{helper}"' not in qualification_diff:
-        fail(f"release-only diff guard does not whitelist standardized helper: {helper}")
+if "ALLOWED_EXACT" not in qualification_diff or "ALLOWED_PREFIXES" not in qualification_diff:
+    fail("release qualification equivalence guard does not define a conservative allowlist")
+if 'ALLOWED_EXACT = {"README.md", "RELEASE_NOTES.md"}' not in qualification_diff:
+    fail("0.6 qualified-input guard must permit only current documentation files")
+if 'ALLOWED_PREFIXES = ("docs/",)' not in qualification_diff:
+    fail("0.6 qualified-input guard must reject arbitrary non-doc changes")
+if 'HISTORICAL_051_SHAS' not in qualification_diff:
+    fail("legacy 0.5.1 release requires immutable audited SHA-pair verification")
+tagger = (ROOT / ".github/workflows/tag-release.yml").read_text(encoding="utf-8")
+for required in ("workflow_run:", "Hardware-qualified SHA:", "Hardware qualification: PASS",
+                 "check_release_qualification_diff.py", "uses: ./.github/workflows/release.yml"):
+    if required not in tagger:
+        fail(f"auto tag workflow is missing mandatory release gate: {required}")
 
 if errors:
     print("Documentation gate FAILED:", file=sys.stderr)

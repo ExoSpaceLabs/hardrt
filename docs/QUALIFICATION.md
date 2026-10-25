@@ -6,7 +6,7 @@ HardRT separates development measurements from release qualification evidence wh
 
 A release candidate is qualified from `develop`, not from a temporary feature or release branch. All target-affecting source, build, version, package, and test changes must be merged into `develop` before physical qualification.
 
-The physically qualified `develop` SHA is the **hardware-qualified source SHA**. Normally that exact SHA is promoted to `main` and tagged. A later release commit is permitted only when every post-qualification change is release-automation or documentation-only and therefore cannot affect the compiled HardRT library or STM32 qualification binaries. This narrow exception exists so release infrastructure can be standardized without invalidating already-completed hardware evidence.
+The physically qualified `develop` SHA is the **hardware-qualified source SHA**. A normal reviewed `develop -> main` PR merge creates a **different release SHA**; this is acceptable only if its qualified build/test inputs are identical to the frozen hardware candidate. The automatic tagger uses the merged PR's second parent as the qualified candidate and compares the two trees. Both SHAs are recorded; the physical campaign is not repeated just because a merge commit exists.
 
 Before using that exception, run:
 
@@ -14,19 +14,19 @@ Before using that exception, run:
 python3 scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>
 ```
 
-The guard permits only tracked Markdown/documentation, GitHub workflow files, and the dedicated release/documentation helper scripts. Any other changed path fails the check and requires a new full hardware qualification run.
+The conservative guard permits only `README.md`, `RELEASE_NOTES.md` and `docs/**` to differ. Every unknown file, CMake/toolchain/version input, linker/startup file, API/port implementation, workflow or test/qualification fixture change is **build-relevant by default** and forces requalification. This is a build-input equivalence policy, **not** a requirement that Git commits share a SHA.
 
-At tag time `main` and `develop` must resolve to the same release commit. Temporary feature/release branches are deleted after completion. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+The root `VERSION` and all target/build/test changes must be finalized on `develop` **before** physical qualification. At tag time, `main` must equal the tag SHA; `develop` may still point to the original qualified commit, which is expected to be the second parent of the release merge. Temporary branches are deleted by the operator only after release.
 
 ## Tag-driven release staging and publication
 
-Release tags use the non-v-prefixed `X.Y.Z` convention. The permanent `.github/workflows/release.yml` workflow owns software release staging when such a tag is pushed.
+Release tags use the non-v-prefixed `X.Y.Z` convention, derived from root `VERSION`. The `.github/workflows/tag-release.yml` workflow runs after successful `main` CI and requires an attested merged `develop -> main` PR, then creates the tag. Because a GitHub-token-created tag does not start a separate push workflow, the tagger invokes the reusable `.github/workflows/release.yml` software staging workflow directly.
 
 The workflow:
 
 - validates the `X.Y.Z` tag against the CMake project version;
 - requires the tag SHA to be the current `main` SHA;
-- requires `main` and `develop` to be aligned at tag creation;
+- verifies the tagged `main` merge has unchanged qualified build inputs compared with its second parent and that the root `VERSION` matches the non-v tag;
 - executes the hosted POSIX validation suite natively on Linux amd64;
 - executes the same hosted POSIX validation suite natively on Linux arm64;
 - builds and validates an installed POSIX package independently on each architecture;
@@ -103,7 +103,7 @@ hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
 
 The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keeping hundreds of generated evidence files out of the Git repository while retaining the full audit trail as one local evidence archive.
 
-The hardware evidence records the hardware-qualified source SHA. If the final tag points to a later commit under the release-automation-only exception, the qualification record and release issue must preserve both SHAs and the qualification-diff guard must pass.
+The hardware evidence records the hardware-qualified `develop` source SHA. The final GitHub tag normally points to a distinct reviewed merge commit on `main`; release records must preserve **both** SHAs and the qualified-input equivalence guard result. Changes to build-affecting inputs after the physical run invalidate that evidence.
 
 After the tag workflow has staged the draft release, finalize it with:
 
@@ -142,6 +142,11 @@ source/test/build change after the hardware-qualified SHA outside the allowed
 release-documentation-only diff requires a new complete run.
 
 These diagnostic metrics are observations, not unconditional WCET bounds.
+The conditional mutex blocking calculator described in
+[MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md) **requires independently
+proven application-level ownership and dispatch bounds**. It does not convert
+the diagnostic maxima into a validated STM32H755 WCET, and does not change
+the required physical 16/52 qualification matrix.
 Uncompleted #53 contended-inheritance, timeout-expiry, or IRQ-interference
 characterization must not be described as completed or proved by the
 uncontended synchronization baseline.

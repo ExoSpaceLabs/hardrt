@@ -26,10 +26,10 @@ Use `/** ... */` for Doxygen blocks on public declarations and add `@brief`, `@p
 
 `.github/workflows/ci_docs.yml` is the release-facing documentation gate. It:
 
-1. configures/builds HardRT 0.5.1 with POSIX + C++ wrappers so generated public headers exist;
+1. configures/builds the HardRT version from root `VERSION` with POSIX + C++ wrappers so generated public headers exist;
 2. compiles `tests/docs/api_c_smoke.c` as strict C11;
 3. compiles `tests/docs/api_cpp_smoke.cpp` as strict C++17;
-4. runs `scripts/check-docs.py` across **all tracked repository Markdown** to validate local links, required command/target paths, removed-script references, release-matrix/evidence-policy invariants, and known stale version/feature wording;
+4. runs `scripts/check-docs.py` across **all tracked repository Markdown** to validate local links, required command/target paths, removed-script references, release-matrix/evidence-policy invariants, and known stale version/feature wording plus automatic VERSION/release-notes/current capability assertions;
 5. generates Doxygen from `inc/` and `cpp/` with documentation errors treated as build failures.
 
 A public API rename, missing documented path, stale removed hardware command, broken local link, invalid documentation-originated C/C++ usage, stale release qualification matrix, or broken Doxygen reference should therefore fail CI.

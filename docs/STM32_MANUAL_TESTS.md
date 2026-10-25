@@ -110,7 +110,7 @@ Release finalization is hosting-neutral and branch-read-only. Run:
   validation/stm32/<UTC>_<short-sha>
 ```
 
-The finalizer validates the release tag, `main`/`develop` ancestry, CMake version, hardware-qualified SHA ancestry, post-qualification release-only diff guard, and the retained physical evidence package/checksum where available. It never uploads assets, authenticates to a hosting service, or creates/deletes remote branches. Any publication or branch cleanup is a separate manual operator action.
+The finalizer validates the release tag at `main`, the qualified source's ancestry in `develop` and the tagged merge, root `VERSION` (historical tags excepted), conservative qualified-build-input equivalence, and the retained physical evidence package/checksum where available. It never uploads assets, authenticates to a hosting service, or creates/deletes remote branches. Any publication or branch cleanup is a separate manual operator action.
 
 The canonical future software assets are architecture-qualified:
 

@@ -66,7 +66,7 @@ A HardRT configuration can be described as hard real time only when relevant ker
 - O(1) notification producer work;
 - deterministic, bounded timeout bookkeeping for blocking APIs: one absolute-deadline model, static timer storage, no full-TCB expiry scan, and bounded waiter unlink (#68);
 - bounded transitive priority inheritance for fixed-priority mutexes (#89), with explicit resource tracking limits and application WCET assumptions;
-- finite configuration-specific mutex blocking analysis;
+- finite configuration-specific mutex blocking analysis, with explicit, independently justified ownership/interference bounds (see [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md));
 - queue-copy cost bounded by an explicit item-size/design contract rather than an unspecified application payload size.
 
 ### Periodic timing behavior
@@ -134,8 +134,8 @@ Tracked by #91.
 
 0.6 must establish the semantic foundations needed before deeper timing proof is meaningful:
 
-- bounded common IPC timeout model (#68), implemented on the 0.6 development line and pending physical feature qualification;
-- bounded mutex priority-inversion model (#89), implemented on the 0.6 feature branch and awaiting physical functional qualification;
+- bounded common IPC timeout model (#68), implemented and physically functionally validated in the 0.6 development line;
+- bounded transitive mutex priority-inversion model (#89), implemented and physically functionally validated on H755 for fixed-priority policies;
 - stable-phase absolute periodic release timing (#90), implemented and physically qualified;
 - synchronization-critical critical-section measurement (#53);
 - queue-copy scaling and explicit design/qualification bound (#53/#52);
@@ -143,7 +143,19 @@ Tracked by #91.
 
 The periodic mechanism must prove that application execution, task preemption, interrupt handling, scheduler latency, and context-switch overhead are accounted as elapsed time inside the current period. They reduce the remaining delay but do not redefine the next nominal release.
 
-0.6 is allowed to say these operations are structurally/deterministically bounded where that has been demonstrated. It must not promote observed maxima into universal WCET claims.
+**Accepted 0.6 boundary (2026-10-25, #91):** the numerical H755
+application-specific blocking bound is **not** a 0.6 release requirement.
+The release delivers bounded PI algorithms, a conditional finite blocking
+calculation requiring externally demonstrated ownership/dispatch maxima
+([MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md)), and observed
+uncontended semaphore/mutex/queue critical-section measurements plus
+queue-pointer/index guidance. A complete frozen-source 16/52 hardware
+campaign is still mandatory. Measured 0.6 maxima must never be promoted into
+universal WCET or numerical IRQ-interference claims.
+
+0.7 will require a fully specified application/interrupt configuration and
+measured/analytically justified bounds for contended PI handoff, timeout
+expiry, scheduler interference and response-time analysis (#53/#52/#54).
 
 ### 0.7.x — characterize timing and interference
 
@@ -194,8 +206,8 @@ For every supported Cortex-M configuration, documentation must identify:
 
 The major open work is tracked by:
 
-- #68 common IPC timeouts: implementation complete on the 0.6 development branch, with STM32H755 feature qualification required before closure;
-- #89 bounded mutex priority inversion: bounded transitive PI design and hosted implementation are in progress; physical validation and #53 timing characterization remain;
+- #68 common IPC timeouts: implementation merged, hosted suite and hardware feature validation passed; deeper timeout-expiry timing bounds remain under #53;
+- #89 bounded mutex priority inversion: bounded transitive PI merged and physical functional validation passed; application-specific numerical blocking and #53 timing characterization remain;
 - #90 stable-phase periodic timing: semantic feature complete; deeper release-jitter/interference work continues under #54;
 - #37 reproducible latency/qualification model;
 - #49 zero-cost timing/trace infrastructure;

@@ -1,6 +1,6 @@
 # HardRT Message Queues
 
-HardRT v0.5 provides fixed-capacity, copy-based FIFO queues for communication between tasks. Queue storage is supplied by the application; the kernel performs no dynamic allocation. v0.4.0 used a less selective wake/reschedule rule.
+HardRT 0.6 provides fixed-capacity, copy-based FIFO queues with immediate, indefinite and absolute-deadline task operations for communication between tasks. Queue storage is supplied by the application; the kernel performs no dynamic allocation. v0.4.0 used a less selective wake/reschedule rule.
 
 ## Properties
 
@@ -45,6 +45,8 @@ The storage must remain valid for the queue lifetime and must contain at least `
 ```c
 int hrt_queue_send(hrt_queue_t *queue, const void *item);
 int hrt_queue_recv(hrt_queue_t *queue, void *out);
+hrt_wait_result_t hrt_queue_send_until(hrt_queue_t *queue, const void *item, hrt_tick_t deadline);
+hrt_wait_result_t hrt_queue_recv_until(hrt_queue_t *queue, void *out, hrt_tick_t deadline);
 ```
 
 - `hrt_queue_send()` retries until space is available.
@@ -52,7 +54,7 @@ int hrt_queue_recv(hrt_queue_t *queue, void *out);
 - A full sender joins the TX waiter FIFO and becomes `HRT_BLOCKED`.
 - An empty receiver joins the RX waiter FIFO and becomes `HRT_BLOCKED`.
 
-Blocking send/receive require the current RUNNING application task. An invalid caller returns `-1`, records `ERR_INVALID_TASK`, and leaves queue contents unchanged. There are currently no timeout variants. They return `0` on normal completion. They may return `-1` only when bounded waiter publication cannot be completed; that indicates inconsistent/exhausted waiter state rather than the normal full/empty blocking path.
+Blocking send/receive require the current RUNNING application task. An invalid caller returns `-1`, records `ERR_INVALID_TASK`, and leaves queue contents unchanged. The `_until()` variants use the common wrap-safe absolute deadline and return `HRT_WAIT_OK` / `HRT_WAIT_TIMEOUT` or a negative `HRT_WAIT_*` error. Indefinite operations return `0` on normal completion. They may return `-1` only when bounded waiter publication cannot be completed; that indicates inconsistent/exhausted waiter state rather than the normal full/empty blocking path.
 
 ### Non-blocking
 
@@ -169,8 +171,18 @@ Waiter arrays are sized by `HARDRT_APP_MAX_TASKS`, the configured application-ta
 ## Constraints
 
 - Capacity and item size cannot change after initialization.
-- Blocking operations are task-context-only and have no timeout.
+- Indefinite blocking and absolute-deadline `_until()` operations are task-context-only.
 - No dynamic allocation is performed.
 - Queue state and item storage must outlive all users.
 - ISR operations are non-blocking only; they still execute the configured critical-section mechanism and item copy.
 - FIFO waiter selection does not imply reserved-resource or strict completion-order fairness.
+
+## Copy-size and interrupt latency
+
+The payload is copied with `memcpy()` **while BASEPRI protects the queue
+state**. The 0.6 reference H755 diagnostic recorded roughly 20.5 us for a
+1024-byte queue operation's masked window at 64 MHz. That observation is not
+a general WCET limit. Keep payloads small when interrupt response matters;
+queue pointers/indices to statically owned buffers for larger transfers, and
+document lifetime and contention assumptions. See
+[SYNC_TIMING_BENCHMARK.md](SYNC_TIMING_BENCHMARK.md) and #53.

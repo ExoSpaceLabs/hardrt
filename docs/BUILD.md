@@ -1,9 +1,9 @@
 # Build and Install
 
-HardRT 0.5.1 is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
+HardRT 0.6.0 candidate is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
 
 ```cmake
-project(hardrt VERSION 0.5.1 LANGUAGES C)
+project(hardrt VERSION ${HARDRT_VERSION} LANGUAGES C)
 ```
 
 ## Requirements
@@ -157,9 +157,9 @@ Add `-DHARDRT_ENABLE_CPP=ON` to expose the C++ target in the cross-build. The ST
 - `scripts/build-stm32-examples-ci.sh`: cross-build the STM32H755 validation matrix.
 - `scripts/stm32_manual_test_full.sh`: the single physical STM32H755 qualification entry point.
 - `scripts/package_stm32_qualification.sh`: validate and compress one complete passing physical qualification run into a deterministic `.tar.xz` plus SHA-256 file.
-- `scripts/finalize_release.sh`: verify staged software assets, publish physical qualification evidence, publish the draft GitHub Release, and optionally remove temporary remote branches.
+- `scripts/finalize_release.sh`: locally validate tag/source history and package/checksum retained physical qualification evidence; it never publishes releases, uploads artifacts or deletes remote branches.
 - `scripts/extract_release_notes.py`: extract the matching `X.Y.Z` section from `RELEASE_NOTES.md` for GitHub Release publication.
-- `scripts/check_release_qualification_diff.py`: reject post-qualification changes outside the release-automation/documentation whitelist.
+- `scripts/check_release_qualification_diff.py`: compare qualified `develop` against distinct `main` merge SHA; reject all build/test/version/workflow changes and permit only documented non-build files.
 
 The authoritative end-to-end release procedure is [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
@@ -178,7 +178,7 @@ Kernel/port-private headers are not installed.
 C:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
@@ -186,20 +186,18 @@ target_link_libraries(app PRIVATE HardRT::hardrt)
 C++ when the package was built with wrappers enabled:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```
 
 POSIX consumers must not add a duplicate private pthread workaround. `HardRT::hardrt` exposes the thread dependency as part of the package contract.
 
-The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.5.x package may satisfy a compatible 0.5 request, but a 0.5.x package must not silently satisfy a `find_package(HardRT 0.4...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
+The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.6.x package may satisfy a compatible 0.6 request, but a 0.6.x package must not silently satisfy a `find_package(HardRT 0.5...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Tag-driven release build
 
-Pushing a non-v-prefixed `X.Y.Z` tag triggers `.github/workflows/release.yml`. Software release staging is intentionally separate from the broader Linux CI workflow.
-
-At tag creation the release workflow requires the tag to match the CMake project version and requires `main`, `develop`, and the tag SHA to be aligned. It then executes the hosted validation suite natively on Linux amd64 and Linux arm64, builds and validates an installed POSIX package on each architecture, builds the Cortex-M package, creates reproducible archives, generates `SHA256SUMS`, extracts the matching release-note section, retains the generated package set as an Actions artifact, and creates a **draft** GitHub Release.
+Root `VERSION` is the project/package/tag source of truth. Change it only on `develop`; do not tag from that change alone. Following complete manually approved hardware qualification, a reviewed `develop -> main` merge and successful current-main Linux, Signal stress and Documentation CI, `.github/workflows/tag-release.yml` automatically creates the non-v `X.Y.Z` tag and directly invokes reusable `.github/workflows/release.yml`. The tagger verifies qualified build-input equivalence between the tested commit and the different merge/tag SHA, not identical Git commit IDs. The software stage validates POSIX natively on amd64/arm64, installed consumers and Cortex-M packages, generates checksums and creates a **draft** GitHub Release.
 
 The generated software assets are:
 
@@ -234,7 +232,7 @@ Then finish publication with:
   --cleanup-branches
 ```
 
-The finalizer verifies `SHA256SUMS`, validates the hardware-qualified-SHA to tag-SHA diff policy, uploads and re-verifies the physical evidence, publishes the draft release, and only then performs optional branch cleanup.
+The finalizer verifies the retained physical archive and its checksum and checks qualified-build-input equivalence. It does **not** upload evidence, publish the draft release or remove branches; operator evidence attachment and release publication are separate.
 
 ## v0.5.1 corrective-patch gate
 

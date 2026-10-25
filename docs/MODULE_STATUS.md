@@ -1,60 +1,44 @@
 # Module Status
 
-HardRT 0.5.1 public/runtime components:
+HardRT **0.6.0 candidate** public/runtime components (root `VERSION` is the build source of truth):
 
-- [`inc/hardrt.h`](../inc/hardrt.h): lifecycle, tasks, scheduling, time queries, version/port identity, and diagnostics.
-- [`inc/hardrt_time.h`](../inc/hardrt_time.h): application-owned external tick entry point.
-- [`inc/hardrt_sem.h`](../inc/hardrt_sem.h): binary/counting semaphores and ISR give.
-- [`inc/hardrt_mutex.h`](../inc/hardrt_mutex.h): owner-tracked non-recursive mutexes.
-- [`inc/hardrt_queue.h`](../inc/hardrt_queue.h): fixed-capacity copy-based queues with task/ISR operations.
-- [`inc/hardrt_event.h`](../inc/hardrt_event.h): statically allocated 32-bit event flags.
-- [`inc/hardrt_notify.h`](../inc/hardrt_notify.h): per-task 32-bit notifications.
-- [`src/internal/hardrt_port_contract.h`](../src/internal/hardrt_port_contract.h): authoritative non-installed port/core contract.
-- [`cpp/hardrtpp.hpp`](../cpp/hardrtpp.hpp): optional header-only C++17 task/IPC wrappers.
-- [`cpp/hardrt_signals.hpp`](../cpp/hardrt_signals.hpp): C++17 event/notification wrappers.
-- generated `hardrt_version.h`: project version metadata.
-- generated `hardrt_port.h`: selected port identity.
+- [`inc/hardrt.h`](../inc/hardrt.h): lifecycle, tasks, scheduling, absolute periodic release, common finite-wait result and version/port identity.
+- [`inc/hardrt_time.h`](../inc/hardrt_time.h): application-owned external tick.
+- [`inc/hardrt_sem.h`](../inc/hardrt_sem.h): counting/binary semaphores, FIFO waiters, ISR give, timed take.
+- [`inc/hardrt_mutex.h`](../inc/hardrt_mutex.h): non-recursive owner-tracked mutex, timed lock, bounded transitive priority inheritance.
+- [`inc/hardrt_queue.h`](../inc/hardrt_queue.h): caller-storage, copy-based bounded FIFO with timed send/receive and ISR operations.
+- [`inc/hardrt_event.h`](../inc/hardrt_event.h): 32-bit event flags and absolute deadline wait.
+- [`inc/hardrt_notify.h`](../inc/hardrt_notify.h): per-task notifications and absolute deadline wait/take.
+- [`src/internal/hardrt_port_contract.h`](../src/internal/hardrt_port_contract.h): non-installed port/core contract.
+- [`cpp/hardrtpp.hpp`](../cpp/hardrtpp.hpp) and [`cpp/hardrt_signals.hpp`](../cpp/hardrt_signals.hpp): optional header-only C++17 API.
+- generated `hardrt_version.h` / `hardrt_port.h`: compile-time version and port metadata.
 
-## Runtime contract
+## Scheduler and memory
 
-- Public lifecycle is `UNINITIALIZED -> INITIALIZED -> RUNNING` with explicit `hrt_status_t` failures for invalid initialization/start.
-- TCB slot ownership (`UNUSED`/`USED`) is separate from execution state (`READY`, `RUNNING`, `SLEEP`, `BLOCKED`, `EXITED`).
-- RUNNING tasks are outside READY storage; a READY task has exactly one READY representation.
-- EXITED tasks do not execute and retain their used slot until safe reclamation by later task creation.
-- Runtime task creation is supported. Live task-stack overlap is rejected.
-- `HRT_SCHED_PRIORITY` is strict fixed-priority FIFO.
-- `HRT_SCHED_RR` is one global FIFO independent of task priority.
-- `HRT_SCHED_PRIORITY_RR` is fixed priority with RR rotation inside a priority class and retained unused quantum across higher-priority preemption.
-- `hrt_sleep(0)` is an immediate scheduling point; positive durations use ceiling conversion to ticks.
-- READY and sleeper storage are intrusive/static. No runtime heap allocation is used by the core.
-- Port-owned ticks are configured during initialization and activated only at scheduler start.
-- `hrt_tick_from_isr()` is valid only for `HRT_TICK_EXTERNAL`; the application must start its external tick only after scheduler execution begins. The public tick path enters the port critical-section contract before touching common scheduler/tick state.
-- POSIX is a Linux hosted functional/scheduler-validation backend. HardRT application tasks execute in pthreads, a monotonic timer pthread requests internal ticks, and targeted signals allow asynchronous hosted preemption. The common core remains the scheduling authority.
-- On POSIX the application-provided HardRT task stack remains part of the task-lifetime/overlap contract but is not the native pthread execution stack.
-- The hosted POSIX backend currently reserves process-wide `SIGALRM` and `SIGUSR2` and is excluded from hard-real-time timing claims.
-- Cortex-M preserves required hard-float task context and uses PendSV for context switching.
-- Cortex-M critical sections preserve stricter pre-existing BASEPRI masks and restore exact outer-entry state.
+- `UNINITIALIZED -> INITIALIZED -> RUNNING`; separate slot `UNUSED/USED` and task `READY/RUNNING/SLEEP/BLOCKED/EXITED` state.
+- `HRT_SCHED_PRIORITY`: strict fixed-priority FIFO; `HRT_SCHED_RR`: global priority-independent FIFO; `HRT_SCHED_PRIORITY_RR`: fixed-priority RR, preserved quantum across higher-priority preemption.
+- Application tasks use bounded intrusive READY, sleep/deadline and IPC waiter storage; no runtime heap allocation in the kernel core. Tasks may be created at runtime and safely reclaim EXITED slots.
+- `hrt_sleep(0)` yields; `hrt_delay_until()` observes late releases without resetting nominal phase. The common finite-wait APIs use absolute wrapping tick deadlines with a half-range ambiguity rule and deterministic wake/expiry serialization.
+- Cortex-M uses PendSV for context switching, preserves FPU state and stronger existing BASEPRI masks; SVC/MPU is future work (#87).
+- POSIX uses pthread-backed hosted execution with reserved `SIGALRM` / `SIGUSR2` and is a *functional*, not hard-real-time timing, target.
 
 ## Synchronization
 
-- Semaphores: binary/counting, FIFO waiters, scheduler-aware task/ISR wake behavior.
-- Mutexes: non-recursive, owner-tracked, FIFO/direct-handoff, task-context-only. v0.5 has no priority inheritance or automatic owner-death recovery.
-- Queues: fixed-capacity caller storage, copy-based FIFO, task and non-blocking ISR operations.
-- Event flags: 32-bit shared event object, wait-any/wait-all, retained or clear-on-exit bits, FIFO waiter publication, task/ISR producers.
-- Task notifications: one private 32-bit value plus pending/wait state per application task, set-bits/overwrite/no-overwrite/saturating-increment actions, wait/take, task/ISR producers.
+- Semaphores and queues: blocking, immediate try and absolute-deadline operations.
+- Mutexes: task-context-only, non-recursive, FIFO/direct handoff and **bounded transitive PI** with statically limited owned-mutex/chain capacity under priority-aware policies. Global RR ignores priority; no owner-death recovery.
+- Events / notifications: static 32-bit state with task/ISR producers and finite-wait alternatives.
+- Queue `memcpy()` runs inside the critical region, so worst-observed critical-section cost depends on application-selected item size. Full interference/WCET qualification remains open.
 
-Generic IPC timeout variants remain outside v0.5.
+## Validation
 
-## v0.5 validation contract
-
-The v0.5.0 physical release matrix contains **13 functional contracts + 38 benchmark images**, including the 16 event/notification timing images. v0.5.1 changes the hosted POSIX implementation and does not reinterpret those Cortex-M measurements. Release candidates use the single unfiltered hardware entry point:
+The full release-grade STM32H755 entry point remains:
 
 ```bash
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The release-tagged source SHA must be the exact source SHA used for any required passing physical run. Generated result data is retained outside the tracked source tree and published with the GitHub Release. See [STM32_MANUAL_TESTS.md](STM32_MANUAL_TESTS.md) and [QUALIFICATION.md](QUALIFICATION.md).
+0.6 qualification requires **16/16 functional + 52/52 benchmark metrics across 39 build/flash images**, clean tracked source, probe PASS and raw evidence. The full `beb069db` developmental baseline passed; release-version and documentation changes require a fresh frozen candidate before publication. Qualified-source SHA and the `main` merge/tag SHA may differ only if the conservative qualified-build-input equivalence guard passes. Hardware evidence stays in locally retained archives and is attached to a draft GitHub release by the operator, not synthesized by CI.
 
-The v0.5.1 hosted release gate additionally requires the POSIX runtime suite, explicit CPU-bound asynchronous-preemption regression, strict-warning + UBSan signal stress, and installed-package validation with transitive pthread linkage.
+Historical published `0.5.0`/`0.5.1` contracts (13 functional + 38 benchmark cases) remain documented in [QUALIFICATION.md](QUALIFICATION.md) and [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md).
 
-Broader 1.0 hard-real-time work such as bounded mutex priority inversion, analytical critical-section/WCET bounds, queue-copy scaling, richer interference analysis, and machine-readable timing evidence remains separate.
+Formal cross-lane interference, numerical blocking/WCET bounds and full supported-configuration hard-real-time qualification remain tracked under #48/#52/#53/#54.

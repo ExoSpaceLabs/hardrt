@@ -76,9 +76,13 @@ lower-priority owner under fixed-priority scheduling. It does **not** alone
 prove a numerical worst-case blocking duration. The application must bound
 the execution of each critical section, nesting depth, IRQ interference,
 and any non-mutex blocking while owning a mutex. FIFO handoff can introduce
-multiple blocking terms. Characterizing the kernel's critical-section and
-handoff costs remains part of #52/#53; timing measurements are not WCET
-proofs.
+multiple blocking terms. The reproducible **conditional configuration-specific
+blocking calculation** is in [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md):
+for up to K preceding owners, each with a separately justified finite elapsed
+tenure H and unlock-to-dispatch bound D, `B_mutex <= K*(H+D)`, `K<=N-1`.
+Without finite evidence for H and D, the time bound is unavailable.
+Characterizing the kernel's critical-section and handoff costs remains part
+of #52/#53; timing measurements are not WCET proofs.
 
 ## Test/qualification gate
 

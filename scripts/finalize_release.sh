@@ -36,7 +36,7 @@ Requirements:
   - standard command-line tools plus git;
   - an 'origin' remote containing main, develop, and the release tag;
   - origin/main must equal the release tag;
-  - origin/develop may be ahead, but the release tag must remain its ancestor;
+  - origin/develop contains the qualified SHA (not necessarily the merge tag);
   - RUN_DIR must be a complete passing unfiltered STM32 qualification run;
   - historical 0.5.1 may use its committed qualification record when the
     original complete run directory is no longer available.
@@ -161,14 +161,14 @@ DEVELOP_SHA="$(git rev-parse refs/remotes/origin/develop)"
   exit 1
 }
 
-git merge-base --is-ancestor "$TAG_SHA" "$DEVELOP_SHA" || {
-  echo "origin/develop does not contain release tag $VERSION" >&2
-  echo "  tag:     $TAG_SHA" >&2
-  echo "  develop: $DEVELOP_SHA" >&2
-  exit 1
-}
-
-PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | head -n1)"
+# A normal develop -> main merge changes the tag commit SHA; develop
+# need not contain that new merge commit.
+if git cat-file -e "$TAG_SHA:VERSION" 2>/dev/null; then
+  PROJECT_VERSION="$(git show "$TAG_SHA:VERSION" | tr -d '[:space:]')"
+else
+  # Historical 0.5.1 predates VERSION and keeps the immutable old contract.
+  PROJECT_VERSION="$(git show "$TAG_SHA:CMakeLists.txt" | sed -nE 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | head -n1)"
+fi
 [[ "$PROJECT_VERSION" == "$VERSION" ]] || {
   echo "Tag version $VERSION does not match CMake project version $PROJECT_VERSION" >&2
   exit 1
@@ -206,6 +206,10 @@ if (( HISTORICAL_RECORD_ONLY == 0 )); then
   }
 fi
 
+git merge-base --is-ancestor "$QUALIFIED_SHA" "$DEVELOP_SHA" || {
+  echo "origin/develop no longer contains the qualified source SHA $QUALIFIED_SHA" >&2
+  exit 1
+}
 git merge-base --is-ancestor "$QUALIFIED_SHA" "$TAG_SHA" || {
   echo "Hardware-qualified SHA is not an ancestor of release tag $VERSION" >&2
   echo "  qualified: $QUALIFIED_SHA" >&2
@@ -213,7 +217,14 @@ git merge-base --is-ancestor "$QUALIFIED_SHA" "$TAG_SHA" || {
   exit 1
 }
 
-python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
+# Keep the archived 0.5.1 source/evidence record immutable; the narrowed
+# 0.6 build-input policy applies to all newer releases.
+if [[ "$VERSION" == "0.5.1" ]]; then
+  python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" \
+    "$QUALIFIED_SHA" "$TAG_SHA" --historical-0.5.1
+else
+  python3 "$ROOT_DIR/scripts/check_release_qualification_diff.py" "$QUALIFIED_SHA" "$TAG_SHA"
+fi
 
 if (( HISTORICAL_RECORD_ONLY == 0 )); then
   OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"

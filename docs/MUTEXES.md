@@ -12,7 +12,7 @@ The current `hrt_mutex_t` implementation is:
 - direct-handoff on unlock;
 - task-context-only.
 
-It does not provide priority inheritance, recursive locking, timeout operations, ISR lock/unlock APIs, or automatic owner-death recovery.
+Under `HRT_SCHED_PRIORITY` and `HRT_SCHED_PRIORITY_RR`, statically bounded **transitive priority inheritance** raises the effective priority of blocking owners. Global RR does not use priorities and offers no PI inversion bound. Recursive locking, ISR lock/unlock operations and automatic owner-death recovery remain unsupported. See [MUTEX_PRIORITY_INHERITANCE.md](MUTEX_PRIORITY_INHERITANCE.md).
 
 ## API
 
@@ -23,6 +23,7 @@ It does not provide priority inheritance, recursive locking, timeout operations,
 
 void hrt_mutex_init(hrt_mutex_t *mutex);
 int  hrt_mutex_lock(hrt_mutex_t *mutex);
+hrt_wait_result_t hrt_mutex_lock_until(hrt_mutex_t *mutex, hrt_tick_t deadline);
 int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
 int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
@@ -54,7 +55,11 @@ After initialization, the mutex is unlocked, its owner is `HRT_MUTEX_NO_OWNER`, 
 
 When a blocked task resumes after direct handoff, it already owns the mutex. The normal success result is `0`. The function returns `-1` for invalid task context, recursive acquisition, or if bounded waiter publication cannot be completed.
 
-There is no timed-lock variant in v0.5.
+## Timed lock and priority inheritance
+
+`hrt_mutex_lock_until()` uses an **absolute wrapping tick deadline** with `hrt_wait_result_t`. It always attempts an immediately available mutex once, even when the deadline is already due; otherwise an expired deadline returns `HRT_WAIT_TIMEOUT`. Blocking uses the shared finite-timeout engine, with waiter unlink and donation withdrawal serialized before READY publication.
+
+`HARDRT_MAX_MUTEXES_HELD` (default 8, supported 1..32) bounds how many mutexes a task may own; acquisitions fail before mutation when the limit is exceeded. Owner donation propagates through at most the statically bounded task chain; cycles are rejected. A task's base and effective priorities differ while inheritance applies. Under global RR no PI bound is offered. These are **structural bounds**, not numerical WCET or application critical-section bounds. For a conservative finite **application-specific** blocking budget under explicit separately proven elapsed-time assumptions, see [MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md).
 
 ## Unlock
 
@@ -70,9 +75,9 @@ Waiter selection is FIFO at the mutex, while final execution follows the schedul
 
 A task must release every mutex it owns before returning from its entry function or calling `hrt_task_delete()`.
 
-The v0.5 kernel records that task as `EXITED`, but mutex objects are application-owned static objects and the kernel does not maintain a reverse list of mutexes owned by each task. It therefore does **not** automatically unlock, abandon, or transfer mutexes when their owner exits. If a task exits while owning a mutex, that mutex remains owned by a non-running task and later users can remain blocked indefinitely.
+The kernel records the task as `EXITED` and tracks a bounded list of owned mutexes for donation recalculation, **not** for automatic owner-death recovery. Mutexes are application-owned objects: the kernel does **not** automatically unlock, abandon, or transfer ownership when a task exits. If a task exits while owning a mutex, that mutex remains owned by a non-running task and later users can remain blocked indefinitely.
 
-Automatic robust/owner-death mutex recovery is intentionally outside the v0.5 contract and requires a separate design rather than silently guessing whether protected state is still valid.
+Automatic robust/owner-death mutex recovery is intentionally outside the 0.6 contract and requires a separate design rather than silently guessing whether protected state is still valid.
 
 ## C example
 
@@ -160,4 +165,4 @@ static void worker(void *arg) {
 - Unlock only from the owning task.
 - Do not attempt recursive locking.
 - Release every owned mutex before task return or `hrt_task_delete()`.
-- Analyze priority inversion at the application level; v0.5 has no mitigation mechanism.
+- Analyze application mutex holding times and remaining blocking/interference; bounded PI mitigates scheduling inversion for fixed-priority modes but does not prove a numerical WCET or protect global RR.

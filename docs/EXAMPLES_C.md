@@ -1,6 +1,6 @@
 # Examples
 
-HardRT 0.5.1 bundles POSIX/null examples plus STM32H755 qualification applications.
+HardRT 0.6.0 candidate bundles POSIX/null examples plus STM32H755 qualification applications.
 
 ## Bundled portable examples
 
@@ -143,7 +143,7 @@ See [CPP.md](CPP.md) and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).
 
 ## Mutexes
 
-Mutexes are owner-tracked, non-recursive, FIFO/direct-handoff, and task-context-only. v0.5.1 provides no timed lock, priority inheritance, or automatic owner-death recovery. Tasks must release owned mutexes before return/deletion.
+Mutexes are owner-tracked, non-recursive, FIFO/direct-handoff, and task-context-only. The 0.6 candidate adds `hrt_mutex_lock_until()` and bounded transitive priority inheritance for the priority-aware schedulers. Global RR does not inherit priorities, and automatic owner-death recovery is not provided. Tasks must release owned mutexes before return/deletion.
 
 ## External tick example
 

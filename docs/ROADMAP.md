@@ -68,7 +68,7 @@ Primary work:
 - bounded mutex priority inversion (#89): **feature complete and merged**, using statically bounded transitive inheritance and ownership tracking; hosted and physical H755 feature qualification passed, while numerical timing/blocking characterization remains under #52/#53;
 - absolute periodic timing through `hrt_delay_until()`, including deadline/tick-wrap and missed-release semantics (#90): implemented, hosted across all scheduler policies/internal+external tick, and physically qualified;
 - critical-section characterization needed to qualify synchronization behavior (#53): uncontended semaphore/mutex and queue-size DWT baseline integrated as 14 mandatory hardware benchmark metrics; contended PI/timeout and interference characterization remain outstanding;
-- queue-copy scaling measurement and an explicit queue item-size/design bound decision (#53, supported by #52);
+- queue-copy scaling measurement plus 0.6 guidance to prefer pointer/index queues for larger payloads; no universal item-size WCET is claimed (#53, supported by #52);
 - initial periodic-release timing evidence tied to the new absolute timing primitive (#54);
 - full hosted/cross-build regression and **unfiltered STM32H755 physical qualification (16 functional + 52 benchmark metrics over 39 images)** on the frozen 0.6 release candidate.
 
@@ -184,3 +184,22 @@ Every release on the path to 1.0 should preserve these rules:
 - disabled diagnostics/instrumentation should remain zero-cost where that is part of their contract;
 - release qualification is performed on frozen source and retained as reproducible evidence;
 - temporary release branches are removed after release so `main` and `develop` remain the long-lived branches.
+
+## 0.6 pre-release remediation
+
+Issue #103 tracks root `VERSION`, guarded automatic tagging after a qualified
+`develop -> main` PR, documentation alignment and source/build-input equivalence.
+The full `beb069db` physical development campaign passed 16 functional and
+52 benchmark metrics. This does not qualify the later corrected release-version
+candidate; the complete physical gate must run on the final frozen SHA.
+
+## 0.6 numerical blocking scope decision (2026-10-25)
+
+Issue #91 explicitly accepts **bounded priority-inheritance semantics and a
+conditional parameterized mutex blocking model** for 0.6, rather than
+requiring a fabricated universal or configuration-less numeric WCET. The
+implemented `B_mutex <= K*(H+D)` model is meaningful only where application
+lock-ownership and unlock-to-dispatch maxima have been independently bounded.
+Full 16/52 physical qualification of the frozen 0.6 release candidate remains
+required. Contended PI, timeout expiry, IRQ interference and actual numerical
+H755 task-set blocking bounds are moved to the 0.7 phase (#53/#52/#54).
