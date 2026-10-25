@@ -80,6 +80,32 @@ jobs:
           fi
           tag="$version"
 
+          # The tag is immutable, but the default branch may later advance
+          # through ordinary documentation/maintenance merges. Reusing VERSION
+          # in those commits must not attempt to move or recreate the tag.
+          # Reusing it in a *new develop -> main release promotion* remains
+          # an error: a fresh release requires a VERSION bump.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            tagged_sha="$(git rev-list -n 1 "$tag")"
+            if [[ "$tagged_sha" != "$CI_SHA" ]]; then
+              if ! git merge-base --is-ancestor "$tagged_sha" "$CI_SHA"; then
+                echo "Existing $tag at $tagged_sha is not an ancestor of main $CI_SHA" >&2
+                exit 1
+              fi
+              prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${CI_SHA}/pulls")"
+              repeat_release_count="$(jq --arg sha "$CI_SHA" '
+                [.[] | select(.base.ref == "main" and .head.ref == "develop"
+                  and .merged_at != null and .merge_commit_sha == $sha)] | length
+              ' <<< "$prs")"
+              if [[ "$repeat_release_count" != "0" ]]; then
+                echo "New develop -> main release promotion requires a VERSION bump beyond existing $tag" >&2
+                exit 1
+              fi
+              echo "Post-release main maintenance: VERSION $tag already tagged at $tagged_sha; skip"
+              exit 0
+            fi
+          fi
+
           # For a new tag require an ordinary approved develop -> main merge.
           # Its second parent is the qualified develop source, but the commit
           # SHA changes because the merge records promotion history.
