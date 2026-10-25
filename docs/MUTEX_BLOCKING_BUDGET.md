@@ -104,7 +104,13 @@ calculate finite application-specific blocking *only when the independent
 assumptions are satisfied*. It is **not** a numerical qualification of any
 specific STM32H755 application. #53/#52/#54 and the 0.7 timing campaign are
 still required for interference-sensitive numerical analysis and evidence.
-Before someone checks #91's numerical 0.6 acceptance box, they must provide
-an actual application/configuration, valid `H` and `D` upper-bound evidence,
-and the evaluated result. In the absence of that evidence the box stays open
-unless the project explicitly approves a narrower release criterion.
+**Release-scope decision (2026-10-25, #91):** HardRT 0.6 acceptance is the
+bounded PI bookkeeping/functional behavior, conditional parameterized mutex
+blocking model, explicitly delimited 14-metric uncontended diagnostic
+characterization, and the complete 16/52 physical campaign on the frozen
+release candidate. No numeric H755 mutex wait-time or system WCET bound is
+asserted. The original numerical blocking/interference proof requires a
+concrete task/interrupt configuration with independently established `H`
+and `D` plus supporting hardware evidence and is deferred to
+#53/#52/#54 in **0.7**. This is a documented narrower milestone, **not a
+claim that the numerical qualification has been completed**.

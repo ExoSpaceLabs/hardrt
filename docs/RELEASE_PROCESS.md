@@ -10,6 +10,16 @@ The process intentionally separates three things:
 
 This keeps hundreds of hardware logs out of Git while preserving the complete evidence set as one deterministic local archive. Publishing that archive to any hosting service is deliberately outside the finalizer.
 
+## 0.6 acceptance boundary
+
+Per the approved [0.6 tracker](https://github.com/ExoSpaceLabs/hardrt/issues/91),
+the numerical STM32H755 task-set mutex blocking/IRQ-interference proof is
+reserved for the 0.7 timing phase (#53/#52/#54). Acceptance of 0.6 is
+**conditional structural timing analysis** plus fully passing current
+hardware functional and uncontended DWT diagnostic evidence, not a claim of
+global numerical worst-case blocking. Nothing in that scope change relaxes
+the final 16/52 frozen-SHA physical qualification gate.
+
 ## 1. Prepare and qualify the release candidate
 
 Merge all target/build-affecting changes into `develop`, require hosted/cross-build/documentation CI to pass, and freeze the candidate SHA.

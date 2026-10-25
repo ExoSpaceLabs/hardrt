@@ -143,7 +143,19 @@ Tracked by #91.
 
 The periodic mechanism must prove that application execution, task preemption, interrupt handling, scheduler latency, and context-switch overhead are accounted as elapsed time inside the current period. They reduce the remaining delay but do not redefine the next nominal release.
 
-0.6 is allowed to say these operations are structurally/deterministically bounded where that has been demonstrated. It must not promote observed maxima into universal WCET claims.
+**Accepted 0.6 boundary (2026-10-25, #91):** the numerical H755
+application-specific blocking bound is **not** a 0.6 release requirement.
+The release delivers bounded PI algorithms, a conditional finite blocking
+calculation requiring externally demonstrated ownership/dispatch maxima
+([MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md)), and observed
+uncontended semaphore/mutex/queue critical-section measurements plus
+queue-pointer/index guidance. A complete frozen-source 16/52 hardware
+campaign is still mandatory. Measured 0.6 maxima must never be promoted into
+universal WCET or numerical IRQ-interference claims.
+
+0.7 will require a fully specified application/interrupt configuration and
+measured/analytically justified bounds for contended PI handoff, timeout
+expiry, scheduler interference and response-time analysis (#53/#52/#54).
 
 ### 0.7.x — characterize timing and interference
 

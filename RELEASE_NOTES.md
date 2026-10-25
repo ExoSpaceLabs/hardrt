@@ -31,6 +31,11 @@ claimed. `find_package(HardRT 0.6 REQUIRED)` selects the 0.6 minor line.
 
 Priority inheritance does not create a blocking bound in global RR mode.
 Numerical mutex blocking/IRQ-interference/WCET bounds are **not** established.
+Issue #91 approves the conditional finite mutex blocking-budget model for
+0.6; fully evidenced application-specific H755 numerical bounds, contended
+handoff and interference characterization remain for 0.7 (#53/#52/#54).
+A conditional calculator is included in `scripts/mutex_blocking_bound.py`,
+but its inputs require independent application proof.
 Queue `memcpy()` still runs inside the critical section, so callers must
 bound item size for their latency budget; pointer/index queues are recommended
 for larger payloads. Owner-death recovery is not provided. SVC/MPU isolation

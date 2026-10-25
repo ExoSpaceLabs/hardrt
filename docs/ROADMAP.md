@@ -192,3 +192,14 @@ Issue #103 tracks root `VERSION`, guarded automatic tagging after a qualified
 The full `beb069db` physical development campaign passed 16 functional and
 52 benchmark metrics. This does not qualify the later corrected release-version
 candidate; the complete physical gate must run on the final frozen SHA.
+
+## 0.6 numerical blocking scope decision (2026-10-25)
+
+Issue #91 explicitly accepts **bounded priority-inheritance semantics and a
+conditional parameterized mutex blocking model** for 0.6, rather than
+requiring a fabricated universal or configuration-less numeric WCET. The
+implemented `B_mutex <= K*(H+D)` model is meaningful only where application
+lock-ownership and unlock-to-dispatch maxima have been independently bounded.
+Full 16/52 physical qualification of the frozen 0.6 release candidate remains
+required. Contended PI, timeout expiry, IRQ interference and actual numerical
+H755 task-set blocking bounds are moved to the 0.7 phase (#53/#52/#54).
