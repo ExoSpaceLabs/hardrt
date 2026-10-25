@@ -6,7 +6,7 @@ Use one manual entry point for physical-board validation:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The script runs the complete NUCLEO-H755ZI-Q / CM7 qualification matrix: **13 functional contracts** plus **38 hardware benchmark images**. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
+The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **52 benchmark metrics across 39 images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
 
 Development runs are written under:
 
@@ -31,16 +31,41 @@ A release candidate must already be on `develop`; do not qualify a temporary fea
 
 For a release candidate:
 
-1. merge all release-facing changes into `develop` and remove temporary branches;
+1. merge all target/build-affecting changes into `develop`;
 2. freeze the `develop` SHA after hosted/cross-build CI is green;
 3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
-4. require board probe PASS, **13/13 functional PASS**, **38/38 benchmark PASS**, and Overall PASS;
+4. require board probe PASS, every functional contract PASS, **52/52 benchmark metric PASS**, and Overall PASS;
 5. inspect the report and raw logs;
-6. retain the selected package locally under `validation/stm32/releases/X.Y.Z/` if desired;
-7. **do not commit generated qualification evidence**, because that would change the SHA that was physically qualified;
-8. fast-forward `main` to the qualified `develop` SHA and publish the selected qualification archive as a GitHub Release asset from the `X.Y.Z` tag on `main`.
+6. package the selected evidence without adding it to Git:
 
-The local retention directory mirrors the repository `X.Y.Z` Git-tag convention. Both timestamped runs and `validation/stm32/releases/` are gitignored deliberately.
+   ```bash
+   ./scripts/package_stm32_qualification.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
+   ```
+
+7. promote/tag the release according to `docs/QUALIFICATION.md`; release-automation/documentation-only follow-up changes are allowed only through the repository qualification-diff guard;
+8. let `.github/workflows/release.yml` create the draft release and software assets;
+9. run the hosting-neutral finalizer to verify the release/evidence relationship:
+
+   ```bash
+   ./scripts/finalize_release.sh \
+     X.Y.Z \
+     validation/stm32/<UTC>_<short-sha>
+   ```
+
+10. perform any hosting publication and temporary-branch cleanup manually after reviewing the release state.
+
+The package helper creates a deterministic `.tar.xz` archive plus a separate SHA-256 file under `validation/stm32/releases/X.Y.Z/`. Both timestamped runs and local release packages are gitignored deliberately. **Do not commit generated qualification evidence.**
+
+The canonical physical release assets are:
+
+```text
+hardrt-stm32-qualification-X.Y.Z.tar.xz
+hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and package metadata identifying the release and qualified source SHA. The repository deliberately does not contain hundreds of generated log files; publication of the archive is separate from local finalization.
+
+See [`docs/RELEASE_PROCESS.md`](../../docs/RELEASE_PROCESS.md) for the complete procedure.
 
 ## Functional hardware matrix
 
@@ -58,11 +83,15 @@ The board/OpenOCD probe is a prerequisite and is reported separately.
 10. event-flags hardware contract, including task/real-ISR producers and scheduler-aware `need_switch`
 11. task-notification hardware contract, including pending/unrelated-IPC behavior and real-ISR wake
 12. external TIM2-driven tick contract
-13. BASEPRI critical-section contract
+13. stable periodic-delay contract (`hrt_delay_until()` phase stability + explicit miss/lateness)
+14. common IPC timeout contract (semaphore success/disarm plus semaphore, queue RX/TX, mutex, event and notification expiry/unlink/recovery)
+15. bounded mutex priority-inheritance contract (transitive donation through two mutexes, fixed-priority execution ordering, direct FIFO handoff)
+16. BASEPRI critical-section contract
 
 ## Hardware benchmark matrix
 
-The benchmark suite contains **38 independently built/flashed images**:
+The benchmark suite contains **39 independently built/flashed images** and
+**52 mandatory metric results**. The original 38 images are preserved:
 
 ### Historical scheduler/semaphore set: 4
 
@@ -82,6 +111,14 @@ The benchmark suite contains **38 independently built/flashed images**:
 - `notify_isr_wake`
 
 The event-scan firmware validates the actual waiter load and expected/observed wake fan-out in addition to timing.
+
+### Synchronization critical-section baseline: 14 metrics, 1 image
+
+The final image measures semaphore take/give, mutex lock/unlock and queue
+send/receive at 4, 16, 64, 256, 1024 bytes. Each result row is counted
+independently. Missing/incomplete results fail the full suite. The image
+enables its own diagnostic BASEPRI DWT profile without instrumenting normal
+kernel builds. The raw log and CSV are retained in qualification evidence.
 
 ### Tick/sleeper scaling set: 18
 

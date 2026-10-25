@@ -74,6 +74,20 @@ int hrt_event_wait(hrt_event_t *event,
                    unsigned options,
                    hrt_event_bits_t *matched);
 
+/**
+ * @brief Wait for event bits until an absolute HardRT tick deadline.
+ *
+ * The event condition is evaluated immediately before deadline handling. A
+ * condition already satisfied succeeds even when the deadline is due/past;
+ * otherwise only a future deadline blocks. Timeout removes waiter membership
+ * atomically through the common bounded timeout engine.
+ */
+hrt_wait_result_t hrt_event_wait_until(hrt_event_t *event,
+                                       hrt_event_bits_t mask,
+                                       unsigned options,
+                                       hrt_tick_t deadline,
+                                       hrt_event_bits_t *matched);
+
 #ifdef __cplusplus
 }
 #endif

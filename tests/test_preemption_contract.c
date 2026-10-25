@@ -26,7 +26,10 @@ static void preempt_high_task(void *arg) {
 static void preempt_low_a_task(void *arg) {
     (void)arg;
 
-    hrt__test_block_sigalrm();
+    /* Use exactly seven application-controlled ticks. A real-time POSIX
+     * tick can otherwise arrive while the higher-priority task runs,
+     * legitimately reducing low-A's quantum by one and making this
+     * deterministic policy test intermittently fail. */
     hrt__test_fast_forward_ticks(7);
     g_preempt_slice_before = hrt__test_task_slice_left(g_preempt_a_id);
 
@@ -36,7 +39,6 @@ static void preempt_low_a_task(void *arg) {
 
     g_preempt_slice_after = hrt__test_task_slice_left(g_preempt_a_id);
     g_preempt_a_resumed = 1;
-    hrt__test_unblock_sigalrm();
 
     hrt__test_stop_scheduler();
     hrt_yield();
@@ -61,7 +63,9 @@ static void test_priority_rr_preemption_retains_current(void) {
     hrt_config_t cfg = {
         .tick_hz = 1000,
         .policy = HRT_SCHED_PRIORITY_RR,
-        .default_slice = 20
+        .default_slice = 20,
+        /* This test proves quantum retention, not real-time clock accuracy. */
+        .tick_src = HRT_TICK_EXTERNAL
     };
     T_ASSERT_EQ_INT(0, hrt_init(&cfg), "hrt_init ok (priority RR preemption)");
 

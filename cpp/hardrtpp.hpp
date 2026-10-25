@@ -79,6 +79,17 @@ namespace hardrt {
         }
 
         /**
+         * @brief Wait until an absolute tick deadline without rebasing phase.
+         *
+         * The result reports whether the task actually continued on time or
+         * resumed after the deadline. The optional lateness output is in ticks.
+         */
+        static hrt_delay_result_t delay_until(const hrt_tick_t deadline,
+                                              hrt_tick_t* lateness_ticks = nullptr) {
+            return hrt_delay_until(deadline, lateness_ticks);
+        }
+
+        /**
          * @brief Voluntarily schedule away from the current RUNNING task.
          *
          * The core republishes it as READY according to the active policy;
@@ -146,7 +157,7 @@ namespace hardrt {
          * @brief Get the elapsed system ticks since initialization.
          * @return Current tick count.
          */
-        static uint32_t tick_now() {
+        static hrt_tick_t tick_now() {
             return hrt_tick_now();
         }
 
@@ -160,7 +171,7 @@ namespace hardrt {
 
         /**
          * @brief Get the RTOS version as a human-readable string.
-         * @return Version string (e.g., "0.5.1").
+         * @return Version string (e.g., "0.6.0").
          */
         static const char* version_string() {
             return hrt_version_string();
@@ -224,6 +235,10 @@ namespace hardrt {
          */
         int take() {
             return hrt_sem_take(&_sem);
+        }
+
+        hrt_wait_result_t take_until(const hrt_tick_t deadline) {
+            return hrt_sem_take_until(&_sem, deadline);
         }
 
         /**
@@ -290,12 +305,20 @@ namespace hardrt {
             return hrt_queue_send(&_q, &item);
         }
 
+        hrt_wait_result_t send_until(const T& item, const hrt_tick_t deadline) {
+            return hrt_queue_send_until(&_q, &item, deadline);
+        }
+
         int try_send(const T& item) {
             return hrt_queue_try_send(&_q, &item);
         }
 
         int recv(T& out) {
             return hrt_queue_recv(&_q, &out);
+        }
+
+        hrt_wait_result_t recv_until(T& out, const hrt_tick_t deadline) {
+            return hrt_queue_recv_until(&_q, &out, deadline);
         }
 
         int try_recv(T& out) {
@@ -341,12 +364,20 @@ namespace hardrt {
             return hrt_queue_send(&_q, &item);
         }
 
+        hrt_wait_result_t send_until(const T& item, const hrt_tick_t deadline) {
+            return hrt_queue_send_until(&_q, &item, deadline);
+        }
+
         int try_send(const T& item) {
             return hrt_queue_try_send(&_q, &item);
         }
 
         int recv(T& out) {
             return hrt_queue_recv(&_q, &out);
+        }
+
+        hrt_wait_result_t recv_until(T& out, const hrt_tick_t deadline) {
+            return hrt_queue_recv_until(&_q, &out, deadline);
         }
 
         int try_recv(T& out) {
@@ -383,6 +414,10 @@ namespace hardrt {
 
         int lock() {
             return hrt_mutex_lock(&_m);
+        }
+
+        hrt_wait_result_t lock_until(const hrt_tick_t deadline) {
+            return hrt_mutex_lock_until(&_m, deadline);
         }
 
         int try_lock() {

@@ -11,6 +11,8 @@ int hrt__create_task_impl(hrt_task_fn fn, void *arg,
                           const hrt_task_attr_t *attr);
 void hrt__start_impl(void);
 void hrt__sleep_impl(uint32_t ms);
+hrt_delay_result_t hrt__delay_until_impl(hrt_tick_t deadline,
+                                         hrt_tick_t *lateness_ticks);
 void hrt__yield_impl(void);
 void hrt__task_delete_impl(void);
 
@@ -113,6 +115,13 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
 void hrt_sleep(const uint32_t ms) {
     if (hrt__current_running_app_task() < 0) return;
     hrt__sleep_impl(ms);
+}
+
+hrt_delay_result_t hrt_delay_until(const hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks) {
+    if (lateness_ticks != NULL) *lateness_ticks = 0u;
+    if (hrt__current_running_app_task() < 0) return HRT_DELAY_INVALID_CONTEXT;
+    return hrt__delay_until_impl(deadline, lateness_ticks);
 }
 
 void hrt_yield(void) {

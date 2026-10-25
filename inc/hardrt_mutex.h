@@ -10,6 +10,14 @@ extern "C" {
 
 #define HRT_MUTEX_NO_OWNER (-1)
 
+/* Compile-time bound on simultaneously owned mutexes per application task. */
+#ifndef HARDRT_MAX_MUTEXES_HELD
+#define HARDRT_MAX_MUTEXES_HELD 8
+#endif
+#if HARDRT_MAX_MUTEXES_HELD < 1 || HARDRT_MAX_MUTEXES_HELD > 32
+#error "HARDRT_MAX_MUTEXES_HELD must be in [1,32]"
+#endif
+
 /**
  * @brief Statically allocated owner-tracked, non-recursive mutex.
  *
@@ -45,6 +53,18 @@ static inline void hrt_mutex_init(hrt_mutex_t *m) {
  * bounded waiter publication cannot be completed.
  */
 int hrt_mutex_lock(hrt_mutex_t *m);
+
+/**
+ * @brief Acquire the mutex until an absolute HardRT tick deadline.
+ *
+ * The mutex is attempted immediately. An unlocked mutex is acquired even when
+ * the deadline is due/past; otherwise a non-future deadline returns timeout.
+ * A successful wake uses the existing direct ownership handoff.
+ *
+ * Timed expiry withdraws the waiter's priority donation atomically before
+ * making that task READY. The timeout is not rebased.
+ */
+hrt_wait_result_t hrt_mutex_lock_until(hrt_mutex_t *m, hrt_tick_t deadline);
 
 /**
  * @brief Attempt to acquire the mutex without blocking.

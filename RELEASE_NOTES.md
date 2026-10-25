@@ -1,3 +1,63 @@
+# HardRT v0.6.0 Release Notes
+
+HardRT 0.6.0 is a pre-1.0 minor release focused on statically bounded
+synchronization and phase-stable timing. The candidate is **not published**
+until the corrected frozen source passes the complete hardware release gate.
+
+## Added and changed
+
+- Shared finite IPC wait engine using wrap-safe absolute `hrt_tick_t` deadlines:
+  `hrt_sem_take_until()`, queue send/receive, `hrt_mutex_lock_until()`,
+  event and notification wait/take variants.
+- One intrusive bounded deadline/sleep queue, deterministic producer-wake
+  versus timeout-expiry serialization, no heap/timer worker and no global
+  per-tick scan of all task control blocks.
+- Bounded transitive mutex priority inheritance for fixed-priority and
+  priority-RR policies; bounded held-mutex capacity, cycle rejection, FIFO
+  ownership handoff and donation withdrawal after timeout.
+- `hrt_delay_until()` for nominal-period phase preservation, wrap-safe
+  absolute deadlines and visible late releases.
+- 14 DWT semaphore/mutex/queue-copy diagnostic timing metrics, integrated into
+  the required full 16-functional / 52-metric STM32H755 qualification runner.
+- Root `VERSION` source of truth and guarded automatic tagging after a
+  successful qualified `develop -> main` promotion. Non-v release tags
+  retain existing convention.
+
+## Compatibility and limitations
+
+0.6.0 is a **minor release before 1.0**: public C/C++ consumers must rebuild
+against matching headers and libraries; no ABI compatibility with 0.5.x is
+claimed. `find_package(HardRT 0.6 REQUIRED)` selects the 0.6 minor line.
+
+Priority inheritance does not create a blocking bound in global RR mode.
+Numerical mutex blocking/IRQ-interference/WCET bounds are **not** established.
+Issue #91 approves the conditional finite mutex blocking-budget model for
+0.6; fully evidenced application-specific H755 numerical bounds, contended
+handoff and interference characterization remain for 0.7 (#53/#52/#54).
+A conditional calculator is included in `scripts/mutex_blocking_bound.py`,
+but its inputs require independent application proof.
+Queue `memcpy()` still runs inside the critical section, so callers must
+bound item size for their latency budget; pointer/index queues are recommended
+for larger payloads. Owner-death recovery is not provided. SVC/MPU isolation
+is not enabled; PendSV remains the Cortex-M context switch mechanism.
+The POSIX port is functional validation, not timing qualification.
+
+## Qualification and publication
+
+Release acceptance requires clean, frozen `develop` and complete physical
+NUCLEO-H755ZI-Q CM7 probe, **16/16 functional PASS, 52/52 benchmark metrics
+PASS across 39 images**, retained raw OpenOCD/GDB/CSV evidence, successful
+hosted/installed-consumer/Cortex-M CI and an explicit qualified-input
+equivalence check between the hardware source SHA and the tagged `main`
+merge commit. An earlier passing development baseline `beb069db` does not
+substitute for retesting the final versioned candidate.
+
+A successful authorized `main` CI run creates `0.6.0` automatically and
+stages a **draft** release; operator review and hardware evidence attachment
+precede public publication.
+
+---
+
 # HardRT v0.5.1 Release Notes
 
 HardRT v0.5.1 is a corrective patch for the hosted POSIX execution backend. The published v0.5.0 tag remains immutable. The patch completes the POSIX preemption work that was intended for v0.5.0 without changing the public C/C++ API, public synchronization-object layouts, or Cortex-M scheduling policy.

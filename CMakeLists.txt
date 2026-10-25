@@ -3,7 +3,13 @@ cmake_minimum_required(VERSION 3.16)
 
 set(LIB_NAME "hardrt")
 set(LIB_NAME_CPP "hardrtpp")
-project(${LIB_NAME} VERSION 0.5.1 LANGUAGES C)
+# VERSION is the authoritative release version. Read on every CMake configuration.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HARDRT_VERSION)
+string(STRIP "${HARDRT_VERSION}" HARDRT_VERSION)
+if(NOT HARDRT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must contain exactly MAJOR.MINOR.PATCH: '${HARDRT_VERSION}'")
+endif()
+project(${LIB_NAME} VERSION ${HARDRT_VERSION} LANGUAGES C)
 
 set(HARDRT_PORT "null" CACHE STRING "Port to compile: null|posix|cortex_m")
 option(HARDRT_ENABLE_CPP "Build C++ wrappers (header-only interface target)" OFF)
@@ -13,6 +19,11 @@ option(HARDRT_STALL_ON_ERROR "Stall kernel on fatal error (debug / embedded use)
 option(HARDRT_DEBUG "Enable debugging and variables" OFF)
 option(HARDRT_STRICT "Enable strict warnings on POSIX builds" OFF)
 option(HARDRT_SANITIZE "Enable UBSan on POSIX tests" OFF)
+option(HARDRT_CORTEXM_CRIT_PROFILE "Diagnostic Cortex-M outer BASEPRI profiling (not for release)" OFF)
+
+if(HARDRT_CORTEXM_CRIT_PROFILE AND NOT HARDRT_PORT STREQUAL "cortex_m")
+  message(FATAL_ERROR "HARDRT_CORTEXM_CRIT_PROFILE requires HARDRT_PORT=cortex_m")
+endif()
 
 if(HARDRT_ENABLE_CPP)
   enable_language(CXX)
@@ -146,7 +157,7 @@ set(LIBRARY_SOURCES
 
 set_source_files_properties("${SOURCE_CORE_DIR}/hardrt_core.c" PROPERTIES
   COMPILE_DEFINITIONS
-    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl;hrt_sleep=hrt__sleep_impl;hrt_yield=hrt__yield_impl;hrt_task_delete=hrt__task_delete_impl"
+    "HARDRT_CORE_IMPL;hrt_init=hrt__init_impl;hrt_create_task=hrt__create_task_impl;hrt_start=hrt__start_impl;hrt_sleep=hrt__sleep_impl;hrt_delay_until=hrt__delay_until_impl;hrt_yield=hrt__yield_impl;hrt_task_delete=hrt__task_delete_impl"
 )
 
 add_library(${LIB_NAME} STATIC ${LIBRARY_SOURCES})
@@ -171,6 +182,11 @@ target_include_directories(${LIB_NAME}
 )
 target_compile_features(${LIB_NAME} PUBLIC c_std_11)
 target_compile_options(${LIB_NAME} PRIVATE -ffreestanding -fno-strict-aliasing)
+
+if(HARDRT_CORTEXM_CRIT_PROFILE)
+  target_compile_definitions(${LIB_NAME} PRIVATE HARDRT_CORTEXM_CRIT_PROFILE=1)
+  message(WARNING "Diagnostic BASEPRI DWT instrumentation enabled: timing results are NOT production WCET")
+endif()
 
 if(HARDRT_PORT STREQUAL "posix")
   find_package(Threads REQUIRED)

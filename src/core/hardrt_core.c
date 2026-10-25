@@ -7,6 +7,7 @@
 #include "hardrt_cfg.h"
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
+#include "hardrt_deadline.h"
 
 #ifndef HARDRT_STALL_ON_ERROR
 #define HARDRT_STALL_ON_ERROR 0
@@ -80,9 +81,20 @@ static uint8_t g_rq_next[HARDRT_MAX_TASKS];
  * and O(K) when K tasks actually wake.
  */
 #define HRT_SLEEP_NONE UINT8_MAX
+
+typedef enum {
+    HRT_TIMER_NONE = 0,
+    HRT_TIMER_SLEEP,
+    HRT_TIMER_WAIT
+} hrt_timer_kind_t;
+
 static uint8_t g_sleep_head = HRT_SLEEP_NONE;
 static uint8_t g_sleep_next[HARDRT_MAX_TASKS];
 static uint32_t g_sleep_delta[HARDRT_MAX_TASKS];
+static uint8_t g_timer_kind[HARDRT_MAX_TASKS];
+static hrt_wait_result_t g_wait_result[HARDRT_MAX_TASKS];
+static hrt_wait_cancel_fn_t g_wait_cancel[HARDRT_MAX_TASKS];
+static void *g_wait_context[HARDRT_MAX_TASKS];
 
 _hrt_tcb_t *hrt__tcb(const int id) {
 #if HARDRT_DEBUG == 1
@@ -207,6 +219,35 @@ static int readyq_pop(ready_q_t *q) {
     dbg_tsk_q = q->count;
 #endif
     return (int)task_id;
+}
+
+/* Bounded removal from priority READY FIFO with self-linked tail. */
+static int readyq_remove(ready_q_t *q, int id) {
+    uint8_t prev = HRT_RQ_NONE;
+    uint8_t cur = q->head;
+    for (uint8_t n = 0u; n < q->count; ++n) {
+        if (cur == HRT_RQ_NONE || cur >= HARDRT_MAX_TASKS) return -1;
+        if (cur == (uint8_t)id) {
+            uint8_t next = g_rq_next[cur];
+            q->count--;
+            if (q->count == 0u) {
+                q->head = HRT_RQ_NONE;
+                q->tail = HRT_RQ_NONE;
+            } else if (prev == HRT_RQ_NONE) {
+                q->head = next;
+            } else if (cur == q->tail) {
+                q->tail = prev;
+                g_rq_next[prev] = prev;
+            } else {
+                g_rq_next[prev] = next;
+            }
+            g_rq_next[cur] = HRT_RQ_NONE;
+            return 0;
+        }
+        prev = cur;
+        cur = g_rq_next[cur];
+    }
+    return -1;
 }
 
 static inline void ready_push_tail_known_unqueued(const int id) {
@@ -354,6 +395,90 @@ static void sleepq_insert(const int id, const uint32_t ticks) {
     }
 }
 
+static int sleepq_remove(const int id) {
+    if (id < 0 || id >= HARDRT_MAX_TASKS) return -1;
+
+    const uint8_t task_id = (uint8_t)id;
+    uint8_t prev = HRT_SLEEP_NONE;
+    uint8_t current = g_sleep_head;
+
+    while (current != HRT_SLEEP_NONE && current != task_id) {
+        prev = current;
+        current = g_sleep_next[current];
+    }
+    if (current == HRT_SLEEP_NONE) return -1;
+
+    const uint8_t next = g_sleep_next[current];
+    if (next != HRT_SLEEP_NONE) {
+        g_sleep_delta[next] += g_sleep_delta[current];
+    }
+
+    if (prev == HRT_SLEEP_NONE) {
+        g_sleep_head = next;
+    } else {
+        g_sleep_next[prev] = next;
+    }
+
+    g_sleep_next[current] = HRT_SLEEP_NONE;
+    g_sleep_delta[current] = 0u;
+    return 0;
+}
+
+static void timer_clear_locked(const int id) {
+    g_timer_kind[id] = (uint8_t)HRT_TIMER_NONE;
+    g_wait_cancel[id] = NULL;
+    g_wait_context[id] = NULL;
+}
+
+int hrt__wait_timeout_arm_locked(const int task_id,
+                                 const hrt_tick_t distance,
+                                 const hrt_wait_cancel_fn_t cancel_fn,
+                                 void *context) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS ||
+        distance == 0u || distance >= HRT_TICK_HALF_RANGE ||
+        cancel_fn == NULL ||
+        g_timer_kind[task_id] != (uint8_t)HRT_TIMER_NONE) {
+        hrt_error(ERR_INVALID_STATE);
+        return -1;
+    }
+
+    g_wait_result[task_id] = HRT_WAIT_ERROR;
+    g_wait_cancel[task_id] = cancel_fn;
+    g_wait_context[task_id] = context;
+    g_timer_kind[task_id] = (uint8_t)HRT_TIMER_WAIT;
+    sleepq_insert(task_id, distance);
+    return 0;
+}
+
+void hrt__wait_satisfied_locked(const int task_id) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS) {
+        hrt_error(ERR_INVALID_ID);
+        return;
+    }
+
+    if (g_timer_kind[task_id] == (uint8_t)HRT_TIMER_WAIT) {
+        if (sleepq_remove(task_id) != 0) {
+            hrt_error(ERR_INVALID_STATE);
+        }
+        timer_clear_locked(task_id);
+    } else if (g_timer_kind[task_id] == (uint8_t)HRT_TIMER_SLEEP) {
+        hrt_error(ERR_INVALID_STATE);
+        return;
+    }
+
+    g_wait_result[task_id] = HRT_WAIT_OK;
+}
+
+hrt_wait_result_t hrt__wait_result_take_locked(const int task_id) {
+    if (task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS) {
+        return HRT_WAIT_ERROR;
+    }
+
+    const hrt_wait_result_t result = g_wait_result[task_id];
+    g_wait_result[task_id] = HRT_WAIT_ERROR;
+    return result;
+}
+
 static int stack_bounds(const uint32_t *base, const size_t words,
                         uintptr_t *lo, uintptr_t *hi) {
     if (base == NULL || lo == NULL || hi == NULL) return 0;
@@ -389,8 +514,12 @@ int hrt_init(const hrt_config_t *cfg) {
     readyq_reset_storage();
     memset(g_sleep_next, HRT_SLEEP_NONE, sizeof(g_sleep_next));
     memset(g_sleep_delta, 0, sizeof(g_sleep_delta));
+    memset(g_timer_kind, HRT_TIMER_NONE, sizeof(g_timer_kind));
+    memset(g_wait_cancel, 0, sizeof(g_wait_cancel));
+    memset(g_wait_context, 0, sizeof(g_wait_context));
     for (int i = 0; i < HARDRT_MAX_TASKS; ++i) {
         g_tcbs[i].slot_state = HRT_SLOT_UNUSED;
+        g_wait_result[i] = HRT_WAIT_ERROR;
     }
 
     g_tick = 0;
@@ -510,6 +639,7 @@ int hrt_create_task(hrt_task_fn fn, void *arg,
     t->entry = fn;
     t->arg = arg;
     t->prio = (uint8_t)priority;
+    t->base_prio = (uint8_t)priority;
     t->timeslice_cfg = timeslice;
     t->stack_base = stack_words;
     t->stack_words = n_words;
@@ -581,6 +711,7 @@ void hrt_sleep(const uint32_t ms) {
     hrt_port_crit_enter();
     t->wake_tick = g_tick + ticks;
     t->state = HRT_SLEEP;
+    g_timer_kind[g_current] = (uint8_t)HRT_TIMER_SLEEP;
     sleepq_insert(g_current, ticks);
 #if HARDRT_DEBUG == 1
     dbg_pend_from_core++;
@@ -588,6 +719,86 @@ void hrt_sleep(const uint32_t ms) {
     hrt__pend_context_switch();
     hrt_port_crit_exit();
     hrt_port_yield_to_scheduler();
+}
+
+hrt_delay_result_t hrt_delay_until(const hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks) {
+    if (lateness_ticks != NULL) *lateness_ticks = 0u;
+
+#if HARDRT_DEBUG == 1
+    if (g_current < 0) {
+        hrt_error(ERR_INVALID_ID);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    const int current = g_current;
+    _hrt_tcb_t *t = hrt__tcb(current);
+#if HARDRT_DEBUG == 1
+    if (t == NULL || t->state != HRT_RUNNING) {
+        hrt_error(ERR_INVALID_TASK);
+        return HRT_DELAY_INVALID_CONTEXT;
+    }
+#endif
+
+    hrt_tick_t distance = 0u;
+
+    /*
+     * Decide and publish the sleep atomically with respect to the tick source.
+     * No per-task deadline scan is added to the tick path: future deadlines
+     * reuse the existing intrusive delta sleeper queue.
+     */
+    hrt_port_crit_enter();
+    hrt_deadline_relation_t relation =
+        hrt__deadline_relation(g_tick, deadline, &distance);
+
+    if (relation == HRT_DEADLINE_AMBIGUOUS) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_INVALID_DEADLINE;
+    }
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+
+    t->wake_tick = deadline;
+    t->state = HRT_SLEEP;
+    g_timer_kind[current] = (uint8_t)HRT_TIMER_SLEEP;
+    sleepq_insert(current, distance);
+#if HARDRT_DEBUG == 1
+    dbg_pend_from_core++;
+#endif
+    hrt__pend_context_switch();
+    hrt_port_crit_exit();
+    hrt_port_yield_to_scheduler();
+
+    /*
+     * Expiry becoming READY on time is not enough: higher-priority work or IRQ
+     * interference may postpone actual continuation. Check again only when this
+     * task runs, making tardiness observable without adding tick-side scanning.
+     */
+    hrt_port_crit_enter();
+    relation = hrt__deadline_relation(g_tick, deadline, &distance);
+    if (relation == HRT_DEADLINE_AT) {
+        hrt_port_crit_exit();
+        return HRT_DELAY_OK;
+    }
+    if (relation == HRT_DEADLINE_PAST) {
+        if (lateness_ticks != NULL) *lateness_ticks = distance;
+        hrt_port_crit_exit();
+        return HRT_DELAY_MISSED;
+    }
+    hrt_port_crit_exit();
+
+    /* Resuming before the absolute deadline violates the sleeper contract; an
+     * exact half-range separation is outside the supported comparison domain. */
+    hrt_error(ERR_INVALID_STATE);
+    return HRT_DELAY_INVALID_DEADLINE;
 }
 
 void hrt_yield(void) {
@@ -683,6 +894,35 @@ void hrt_set_policy(const hrt_policy_t p) {
 void hrt_set_default_timeslice(const uint16_t t) { g_default_slice = t; }
 
 /* ------------- Internal helpers used by scheduler/time/IPC ------------- */
+void hrt__pi_set_effective_priority_locked(int id, uint8_t priority) {
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS || priority >= HARDRT_MAX_PRIO) {
+        hrt_error(ERR_INVALID_PRIO);
+        return;
+    }
+    _hrt_tcb_t *t = &g_tcbs[id];
+    const uint8_t old = t->prio;
+    if (old == priority) return;
+    if (t->state == HRT_READY && g_policy != HRT_SCHED_RR) {
+        if (!ready_is_queued(id) || readyq_remove(&g_rq[old], id) != 0) {
+            hrt_error(ERR_INVALID_STATE);
+            return;
+        }
+        if (g_rq[old].count == 0u) g_ready_prio_mask &= ~(uint32_t)(1u << old);
+        t->prio = priority;
+        ready_push_tail_known_unqueued(id);
+    } else {
+        t->prio = priority;
+    }
+}
+
+int hrt__pi_should_reschedule_locked(void) {
+    if (g_policy == HRT_SCHED_RR || g_ready_prio_mask == 0u) return 0;
+    const int cur = g_current;
+    if (cur < 0 || cur >= HARDRT_APP_MAX_TASKS) return 1;
+    if (g_tcbs[cur].state != HRT_RUNNING) return 1;
+    return rq_first_ready_priority(g_ready_prio_mask) < g_tcbs[cur].prio;
+}
+
 void hrt__make_ready(const int id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) {
         hrt_error(ERR_INVALID_ID);
@@ -840,20 +1080,38 @@ int hrt__sleep_tick(void) {
     while (g_sleep_head != HRT_SLEEP_NONE && g_sleep_delta[g_sleep_head] == 0u) {
         const int id = (int)g_sleep_head;
         _hrt_tcb_t *t = hrt__tcb(id);
+        const hrt_timer_kind_t timer_kind = (hrt_timer_kind_t)g_timer_kind[id];
+        const hrt_wait_cancel_fn_t cancel_fn = g_wait_cancel[id];
+        void *const wait_context = g_wait_context[id];
+
         g_sleep_head = g_sleep_next[id];
         g_sleep_next[id] = HRT_SLEEP_NONE;
         g_sleep_delta[id] = 0u;
+        timer_clear_locked(id);
 
 #if HARDRT_DEBUG == 1
         if (t == NULL) {
             hrt_error(ERR_TCB_NULL);
             continue;
         }
-        if (t->state != HRT_SLEEP) {
-            hrt_error(ERR_INVALID_TASK);
+#endif
+
+        if (timer_kind == HRT_TIMER_WAIT) {
+#if HARDRT_DEBUG == 1
+            if (t->state != HRT_BLOCKED) hrt_error(ERR_INVALID_TASK);
+#endif
+            if (cancel_fn == NULL || cancel_fn(wait_context, id) != 0) {
+                hrt_error(ERR_INVALID_STATE);
+            }
+            g_wait_result[id] = HRT_WAIT_TIMEOUT;
+        } else if (timer_kind == HRT_TIMER_SLEEP) {
+#if HARDRT_DEBUG == 1
+            if (t->state != HRT_SLEEP) hrt_error(ERR_INVALID_TASK);
+#endif
+        } else {
+            hrt_error(ERR_INVALID_STATE);
             continue;
         }
-#endif
 
         /* Once one wake in this expiry batch has established that PendSV is
          * required, later wakes cannot revoke that decision. Keep their O(K)
@@ -867,6 +1125,12 @@ int hrt__sleep_tick(void) {
         if (should_switch) trigger_pendsv = 1u;
     }
 
+    /* Mutex timeout cancellation may withdraw an inherited priority from the
+     * RUNNING owner, even when the expiring waiter itself does not outrank it.
+     * Check the priority bitmap only on an expiry batch, not on every tick. */
+    if (trigger_pendsv == 0u && hrt__pi_should_reschedule_locked() != 0) {
+        trigger_pendsv = 1u;
+    }
     return (int)trigger_pendsv;
 }
 
@@ -953,6 +1217,18 @@ uint32_t hrt__test_get_tick(void) { return g_tick; }
 void hrt__test_reset_wake_preempt_decisions(void) { g_test_wake_preempt_decisions = 0u; }
 uint32_t hrt__test_wake_preempt_decisions(void) { return g_test_wake_preempt_decisions; }
 
+uint8_t hrt__test_task_base_priority(int id) {
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS) return UINT8_MAX;
+    return g_tcbs[id].base_prio;
+}
+uint8_t hrt__test_task_effective_priority(int id) {
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS) return UINT8_MAX;
+    return g_tcbs[id].prio;
+}
+uint8_t hrt__test_task_held_mutex_count(int id) {
+    if (id < 0 || id >= HARDRT_APP_MAX_TASKS) return UINT8_MAX;
+    return g_tcbs[id].held_mutex_count;
+}
 uint16_t hrt__test_task_slice_left(int id) {
     if (id < 0 || id >= HARDRT_MAX_TASKS) return 0u;
     return hrt__tcb(id)->slice_left;

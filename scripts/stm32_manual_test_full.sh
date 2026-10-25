@@ -15,8 +15,8 @@ CLEAN_BUILDS_MODE="ask"
 ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
-FUNCTIONAL_TOTAL=13
-BENCHMARK_TOTAL=38
+FUNCTIONAL_TOTAL=16
+BENCHMARK_TOTAL=52
 
 NAMES=()
 STATUSES=()
@@ -33,7 +33,7 @@ Usage:
 Modes:
   no --only            Run ALL available tests: every functional hardware validation AND every hardware benchmark.
   --only functional    Run only functional hardware validation.
-  --only benchmark     Run only every hardware benchmark, one image at a time.
+  --only benchmark     Run all hardware benchmark cases (38 historical images plus one 14-metric synchronization image).
 
 The board probe is a prerequisite and is always run.
 
@@ -46,7 +46,7 @@ and published as a GitHub Release artifact from the matching X.Y.Z tag.
 Options:
   --stm32h7-root DIR      STM32CubeH7 checkout root.
   --output-dir DIR        Evidence root (default: validation/stm32).
-  --timing-samples N      Samples per benchmark image (default: 10000).
+  --timing-samples N      Samples per benchmark metric (default: 10000).
   --observe-seconds N     LED observation duration (default: 10).
   --debug-timeout N       GDB timeout per automated case (default: 90).
   --openocd-scripts DIR   OpenOCD scripts directory.
@@ -474,6 +474,48 @@ tick_benchmark_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+
+# The baseline synchronization image contains 14 independently verified metrics
+# but only one build/flash. Record each metric separately so partial output or
+# malformed GDB records can never pass the release 52-case qualification gate.
+sync_benchmark_case() {
+  local prefix=timing_sync_benchmark
+  local elf="$ROOT_DIR/examples/hardrt_h755_sync_benchmark/build-cortex_m/hardrt_h755_sync_benchmark.elf"
+  local glog="$RAW/sync_benchmark_gdb.log" csv="$RAW/sync_benchmark_metrics.csv"
+  local criterion="Diagnostic DWT critical-section baseline: $TIMING_SAMPLES samples per metric, verified queue copies, API/masked min <= avg <= max, 14 complete metrics."
+  local failure="" id bytes count api_min api_avg api_max mask_min mask_avg mask_max
+  local -a labels=(
+    sem_take_available sem_give_uncontended mutex_lock_uncontended mutex_unlock_uncontended
+    queue_send_4 queue_recv_4 queue_send_16 queue_recv_16
+    queue_send_64 queue_recv_64 queue_send_256 queue_recv_256
+    queue_send_1024 queue_recv_1024
+  )
+  echo; echo "========== DWT synchronization critical-section benchmarks (14 metrics) =========="
+  if ! run_logged "$RAW/sync_benchmark_build_flash.log" \
+       "$ROOT_DIR/scripts/build-lib-stm32h7xx-sync-benchmark.sh" --samples "$TIMING_SAMPLES"; then
+    failure="Diagnostic kernel/image build or flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/sync_benchmark.dbg" sync_benchmark; then
+    failure="GDB timing run failed or timed out."
+  elif ! awk -v target="$TIMING_SAMPLES" -v csv="$csv" \
+       -f "$ROOT_DIR/scripts/parse_stm32_sync_benchmark.awk" "$glog"; then
+    failure="Malformed/incomplete synchronization metrics or wrong sample count."
+  fi
+  if [[ -n "$failure" ]]; then
+    for id in "${!labels[@]}"; do
+      record "DWT sync_${labels[$id]} timing" FAIL "$criterion" \
+        "raw/sync_benchmark_*.log" "$failure"
+    done
+    return 0
+  fi
+  while IFS=, read -r id bytes count api_min api_avg api_max mask_min mask_avg mask_max; do
+    if [[ "$id" == id ]]; then continue; fi
+    record "DWT sync_${labels[$id]} timing" PASS "$criterion" \
+      "raw/sync_benchmark_metrics.csv" \
+      "bytes=$bytes count=$count min=$api_min cycles, avg=$api_avg cycles, max=$api_max cycles; masked=$mask_min / $mask_avg / $mask_max cycles."
+  done < "$csv"
+}
+
+
 preemption_case() {
   local case="$1" title="$2" prefix="preemption_$1" status=PASS notes=""
   local elf="$ROOT_DIR/examples/hardrt_h755_preemption/build-cortex_m/hardrt_h755_preemption.elf"
@@ -536,6 +578,48 @@ external_tick_case() {
   record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
 }
 
+periodic_delay_case() {
+  local prefix=periodic_delay status=PASS notes=""
+  local title="Stable periodic delay hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_periodic_validation/build-cortex_m/hardrt_h755_periodic_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Absolute releases retain one phase while two ticks of each five-tick period are consumed as task execution; exact deadline is on time; an intentional three-tick late call reports HRT_DELAY_MISSED with lateness=3 without sleeping."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-periodic-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/periodic_delay_validation.dbg" "$prefix"; then status=FAIL; notes="Periodic-delay GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|phase=|miss_result=|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+ipc_timeout_case() {
+  local prefix=ipc_timeout status=PASS notes=""
+  local title="Common IPC timeout hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_ipc_timeout_validation/build-cortex_m/hardrt_h755_ipc_timeout_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="Absolute timed waits cover semaphore success/disarm plus semaphore, queue RX/TX, mutex, event, notification wait and notification take expiry; every timeout unlinks cleanly and notification operations recover after timeout."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-ipc-timeout-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/ipc_timeout_validation.dbg" "$prefix"; then status=FAIL; notes="IPC-timeout GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|sem_success=|queue_rx_timeout=|notify_wait_timeout=|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
+mutex_pi_case() {
+  local prefix=mutex_pi status=PASS notes=""
+  local title="Bounded mutex priority inheritance hardware contract"
+  local elf="$ROOT_DIR/examples/hardrt_h755_mutex_pi_validation/build-cortex_m/hardrt_h755_mutex_pi_validation.elf"
+  local glog="$RAW/${prefix}_gdb.log"
+  local criterion="A high-priority task blocks on mutex A owned by a middle task; the middle task blocks on mutex B owned by a low task. Transitive donation lets the low owner run ahead of an unrelated higher-base-priority competitor. FIFO direct handoffs complete with both mutexes unlocked."
+  echo; echo "========== $title =========="
+  if ! run_logged "$RAW/${prefix}_build_flash.log" "$ROOT_DIR/scripts/build-lib-stm32h7xx-mutex-pi-validation.sh"; then status=FAIL; notes="Build/flash failed."
+  elif ! run_gdb "$elf" "$ROOT_DIR/scripts/gdb/mutex_pi_validation.dbg" "$prefix"; then status=FAIL; notes="Mutex-PI GDB run failed or timed out."
+  elif ! grep -q '^RESULT: PASS$' "$glog"; then status=FAIL; notes="Firmware validator reported failure."
+  else notes="$(grep -E '^(pass=|competitor_before_handoff=|ids:|RESULT:)' "$glog" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"; fi
+  record "$title" "$status" "$criterion" "raw/${prefix}_*.log" "$notes"
+}
+
 basepri_case() {
   local prefix=basepri_validation status=PASS notes=""
   local title="BASEPRI critical-section hardware contract"
@@ -584,6 +668,9 @@ run_functional_matrix() {
   ipc_case event "Event flags hardware contract"
   ipc_case notification "Task notification hardware contract"
   external_tick_case
+  periodic_delay_case
+  ipc_timeout_case
+  mutex_pi_case
   basepri_case
 }
 
@@ -613,6 +700,10 @@ run_benchmarks() {
       tick_benchmark_case "$scenario" "$tasks"
     done
   done
+
+  # 14 independently checked metrics in one diagnostic image. These are
+  # mandatory for a full release candidate, optional only through scoped runs.
+  sync_benchmark_case
 }
 
 run_all_tests() {
@@ -783,7 +874,9 @@ echo "Overall    : $OVERALL"
 echo "Report     : $REPORT"
 echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_MODE" ]]; then
-  echo "Release evidence: manually copy/move this full run to validation/stm32/releases/X.Y.Z/."
+  echo "Release evidence: retain this full run; package it with:"
+  echo "  ./scripts/package_stm32_qualification.sh $(cat VERSION) $RUN_DIR"
+  echo "Do not copy raw logs into tracked Git paths or treat this development run as a tagged release."
 else
   echo "Filtered run: useful evidence, but not complete release qualification evidence."
 fi

@@ -100,14 +100,39 @@ See [SCHEDULING.md](SCHEDULING.md).
 ## Task control and time
 
 ```c
-void     hrt_sleep(uint32_t ms);
-void     hrt_yield(void);
-void     hrt_task_delete(void);
-uint32_t hrt_tick_now(void);
-uint32_t hrt_now_ms(void);
+void               hrt_sleep(uint32_t ms);
+hrt_delay_result_t hrt_delay_until(hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks);
+void               hrt_yield(void);
+void               hrt_task_delete(void);
+uint32_t           hrt_tick_now(void);
+uint32_t           hrt_now_ms(void);
 ```
 
 Positive sleep durations are converted with ceiling division so a positive sub-tick delay sleeps for one tick. In v0.5, `hrt_sleep(0)` is an immediate scheduling point equivalent to a yield for scheduling purposes; it does not enter the sleep queue.
+
+`hrt_delay_until()` is the stable-phase periodic primitive introduced on the 0.6 development line. It accepts an **absolute wrapping tick deadline**, reuses the existing sleeper queue when the deadline is in the future, and checks the actual current tick again when the task resumes. Reaching the deadline exactly returns `HRT_DELAY_OK`; arriving or resuming later returns `HRT_DELAY_MISSED` and reports the lateness in ticks when an output pointer is supplied.
+
+A periodic task should capture its phase once and advance nominal releases from that phase:
+
+```c
+hrt_tick_t next_release = hrt_tick_now();
+
+for (;;) {
+    do_work();
+
+    next_release += period_ticks;
+    hrt_tick_t lateness = 0u;
+    const hrt_delay_result_t result =
+        hrt_delay_until(next_release, &lateness);
+
+    if (result == HRT_DELAY_MISSED) {
+        /* Application-visible schedulability/design event. */
+    }
+}
+```
+
+The deadline is never silently rebased to the actual completion time. Application execution, preemption, interrupt work, scheduler work, and context-switch overhead therefore consume the current period's slack instead of accumulating phase drift. Deadline ordering follows the wrapping 32-bit half-range rule: intended comparisons must remain within `HRT_TICK_MAX_HORIZON`, and the exactly half-range case is rejected as ambiguous.
 
 `hrt_task_delete()` moves the current task to EXITED and schedules another task. The exited slot remains owned until later reclamation. A naturally returning task follows the same path through the port trampoline. `hrt_sleep()`, `hrt_yield()`, and `hrt_task_delete()` require the current RUNNING application-task context; calls outside that context are safe no-ops that record `ERR_INVALID_TASK`.
 
@@ -125,6 +150,29 @@ An application-owned periodic tick must not begin calling into HardRT before sch
 
 See [TICK_SOURCE.md](TICK_SOURCE.md).
 
+## Common finite-wait deadline contract
+
+HardRT 0.6 uses one finite-wait contract for blocking IPC. Existing blocking calls remain the **indefinite-wait** form and existing `try_*` calls remain non-blocking. Finite waits take an **absolute `hrt_tick_t` deadline** and return:
+
+```c
+typedef enum {
+    HRT_WAIT_OK = 0,
+    HRT_WAIT_TIMEOUT = 1,
+    HRT_WAIT_INVALID_DEADLINE = -1,
+    HRT_WAIT_INVALID_CONTEXT = -2,
+    HRT_WAIT_INVALID_ARGUMENT = -3,
+    HRT_WAIT_ERROR = -4
+} hrt_wait_result_t;
+```
+
+The same wrap-safe half-range ordering used by `hrt_delay_until()` applies. `HRT_TICK_HALF_RANGE` is ambiguous and rejected; intended comparisons must remain within `HRT_TICK_MAX_HORIZON`.
+
+A due or past deadline has **try semantics**: the primitive first checks whether the requested operation can complete immediately. If it can, the call returns `HRT_WAIT_OK`; otherwise it returns `HRT_WAIT_TIMEOUT` without blocking. There is therefore no separate public "zero timeout" convention and no magic "infinite timeout" value.
+
+For a task that is already blocked, producer wake and deadline expiry are serialized by the same kernel critical-section contract. Whichever transition is processed first wins exactly once: producer wake removes the timeout membership before READY publication, while expiry removes object-waiter membership before READY publication. No full-TCB timeout scan, dynamic allocation, or hidden timer task is used.
+
+Finite waits share the intrusive delta timer queue with sleep/absolute delay. Timer insertion/removal is bounded by configured task capacity. A no-expiry tick remains O(1); an expiry batch processes only the K expired timer nodes, with each IPC unlink bounded by the corresponding statically sized waiter structure.
+
 ## Semaphores
 
 ```c
@@ -133,12 +181,14 @@ void hrt_sem_init_counting(hrt_sem_t *sem,
                            unsigned init,
                            uint8_t max_count);
 int  hrt_sem_take(hrt_sem_t *sem);
+hrt_wait_result_t hrt_sem_take_until(hrt_sem_t *sem,
+                                     hrt_tick_t deadline);
 int  hrt_sem_try_take(hrt_sem_t *sem);
 int  hrt_sem_give(hrt_sem_t *sem);
 int  hrt_sem_give_from_isr(hrt_sem_t *sem, int *need_switch);
 ```
 
-Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Blocking `hrt_sem_take()` requires a current RUNNING application task; an invalid no-current/non-running call returns `-1` without consuming a token. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.
+Binary semaphores saturate at one. Counting semaphores saturate at `max_count`; zero maximum is normalized to one. Waiters are FIFO. Blocking `hrt_sem_take()` requires a current RUNNING application task; an invalid no-current/non-running call returns `-1` without consuming a token. `hrt_sem_take_until()` uses the common absolute-deadline contract and unlinks a timed-out waiter before making it READY. Task and ISR wake paths use the scheduler-aware preemption decision. ISR give is non-blocking and exposes that decision through `need_switch`.
 
 See [SEMAPHORES.md](SEMAPHORES.md).
 
@@ -147,11 +197,13 @@ See [SEMAPHORES.md](SEMAPHORES.md).
 ```c
 void hrt_mutex_init(hrt_mutex_t *mutex);
 int  hrt_mutex_lock(hrt_mutex_t *mutex);
+hrt_wait_result_t hrt_mutex_lock_until(hrt_mutex_t *mutex,
+                                       hrt_tick_t deadline);
 int  hrt_mutex_try_lock(hrt_mutex_t *mutex);
 int  hrt_mutex_unlock(hrt_mutex_t *mutex);
 ```
 
-Mutexes are task-context-only, owner-tracked, non-recursive, and use FIFO waiters with direct handoff. v0.5 does not provide timed lock, priority inheritance, or automatic owner-death recovery. A task must release every mutex it owns before returning or deleting itself.
+Mutexes are task-context-only, owner-tracked, non-recursive, and use FIFO waiters with direct handoff. `hrt_mutex_lock_until()` adds the common finite-wait deadline semantics without changing the ownership handoff model. Bounded transitive priority inheritance boosts mutex owners under fixed-priority policies, including when a timed waiter blocks; timeout/unlock withdraws donation atomically. `HARDRT_MAX_MUTEXES_HELD` (default 8) limits concurrently owned mutexes per task. Global RR ignores priority, so its scheduler does not provide a priority-inversion blocking guarantee. See [MUTEX_PRIORITY_INHERITANCE.md](MUTEX_PRIORITY_INHERITANCE.md) for the static bounds, nested/chained behavior and schedulability assumptions. Automatic owner-death recovery remains outside this contract. A task must release every mutex it owns before returning or deleting itself.
 
 See [MUTEXES.md](MUTEXES.md).
 
@@ -163,11 +215,17 @@ void     hrt_queue_init(hrt_queue_t *queue,
                         uint16_t capacity,
                         size_t item_size);
 int      hrt_queue_send(hrt_queue_t *queue, const void *item);
+hrt_wait_result_t hrt_queue_send_until(hrt_queue_t *queue,
+                                       const void *item,
+                                       hrt_tick_t deadline);
 int      hrt_queue_try_send(hrt_queue_t *queue, const void *item);
 int      hrt_queue_try_send_from_isr(hrt_queue_t *queue,
                                      const void *item,
                                      int *need_switch);
 int      hrt_queue_recv(hrt_queue_t *queue, void *out);
+hrt_wait_result_t hrt_queue_recv_until(hrt_queue_t *queue,
+                                       void *out,
+                                       hrt_tick_t deadline);
 int      hrt_queue_try_recv(hrt_queue_t *queue, void *out);
 int      hrt_queue_try_recv_from_isr(hrt_queue_t *queue,
                                      void *out,
@@ -175,7 +233,7 @@ int      hrt_queue_try_recv_from_isr(hrt_queue_t *queue,
 uint16_t hrt_queue_count(const hrt_queue_t *queue);
 ```
 
-Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking send/receive require a current RUNNING application task, wait indefinitely on full/empty state, and return `-1` without changing queue contents for invalid no-current/non-running callers. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.
+Queues are fixed-capacity, caller-storage, copy-based FIFOs. Items are copied with `memcpy` while the queue critical section is held. Blocking send/receive require a current RUNNING application task and wait indefinitely on full/empty state. The `*_until()` variants use one absolute deadline across all retries. Queue wakeup grants an opportunity rather than reserving an item/slot, so a timed waiter that loses to a barging task re-blocks against the **original** deadline rather than rebasing its timeout. ISR variants are non-blocking and use scheduler-aware `need_switch` behavior.
 
 See [QUEUES.md](QUEUES.md).
 
@@ -217,9 +275,14 @@ int              hrt_event_wait(hrt_event_t *event,
                                 hrt_event_bits_t mask,
                                 unsigned options,
                                 hrt_event_bits_t *matched);
+hrt_wait_result_t hrt_event_wait_until(hrt_event_t *event,
+                                       hrt_event_bits_t mask,
+                                       unsigned options,
+                                       hrt_tick_t deadline,
+                                       hrt_event_bits_t *matched);
 ```
 
-`hrt_event_wait()` requires a non-zero mask. Wait-any is the default; wait-all requires every requested bit. With `HRT_EVENT_CLEAR_ON_EXIT`, the matched bits are cleared after all waiters satisfied by the same set have been evaluated against one common post-set snapshot.
+`hrt_event_wait()` and `hrt_event_wait_until()` require a non-zero mask. Wait-any is the default; wait-all requires every requested bit. With `HRT_EVENT_CLEAR_ON_EXIT`, the matched bits are cleared after all waiters satisfied by the same set have been evaluated against one common post-set snapshot. Timeout expiry removes the task from the event FIFO and clears its active waiter marker before READY publication.
 
 Waiter registration order is FIFO. A set operation inspects a bounded number of waiter records, at most the configured application-task capacity, and publishes every satisfied waiter READY. The active scheduler policy determines actual execution order after publication.
 
@@ -257,7 +320,14 @@ int hrt_task_notify_from_isr(int task_id,
 int hrt_task_notify_wait(uint32_t clear_on_entry,
                          uint32_t clear_on_exit,
                          uint32_t *value);
+hrt_wait_result_t hrt_task_notify_wait_until(uint32_t clear_on_entry,
+                                             uint32_t clear_on_exit,
+                                             hrt_tick_t deadline,
+                                             uint32_t *value);
 uint32_t hrt_task_notify_take(int clear_count_on_exit);
+hrt_wait_result_t hrt_task_notify_take_until(int clear_count_on_exit,
+                                             hrt_tick_t deadline,
+                                             uint32_t *value);
 ```
 
 A successful producer marks the notification pending. `SET_BITS` ORs the supplied value, `OVERWRITE` replaces it, `NO_OVERWRITE` rejects an update while another notification is pending, and `INCREMENT` adds one with `UINT32_MAX` saturation while ignoring its `value` argument.
@@ -266,7 +336,7 @@ A notification wakes a task only when that task is blocked specifically on its n
 
 `hrt_task_notify_wait()` applies `clear_on_entry` before testing pending state, returns the pre-exit-clear value, applies `clear_on_exit`, and consumes pending state. A notification sent before the wait therefore returns immediately when the task later waits.
 
-`hrt_task_notify_take()` blocks until the notification value is non-zero and provides counting semantics: either clear the stored count to zero or decrement it by one.
+`hrt_task_notify_take()` blocks until the notification value is non-zero and provides counting semantics: either clear the stored count to zero or decrement it by one. The timed notification variants use the common deadline engine; expiry clears only the waiter marker and does not discard a notification that arrives later. On `HRT_WAIT_OK`, `hrt_task_notify_take_until()` writes the pre-consumption count through its output pointer.
 
 Valid producer targets are live application tasks. Idle, unused, invalid, and EXITED targets are rejected.
 

@@ -17,6 +17,7 @@ int hardrt_doc_cpp_smoke() {
     hardrt::EventFlags event;
     uint32_t matched = 0u;
     uint32_t value = 0u;
+    hrt_tick_t lateness = 0u;
     int need_switch = 0;
 
     (void)event.bits();
@@ -26,6 +27,8 @@ int hardrt_doc_cpp_smoke() {
     (void)event.clear_from_isr(0x2u);
     (void)event.wait_any(0x1u, matched, false);
     (void)event.wait_all(0x3u, matched, true);
+    (void)event.wait_any_until(0x1u, matched, 1u, false);
+    (void)event.wait_all_until(0x3u, matched, 1u, true);
     (void)event.native_handle();
 
     (void)hardrt::TaskNotification::notify(
@@ -33,11 +36,14 @@ int hardrt_doc_cpp_smoke() {
     (void)hardrt::TaskNotification::notify_from_isr(
         0, 0x2u, hardrt::NotifyAction::overwrite, need_switch);
     (void)hardrt::TaskNotification::wait(value, 0u, UINT32_MAX);
+    (void)hardrt::TaskNotification::wait_until(value, 1u, 0u, UINT32_MAX);
     (void)hardrt::TaskNotification::take(true);
+    (void)hardrt::TaskNotification::take_until(value, 1u, true);
 
     (void)hardrt::System::init(cfg);
     (void)hardrt::System::tick_now();
     (void)hardrt::System::now_ms();
+    (void)hardrt::Task::delay_until(hardrt::System::tick_now(), &lateness);
     (void)hardrt::System::version_string();
     (void)hardrt::System::version();
     (void)hardrt::System::version_u32();
@@ -46,17 +52,21 @@ int hardrt_doc_cpp_smoke() {
 
     hardrt::Semaphore sem(0u);
     (void)sem.try_take();
+    (void)sem.take_until(1u);
     (void)sem.give();
     (void)sem.give_from_isr(need_switch);
 
     hardrt::Mutex mutex;
     (void)mutex.try_lock();
+    (void)mutex.lock_until(1u);
     (void)mutex.unlock();
 
     hardrt::StaticQueue<uint32_t, 4> queue;
     uint32_t item = 1u;
     (void)queue.try_send(item);
+    (void)queue.send_until(item, 1u);
     (void)queue.try_recv(item);
+    (void)queue.recv_until(item, 1u);
     (void)queue.try_send_from_isr(item, need_switch);
     (void)queue.try_recv_from_isr(item, need_switch);
     (void)queue.native_handle();

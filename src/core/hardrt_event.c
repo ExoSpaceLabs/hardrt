@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "hardrt_event.h"
 #include "hardrt_port_int.h"
+#include "hardrt_deadline.h"
 
 #include <string.h>
 
@@ -39,6 +40,34 @@ static int register_waiter_locked(hrt_event_t *event,
     return 0;
 }
 
+static int unregister_waiter_locked(hrt_event_t *event, const int task_id) {
+    if (event == NULL || task_id < 0 || task_id >= HARDRT_APP_MAX_TASKS ||
+        event->wait_active[task_id] == 0u) {
+        return -1;
+    }
+
+    uint8_t write = 0u;
+    int removed = 0;
+    const uint8_t count = event->wait_count;
+    for (uint8_t read = 0u; read < count; ++read) {
+        const uint8_t id = event->wait_q[read];
+        if (!removed && (int)id == task_id) {
+            removed = 1;
+            continue;
+        }
+        event->wait_q[write++] = id;
+    }
+
+    if (!removed) return -1;
+    event->wait_count = write;
+    event->wait_active[task_id] = 0u;
+    return 0;
+}
+
+static int timeout_cancel(void *context, const int task_id) {
+    return unregister_waiter_locked((hrt_event_t *)context, task_id);
+}
+
 static int set_locked(hrt_event_t *event, const hrt_event_bits_t bits) {
     const hrt_event_bits_t snapshot = event->bits | bits;
     hrt_event_bits_t clear_union = 0u;
@@ -71,6 +100,7 @@ static int set_locked(hrt_event_t *event, const hrt_event_bits_t bits) {
             clear_union |= matched;
         }
 
+        hrt__wait_satisfied_locked((int)task_id);
         hrt__make_ready((int)task_id);
         if (hrt__should_preempt_after_wake((int)task_id) != 0) {
             should_switch = 1;
@@ -187,6 +217,75 @@ int hrt_event_wait(hrt_event_t *event,
     if (result == 0u) return -1;
     if (matched != NULL) *matched = result;
     return 0;
+}
+
+hrt_wait_result_t hrt_event_wait_until(hrt_event_t *event,
+                                       const hrt_event_bits_t mask,
+                                       const unsigned options,
+                                       const hrt_tick_t deadline,
+                                       hrt_event_bits_t *matched) {
+    if (matched != NULL) *matched = 0u;
+    if (event == NULL || mask == 0u || !event_options_valid(options)) {
+        return HRT_WAIT_INVALID_ARGUMENT;
+    }
+
+    const int me = hrt__current_running_app_task();
+    if (me < 0) return HRT_WAIT_INVALID_CONTEXT;
+
+    hrt_port_crit_enter();
+
+    hrt_tick_t distance = 0u;
+    const hrt_deadline_relation_t relation =
+        hrt__deadline_relation(hrt_tick_now(), deadline, &distance);
+    if (relation == HRT_DEADLINE_AMBIGUOUS) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_INVALID_DEADLINE;
+    }
+
+    hrt_event_bits_t immediate = 0u;
+    if (event_matches(event->bits, mask, options, &immediate)) {
+        if ((options & (unsigned)HRT_EVENT_CLEAR_ON_EXIT) != 0u) {
+            event->bits &= ~immediate;
+        }
+        hrt_port_crit_exit();
+        if (matched != NULL) *matched = immediate;
+        return HRT_WAIT_OK;
+    }
+
+    if (relation != HRT_DEADLINE_FUTURE) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_TIMEOUT;
+    }
+
+    _hrt_tcb_t *const task = hrt__tcb(me);
+    if (task == NULL || task->state != HRT_RUNNING ||
+        register_waiter_locked(event, me, mask, options) != 0) {
+        hrt_port_crit_exit();
+        return HRT_WAIT_ERROR;
+    }
+
+    if (hrt__wait_timeout_arm_locked(me, distance, timeout_cancel, event) != 0) {
+        (void)unregister_waiter_locked(event, me);
+        hrt_port_crit_exit();
+        return HRT_WAIT_ERROR;
+    }
+
+    task->state = HRT_BLOCKED;
+    hrt__pend_context_switch();
+    hrt_port_crit_exit();
+    hrt_port_yield_to_scheduler();
+
+    hrt_port_crit_enter();
+    const hrt_wait_result_t wait_result = hrt__wait_result_take_locked(me);
+    const hrt_event_bits_t result = event->wait_matched[me];
+    event->wait_matched[me] = 0u;
+    event->wait_mask[me] = 0u;
+    event->wait_options[me] = 0u;
+    hrt_port_crit_exit();
+
+    if (wait_result == HRT_WAIT_OK && result == 0u) return HRT_WAIT_ERROR;
+    if (matched != NULL && wait_result == HRT_WAIT_OK) *matched = result;
+    return wait_result;
 }
 
 #ifdef HARDRT_TEST_HOOKS

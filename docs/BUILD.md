@@ -1,9 +1,9 @@
 # Build and Install
 
-HardRT 0.5.1 is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
+HardRT 0.6.0 candidate is a C11 CMake project. C++17 and assembly are enabled only when the selected configuration needs them.
 
 ```cmake
-project(hardrt VERSION 0.5.1 LANGUAGES C)
+project(hardrt VERSION ${HARDRT_VERSION} LANGUAGES C)
 ```
 
 ## Requirements
@@ -55,6 +55,8 @@ ctest --test-dir build-tests --output-on-failure
 ```
 
 Runtime tests are created only for the POSIX port. The hosted suite includes a regression in which a low-priority task executes a CPU-bound infinite loop without entering HardRT while a higher-priority sleeping task must still wake and run. See [TESTS_POSIX.md](TESTS_POSIX.md).
+
+Normal Linux CI executes the hosted POSIX suite on native amd64 and native arm64 runners. The release workflow repeats release validation on both native architectures before publishing either architecture-specific POSIX package.
 
 ## Main CMake options
 
@@ -154,8 +156,12 @@ Add `-DHARDRT_ENABLE_CPP=ON` to expose the C++ target in the cross-build. The ST
 - `scripts/build-lib-posix.sh`: POSIX library/test helper.
 - `scripts/build-stm32-examples-ci.sh`: cross-build the STM32H755 validation matrix.
 - `scripts/stm32_manual_test_full.sh`: the single physical STM32H755 qualification entry point.
+- `scripts/package_stm32_qualification.sh`: validate and compress one complete passing physical qualification run into a deterministic `.tar.xz` plus SHA-256 file.
+- `scripts/finalize_release.sh`: locally validate tag/source history and package/checksum retained physical qualification evidence; it never publishes releases, uploads artifacts or deletes remote branches.
 - `scripts/extract_release_notes.py`: extract the matching `X.Y.Z` section from `RELEASE_NOTES.md` for GitHub Release publication.
-- `scripts/check_release_qualification_diff.py`: reject post-qualification changes outside the release-automation/documentation whitelist.
+- `scripts/check_release_qualification_diff.py`: compare qualified `develop` against distinct `main` merge SHA; reject all build/test/version/workflow changes and permit only documented non-build files.
+
+The authoritative end-to-end release procedure is [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Install
 
@@ -172,7 +178,7 @@ Kernel/port-private headers are not installed.
 C:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.c)
 target_link_libraries(app PRIVATE HardRT::hardrt)
 ```
@@ -180,35 +186,57 @@ target_link_libraries(app PRIVATE HardRT::hardrt)
 C++ when the package was built with wrappers enabled:
 
 ```cmake
-find_package(HardRT 0.5 REQUIRED)
+find_package(HardRT 0.6 REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE HardRT::hardrtpp)
 ```
 
 POSIX consumers must not add a duplicate private pthread workaround. `HardRT::hardrt` exposes the thread dependency as part of the package contract.
 
-The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.5.x package may satisfy a compatible 0.5 request, but a 0.5.x package must not silently satisfy a `find_package(HardRT 0.4...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
+The generated package version uses CMake `SameMinorVersion`. For pre-1.0 releases this deliberately keeps package resolution within the same minor line: a 0.6.x package may satisfy a compatible 0.6 request, but a 0.6.x package must not silently satisfy a `find_package(HardRT 0.5...)` request. Package target names remain stable, while source/behavior/ABI compatibility across pre-1.0 minor releases is governed separately by [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Tag-driven release build
 
-Pushing a non-v-prefixed `X.Y.Z` tag triggers `.github/workflows/release.yml`. Publication is intentionally separate from the Linux CI workflow.
-
-The release workflow requires the tag to match the CMake project version and requires `main`, `develop`, and the tag SHA to be aligned. It then builds POSIX and Cortex-M install trees, validates the installed POSIX consumer, creates reproducible archives, generates `SHA256SUMS`, extracts the matching release-note section, retains the generated package set as an Actions artifact, and publishes the GitHub Release.
+Root `VERSION` is the project/package/tag source of truth. Change it only on `develop`; do not tag from that change alone. Following complete manually approved hardware qualification, a reviewed `develop -> main` merge and successful current-main Linux, Signal stress and Documentation CI, `.github/workflows/tag-release.yml` automatically creates the non-v `X.Y.Z` tag and directly invokes reusable `.github/workflows/release.yml`. The tagger verifies qualified build-input equivalence between the tested commit and the different merge/tag SHA, not identical Git commit IDs. The software stage validates POSIX natively on amd64/arm64, installed consumers and Cortex-M packages, generates checksums and creates a **draft** GitHub Release.
 
 The generated software assets are:
 
 ```text
-hardrt-posix-X.Y.Z.tar.gz
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
 hardrt-cortexm-X.Y.Z.tar.gz
-hardrt-bundle-X.Y.Z.tar.gz
 SHA256SUMS
 ```
 
-The physical STM32 qualification package is not generated by CI. It is retained from `scripts/stm32_manual_test_full.sh` and attached separately to the corresponding GitHub Release.
+There is intentionally no combined bundle. POSIX packages contain compiled architecture-specific objects and therefore identify the native Linux architecture in the filename.
+
+The physical STM32 qualification package is not generated by CI. Package the selected passing run with:
+
+```bash
+./scripts/package_stm32_qualification.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
+```
+
+which creates:
+
+```text
+hardrt-stm32-qualification-X.Y.Z.tar.xz
+hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+Then finish publication with:
+
+```bash
+./scripts/finalize_release.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha> \
+  --cleanup-branches
+```
+
+The finalizer verifies the retained physical archive and its checksum and checks qualified-build-input equivalence. It does **not** upload evidence, publish the draft release or remove branches; operator evidence attachment and release publication are separate.
 
 ## v0.5.1 corrective-patch gate
 
-Before publishing v0.5.1, CI must demonstrate at least:
+Before publishing v0.5.1, CI had to demonstrate at least:
 
 - POSIX C and optional C++ builds succeed on the supported Linux matrix;
 - the hosted runtime suite passes, including asynchronous CPU-bound preemption;
@@ -219,10 +247,12 @@ Before publishing v0.5.1, CI must demonstrate at least:
 - bundled POSIX examples build and self-test successfully;
 - documentation/API compile probes and Doxygen remain green.
 
-The published v0.5.0 hardware evidence remains historical evidence and is not reinterpreted as v0.5.1 qualification. Under [QUALIFICATION.md](QUALIFICATION.md), v0.5.1 must pass a fresh **unfiltered** STM32H755 release-candidate run:
+The published v0.5.0 hardware evidence remains historical evidence and was not reinterpreted as v0.5.1 qualification. Under [QUALIFICATION.md](QUALIFICATION.md), v0.5.1 required a fresh **unfiltered** STM32H755 release-candidate run:
 
 ```bash
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The physical run requires board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The resulting commit is the hardware-qualified source SHA. If only release automation/documentation changes follow, they may advance the release/tag SHA without repeating hardware qualification only when `scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>` passes and hosted/cross-build/documentation CI remains green. Any other post-qualification change requires a new full hardware run.
+The physical run required board/OpenOCD probe PASS, 13/13 functional PASS, 38/38 benchmark PASS, and Overall PASS. The resulting commit is the hardware-qualified source SHA. Release-automation/documentation-only follow-up changes were allowed to advance the release/tag SHA without repeating hardware qualification only when `scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>` passed and hosted/cross-build/documentation CI remained green. Any other post-qualification change requires a new full hardware run.
+
+The 0.5.1 asset layout is historical. The architecture-qualified POSIX, draft-release, compressed physical-evidence, and finalizer contract applies to releases after 0.5.1.

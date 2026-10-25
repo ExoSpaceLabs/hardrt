@@ -53,6 +53,34 @@ extern "C" {
 #endif
 
 #include "hardrt_cfg.h"
+
+/** Tick/deadline value in the wrapping HardRT tick domain. */
+typedef uint32_t hrt_tick_t;
+
+/**
+ * Absolute-deadline ordering is unambiguous only within half of the uint32_t
+ * tick domain. Applications must keep each intended future/past comparison
+ * within HRT_TICK_MAX_HORIZON ticks.
+ */
+#define HRT_TICK_HALF_RANGE UINT32_C(0x80000000)
+#define HRT_TICK_MAX_HORIZON UINT32_C(0x7FFFFFFF)
+
+/**
+ * Common result for finite IPC waits against an absolute HardRT tick deadline.
+ *
+ * Existing blocking APIs remain the indefinite-wait form. Existing try APIs
+ * remain non-blocking. The *_until APIs use this result so timeout is distinct
+ * from invalid arguments/context and internal publication failures.
+ */
+typedef enum {
+    HRT_WAIT_OK = 0,
+    HRT_WAIT_TIMEOUT = 1,
+    HRT_WAIT_INVALID_DEADLINE = -1,
+    HRT_WAIT_INVALID_CONTEXT = -2,
+    HRT_WAIT_INVALID_ARGUMENT = -3,
+    HRT_WAIT_ERROR = -4
+} hrt_wait_result_t;
+
 #include "hardrt_time.h"
 #include "hardrt_sem.h"
 #include "hardrt_mutex.h"
@@ -76,6 +104,14 @@ typedef enum {
     HRT_ERR_INVALID_STATE = -3,
     HRT_ERR_PORT_INIT = -4
 } hrt_status_t;
+
+/** Result of waiting for an absolute periodic release deadline. */
+typedef enum {
+    HRT_DELAY_OK = 0,
+    HRT_DELAY_MISSED = 1,
+    HRT_DELAY_INVALID_DEADLINE = -1,
+    HRT_DELAY_INVALID_CONTEXT = -2
+} hrt_delay_result_t;
 
 /** Kernel error identifiers currently exposed for diagnostics. */
 typedef enum {
@@ -173,7 +209,7 @@ typedef struct {
     uint16_t timeslice;
 } hrt_task_attr_t;
 
-/** Return the semantic version string, for example "0.5.1". */
+/** Return the semantic version string, for example "0.6.0". */
 const char *hrt_version_string(void);
 
 /** Return the version encoded as 0xMMmmpp. */
@@ -235,6 +271,28 @@ hrt_status_t hrt_start(void);
  * RUNNING application task are rejected as safe no-ops with ERR_INVALID_TASK.
  */
 void hrt_sleep(uint32_t ms);
+
+/**
+ * Sleep until an absolute tick deadline without rebasing periodic phase.
+ *
+ * If the deadline is still in the future, the task enters the existing bounded
+ * sleeper queue for exactly the remaining ticks. On return, the function checks
+ * the actual current tick again: equality is on time, while a later tick returns
+ * HRT_DELAY_MISSED. This catches both arrival at the API after the deadline and
+ * dispatch latency after an on-time sleeper expiry.
+ *
+ * @param deadline       Absolute deadline in the wrapping tick domain.
+ * @param lateness_ticks Optional output. Set to zero when on time, otherwise to
+ *                       the number of ticks by which the task resumed/called
+ *                       after the deadline.
+ * @return HRT_DELAY_OK, HRT_DELAY_MISSED, or a negative validation result.
+ *
+ * The intended deadline must be within HRT_TICK_MAX_HORIZON ticks of the
+ * current tick so wrap-safe ordering remains unambiguous. A deadline exactly
+ * HRT_TICK_HALF_RANGE ticks away is rejected.
+ */
+hrt_delay_result_t hrt_delay_until(hrt_tick_t deadline,
+                                   hrt_tick_t *lateness_ticks);
 
 /** Voluntarily yield the processor. Non-task context is rejected safely. */
 void hrt_yield(void);

@@ -12,7 +12,7 @@ Run from the repository root:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-This is the only human-facing hardware qualification command. It owns build, flash, OpenOCD/GDB sessions, functional validation, all timing/profile images, result parsing, evidence capture, and final console/report summaries. Event/notification profiling is part of this runner rather than a second procedure.
+This is the canonical **release qualification** command. It owns build, flash, OpenOCD/GDB sessions, functional validation, all timing/profile images, result parsing, evidence capture, and final console/report summaries. Event/notification profiling is part of this runner rather than a second procedure.
 
 ### Modes
 
@@ -24,9 +24,28 @@ This is the only human-facing hardware qualification command. It owns build, fla
 
 The board probe always runs first. Only the default unfiltered mode is release-candidate evidence; filtered modes are development shortcuts.
 
+## Synchronization timing: integrated release matrix and scoped development shortcut
+
+The canonical full/unfiltered runner includes all 14 synchronization metrics
+automatically within its benchmark suite. During development, just the same
+[STM32 synchronization image](SYNC_TIMING_BENCHMARK.md) can be run separately:
+
+```bash
+./scripts/stm32_sync_benchmark.sh \
+  /home/dev/STM32Cube/Repository/STM32CubeH7 --samples 10000
+```
+
+The canonical suite includes **52 required benchmark metrics across 39 firmware
+images**: the historical 38 measurements/images plus the new 14 synchronized
+metrics in one additional build/flash image. The standalone command is a
+**development shortcut only**. It uses the same opt-in instrumented library
+and captures a separate SHA-keyed report/CSV under
+`validation/stm32/sync_benchmarks/`. Neither runner needs credentials or
+mutates remote branches.
+
 ## Release branch and evidence handling
 
-The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources and should be removed after their PRs are merged.
+The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources.
 
 Development runs are written under:
 
@@ -34,7 +53,7 @@ Development runs are written under:
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-For a release candidate, retain the selected passing package locally under:
+For a release candidate, the selected passing package is retained locally under:
 
 ```text
 validation/stm32/releases/X.Y.Z/
@@ -42,9 +61,69 @@ validation/stm32/releases/X.Y.Z/
 
 The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
 
-Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run**, because doing so would change the SHA that was physically qualified.
+Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run.** Hundreds of raw logs belong in the release evidence archive, not in Git history.
 
-The selected package is published as a GitHub Release artifact after `main` is fast-forwarded to the exact qualified `develop` SHA and tagged `X.Y.Z`. The tagged source tree must therefore be identical to the one that produced the passing hardware report.
+A reviewed `develop -> main` **merge commit** is required for automated 0.6 tagging. The merge records history and therefore normally has a **different SHA** from the frozen hardware-qualified `develop` commit, even when its build/test inputs are byte-for-byte identical. The release guard in [QUALIFICATION.md](QUALIFICATION.md) allows only `README.md`, `RELEASE_NOTES.md` and `docs/**` to differ between the two trees; changes to scripts, workflows, `.gitignore`, file modes or any other path require fresh physical qualification. Record the tested `develop` SHA in `qualification.md`, the evidence package and the release PR attestation; never describe the later merge SHA as the directly tested hardware commit.
+
+The tag-driven Release workflow builds the software packages. `scripts/finalize_release.sh` verifies the release-source relationship and complete retained physical evidence **locally**; it never authenticates to a hosting service, uploads assets, publishes a release, or deletes remote branches. Publication and branch cleanup remain separate manual operator decisions.
+
+## Package the physical evidence
+
+After a full passing run, package the selected run directory with:
+
+```bash
+./scripts/package_stm32_qualification.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
+
+The packaging helper rejects dirty, filtered, failed, incomplete, or partially executed reports. It requires:
+
+- clean tracked HardRT source;
+- unfiltered functional + benchmark mode;
+- board/OpenOCD probe PASS;
+- every reported functional contract passed, with zero failures and zero not-run cases;
+- every reported benchmark passed, with zero failures and zero not-run cases;
+- Overall PASS;
+- completed `scripts/stm32_manual_test_full.sh` report;
+- a valid HardRT qualification SHA present in the repository.
+
+It creates:
+
+```text
+validation/stm32/releases/X.Y.Z/
+  hardrt-stm32-qualification-X.Y.Z.tar.xz
+  hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The `.tar.xz` contains the complete `qualification.md`, all raw build/OpenOCD/GDB logs, and package metadata identifying the release version, source run, and hardware-qualified SHA. Packaging is deterministic for the same evidence tree and qualified commit.
+
+The unpacked evidence directory and generated archive remain untracked.
+
+## Finalize the release
+
+Release finalization is hosting-neutral and branch-read-only. Run:
+
+```bash
+./scripts/finalize_release.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
+
+The finalizer validates the release tag at `main`, the qualified source's ancestry in `develop` and the tagged merge, root `VERSION` (historical tags excepted), conservative qualified-build-input equivalence, and the retained physical evidence package/checksum where available. It never uploads assets, authenticates to a hosting service, or creates/deletes remote branches. Any publication or branch cleanup is a separate manual operator action.
+
+The canonical future software assets are architecture-qualified:
+
+```text
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
+hardrt-cortexm-X.Y.Z.tar.gz
+SHA256SUMS
+```
+
+The POSIX packages are built and tested natively on their respective Linux architectures before publication. There is no combined bundle artifact.
+
+See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for the complete standardized release sequence.
 
 ## Common requirements
 
@@ -56,9 +135,9 @@ The selected package is published as a GitHub Release artifact after `main` is f
 
 For release evidence, use clean tracked HardRT source and a clean recorded STM32CubeH7 checkout.
 
-## Functional validation: 13 contracts
+## Functional validation: 16 contracts
 
-The board probe is a prerequisite, not a functional feature. Functional mode runs **13 behavior contracts**:
+The board/OpenOCD probe is a prerequisite, not a functional feature. The current 0.6 development matrix runs **16 behavior contracts**. The published v0.5.x evidence remains the historical 13-contract matrix:
 
 1. **C blinky**: task counters advance, no example error, both LEDs visibly toggle with distinguishable relative rates.
 2. **C++ blinky**: same contract through the C++ API.
@@ -72,7 +151,10 @@ The board probe is a prerequisite, not a functional feature. Functional mode run
 10. **Event flags hardware contract**: wait-all is completed incrementally by task and real TIM2 ISR producers; clear-on-exit removes matched bits; retained wait-any bits remain until explicitly cleared; ISR wake reports scheduler-aware `need_switch` and preempts when required.
 11. **Task notification hardware contract**: pending data survives unrelated semaphore blocking; overwrite/no-overwrite/set-bits semantics are checked; a real TIM2 ISR notification wakes and preempts correctly; increment plus counting-take preserves and consumes the count correctly.
 12. **External tick hardware contract**: SysTick disabled, periodic TIM2 drives `hrt_tick_from_isr()`, sleep/tick accounting is correct, and awakened higher-priority work preempts.
-13. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
+13. **Stable periodic delay hardware contract**: one persistent phase drives repeated five-tick releases while two ticks per period are consumed as task execution; exact-deadline behavior is on time; an intentional three-tick late call returns `HRT_DELAY_MISSED` with the expected lateness and does not sleep or rebase phase.
+14. **Common IPC timeout hardware contract**: one external tick domain drives a producer-before-deadline semaphore success plus semaphore, queue receive/send, mutex, event, notification-wait and notification-take expiries; timed-out waiter membership is removed and notification operations recover after timeout.
+15. **Bounded mutex priority inheritance hardware contract**: transitive donation, release ordering and handoff.
+16. **BASEPRI critical-section contract**: unmasked/weaker/stricter/nested entry cases preserve the HardRT ceiling and exact pre-entry mask state.
 
 Timing measurements are deliberately not counted as functional contracts.
 
@@ -80,15 +162,28 @@ Timing measurements are deliberately not counted as functional contracts.
 
 The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started. The H755 validator configures TIM2 before scheduler start but enables the timer from the first dispatched application task.
 
-## Hardware benchmark suite: 38 images
+## Hardware benchmark suite: 52 metrics / 39 images
 
-Benchmark mode runs **38 separate build/flash images**:
+Benchmark mode runs **39 build/flash images** producing **52 mandatory
+benchmark metrics**. The previously qualified 38-image set remains unchanged:
 
 - 4 established scheduler/semaphore latency and switch measurements;
 - 16 v0.5 event/notification signal measurements;
-- 18 tick/sleeper scaling measurements.
+- 18 tick/sleeper scaling measurements;
+- **14 synchronization/BASEPRI-mask/queue-copy metrics** from one diagnostic image.
 
-Every image is rebuilt and flashed independently. Ordinary HardRT builds remain uninstrumented.
+Every image is rebuilt and flashed independently. The diagnostic image
+enables `HARDRT_CORTEXM_CRIT_PROFILE` only for itself; the normal kernel
+remains uninstrumented.
+
+The synchronization image produces 14 result rows (semaphore take/give,
+uncontended mutex lock/unlock, queue send/receive at 4/16/64/256/1024 bytes).
+It passes only when the firmware reports PASS, all 14 metric IDs and sizes
+are present and every row contains the configured number of valid samples.
+Each row is an independent PASS/FAIL case in the complete qualification report.
+Raw `sync_benchmark_gdb.log` and `sync_benchmark_metrics.csv` are retained
+inside the canonical release evidence archive. Failure of the diagnostic
+image fails all 14 metrics rather than silently skipping them.
 
 ### Established latency and switch benchmarks
 
@@ -144,7 +239,7 @@ This measures production `hrt_tick_from_isr()` behavior. The intrusive delta sle
 
 ## Accepted development evidence
 
-Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from the exact `develop` source SHA that is tagged.
+Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was integrated. Those runs remain useful historical development evidence but are not substitutes for release evidence generated from a frozen release-candidate source SHA.
 
 ## Human LED acceptance
 
@@ -157,16 +252,17 @@ The runner records:
 - HardRT SHA and tracked source state
 - STM32CubeH7 SHA/state
 - board probe result
-- functional `N/13 PASS`, failure and not-run counts
-- benchmark `N/38 PASS`, failure and not-run counts
+- functional `N/16 PASS`, failure and not-run counts
+- benchmark `N/52 PASS`, failure and not-run counts
 - established timing min/avg/max
 - event/notification ISR and event-scan timing min/avg/max
 - signal waiter count and expected/observed wake fan-out
 - scheduler/PendSV breakdown
 - tick/sleeper scenario/capacity/wake metadata
+- synchronization masked-window and API-cycle min/avg/max per size/operation
 - RR trace/quantum evidence
 - raw build/OpenOCD/GDB log locations
 
 A default full run is the only mode intended to become complete release evidence.
 
-See [QUALIFICATION.md](QUALIFICATION.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).
+See [QUALIFICATION.md](QUALIFICATION.md), [RELEASE_PROCESS.md](RELEASE_PROCESS.md), [STATISTICS.md](STATISTICS.md), and [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md).

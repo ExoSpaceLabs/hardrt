@@ -211,28 +211,29 @@ static void test_mutex_fifo_wait_order(void) {
 /* ---- Case 5: non-owner unlock fails ---- */
 static volatile int g_non_owner_unlock_rc = 0;
 static volatile int g_owner_unlock_rc = 0;
+static volatile int g_owner_lock_attempts = 0;
 static hrt_mutex_t g_mutex_owner_check;
 
+/* One-shot tasks are important here: the POSIX test scheduler may stop while
+ * an RT task is still parked at its last scheduling point. Re-entering the
+ * owner loop during shutdown used to emit assertions in the NEXT test case,
+ * making the direct-handoff test appear to fail even though its own assertions
+ * passed. This fixture needs exactly one lock/unlock transaction. */
 static void t_owner_holds_mutex(void *arg) {
     (void)arg;
-    for (;;) {
-        int r = hrt_mutex_lock(&g_mutex_owner_check);
-        T_ASSERT_EQ_INT(0, r, "owner task should lock mutex");
-        hrt_sleep(20);
-        g_owner_unlock_rc = hrt_mutex_unlock(&g_mutex_owner_check);
-        hrt__test_stop_scheduler();
-        hrt_yield();
-        hrt_sleep(1000);
-    }
+    const int r = hrt_mutex_lock(&g_mutex_owner_check);
+    ++g_owner_lock_attempts;
+    T_ASSERT_EQ_INT(0, r, "owner task should lock mutex");
+    hrt_sleep(20);
+    g_owner_unlock_rc = hrt_mutex_unlock(&g_mutex_owner_check);
+    hrt__test_stop_scheduler();
+    /* Return, rather than yielding into a second lock attempt. */
 }
 
 static void t_non_owner_attempts_unlock(void *arg) {
     (void)arg;
-    for (;;) {
-        hrt_sleep(5);
-        g_non_owner_unlock_rc = hrt_mutex_unlock(&g_mutex_owner_check);
-        hrt_sleep(1000);
-    }
+    hrt_sleep(5);
+    g_non_owner_unlock_rc = hrt_mutex_unlock(&g_mutex_owner_check);
 }
 
 static void test_mutex_non_owner_unlock_fails(void) {
@@ -240,6 +241,7 @@ static void test_mutex_non_owner_unlock_fails(void) {
     g_watchdog_tripped = 0;
     g_non_owner_unlock_rc = 1234;
     g_owner_unlock_rc = 1234;
+    g_owner_lock_attempts = 0;
     hrt_mutex_init(&g_mutex_owner_check);
 
     hrt_config_t cfg = {.tick_hz = 1000, .policy = HRT_SCHED_PRIORITY_RR, .default_slice = 5};
@@ -257,6 +259,7 @@ static void test_mutex_non_owner_unlock_fails(void) {
     hrt_start();
 
     T_ASSERT_EQ_INT(0, g_watchdog_tripped, "watchdog should not trip in non-owner unlock test");
+    T_ASSERT_EQ_INT(1, g_owner_lock_attempts, "owner runs exactly one lock transaction");
     T_ASSERT_EQ_INT(-1, g_non_owner_unlock_rc, "non-owner unlock should fail");
     T_ASSERT_EQ_INT(0, g_owner_unlock_rc, "real owner unlock should succeed");
 }

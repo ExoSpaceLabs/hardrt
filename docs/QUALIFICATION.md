@@ -6,7 +6,7 @@ HardRT separates development measurements from release qualification evidence wh
 
 A release candidate is qualified from `develop`, not from a temporary feature or release branch. All target-affecting source, build, version, package, and test changes must be merged into `develop` before physical qualification.
 
-The physically qualified `develop` SHA is the **hardware-qualified source SHA**. Normally that exact SHA is promoted to `main` and tagged. A later release commit is permitted only when every post-qualification change is release-automation or documentation-only and therefore cannot affect the compiled HardRT library or STM32 qualification binaries. This narrow exception exists so release infrastructure can be standardized without invalidating already-completed hardware evidence.
+The physically qualified `develop` SHA is the **hardware-qualified source SHA**. A normal reviewed `develop -> main` PR merge creates a **different release SHA**; this is acceptable only if its qualified build/test inputs are identical to the frozen hardware candidate. The automatic tagger uses the merged PR's second parent as the qualified candidate and compares the two trees. Both SHAs are recorded; the physical campaign is not repeated just because a merge commit exists.
 
 Before using that exception, run:
 
@@ -14,28 +14,43 @@ Before using that exception, run:
 python3 scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>
 ```
 
-The guard permits only tracked Markdown/documentation, GitHub workflow files, and the dedicated release/documentation helper scripts. Any other changed path fails the check and requires a new full hardware qualification run.
+The conservative guard permits only `README.md`, `RELEASE_NOTES.md` and `docs/**` to differ. Every unknown file, CMake/toolchain/version input, linker/startup file, API/port implementation, workflow or test/qualification fixture change is **build-relevant by default** and forces requalification. This is a build-input equivalence policy, **not** a requirement that Git commits share a SHA.
 
-At tag time `main` and `develop` must resolve to the same release commit. Temporary feature/release branches are deleted after completion. This keeps `develop` as the single integration/release-candidate source and `main` as the released history.
+The root `VERSION` and all target/build/test changes must be finalized on `develop` **before** physical qualification. At tag time, `main` must equal the tag SHA; `develop` may still point to the original qualified commit, which is expected to be the second parent of the release merge. Temporary branches are deleted by the operator only after release.
 
-## Tag-driven release publication
+## Tag-driven release staging and publication
 
-Release tags use the non-v-prefixed `X.Y.Z` convention. The permanent `.github/workflows/release.yml` workflow owns release publication when such a tag is pushed.
+Release tags use the non-v-prefixed `X.Y.Z` convention, derived from root `VERSION`. The `.github/workflows/tag-release.yml` workflow runs after successful `main` CI and requires an attested merged `develop -> main` PR, then creates the tag. Because a GitHub-token-created tag does not start a separate push workflow, the tagger invokes the reusable `.github/workflows/release.yml` software staging workflow directly.
 
 The workflow:
 
 - validates the `X.Y.Z` tag against the CMake project version;
 - requires the tag SHA to be the current `main` SHA;
-- requires `main` and `develop` to be aligned;
-- builds/install-packages POSIX and Cortex-M variants;
-- validates an installed POSIX CMake consumer;
-- creates reproducible POSIX, Cortex-M, and combined bundle archives;
-- generates SHA-256 checksums;
+- verifies the tagged `main` merge has unchanged qualified build inputs compared with its second parent and that the root `VERSION` matches the non-v tag;
+- executes the hosted POSIX validation suite natively on Linux amd64;
+- executes the same hosted POSIX validation suite natively on Linux arm64;
+- builds and validates an installed POSIX package independently on each architecture;
+- builds the Cortex-M package;
+- creates reproducible architecture-qualified POSIX and Cortex-M archives;
+- generates one SHA-256 checksum manifest for the software assets;
 - extracts the matching version section from `RELEASE_NOTES.md`;
 - retains the generated package set as a GitHub Actions artifact;
-- creates/updates the GitHub Release and publishes the generated software artifacts.
+- creates a **draft** GitHub Release containing the validated software assets.
 
-Physical qualification evidence is generated outside CI by the hardware runner and is attached to the corresponding GitHub Release separately. CI must never synthesize or reinterpret physical evidence.
+The canonical software assets are:
+
+```text
+hardrt-posix-linux-amd64-X.Y.Z.tar.gz
+hardrt-posix-linux-arm64-X.Y.Z.tar.gz
+hardrt-cortexm-X.Y.Z.tar.gz
+SHA256SUMS
+```
+
+There is intentionally no combined bundle. A POSIX install tree contains compiled architecture-specific objects, so every published POSIX package identifies its Linux architecture explicitly.
+
+Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` validates the release/source relationship and packages/verifies complete retained physical evidence locally. It never mutates remote branches. Hosting-service publication and branch cleanup are separate operator actions. CI must never synthesize or reinterpret physical evidence.
+
+The full end-to-end sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Single STM32 runner
 
@@ -63,19 +78,80 @@ Development evidence is generated under:
 validation/stm32/<UTC>_<short-sha>/
 ```
 
-A selected release package may be retained locally under:
+A selected release package is retained locally under:
 
 ```text
 validation/stm32/releases/X.Y.Z/
 ```
 
-The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
+The local evidence directory mirrors the repository `X.Y.Z` release-tag convention. These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification.
 
-These paths are intentionally gitignored. Generated hardware evidence must **not** be committed after qualification. The selected passing package is published as a GitHub Release artifact for the corresponding `X.Y.Z` release.
+Package the selected passing run with:
 
-The hardware evidence records the hardware-qualified source SHA. If the final tag points to a later commit under the release-automation-only exception, the qualification record and release issue must preserve both SHAs and the qualification-diff guard must pass.
+```bash
+./scripts/package_stm32_qualification.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
 
-## Current v0.5 matrix
+The helper refuses dirty, partial, or failed evidence and creates exactly:
+
+```text
+hardrt-stm32-qualification-X.Y.Z.tar.xz
+hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```
+
+The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keeping hundreds of generated evidence files out of the Git repository while retaining the full audit trail as one local evidence archive.
+
+The hardware evidence records the hardware-qualified `develop` source SHA. The final GitHub tag normally points to a distinct reviewed merge commit on `main`; release records must preserve **both** SHAs and the qualified-input equivalence guard result. Changes to build-affecting inputs after the physical run invalidate that evidence.
+
+After the tag workflow has staged the draft release, finalize it with:
+
+```bash
+./scripts/finalize_release.sh \
+  X.Y.Z \
+  validation/stm32/<UTC>_<short-sha>
+```
+
+The finalizer verifies the physical `.tar.xz` package and checksum locally and stops there. It does not require a hosting-service CLI or account authentication, and it never deletes or rewrites remote branches.
+
+## Current 0.6 release-candidate matrix
+
+The complete frozen-candidate hardware gate is:
+
+```text
+Board probe PASS
+16/16 functional PASS
+52/52 benchmark metrics PASS (39 physical build/flash images)
+Overall PASS
+```
+
+The benchmark matrix retains all 38 historical image-level measurements and
+adds the mandatory 14-result synchronization diagnostic image for semaphore,
+mutex and queue-copy scaling. It is **one extra firmware image**, not 14
+separate board flashes. Normal production HardRT builds remain uninstrumented.
+The diagnostic image's raw GDB log and machine-readable CSV must be retained
+with the canonical evidence. The packaging helper rejects any report whose
+totals differ from the active runner or whose synchronization evidence is missing.
+
+The unfiltered `scripts/stm32_manual_test_full.sh` command is required for
+release qualification on the frozen `develop` SHA. `--only functional`,
+`--only benchmark`, and `scripts/stm32_sync_benchmark.sh` are explicitly
+**development-only** shortcuts, even if every selected test passes. Any
+source/test/build change after the hardware-qualified SHA outside the allowed
+release-documentation-only diff requires a new complete run.
+
+These diagnostic metrics are observations, not unconditional WCET bounds.
+The conditional mutex blocking calculator described in
+[MUTEX_BLOCKING_BUDGET.md](MUTEX_BLOCKING_BUDGET.md) **requires independently
+proven application-level ownership and dispatch bounds**. It does not convert
+the diagnostic maxima into a validated STM32H755 WCET, and does not change
+the required physical 16/52 qualification matrix.
+Uncompleted #53 contended-inheritance, timeout-expiry, or IRQ-interference
+characterization must not be described as completed or proved by the
+uncontended synchronization baseline.
+
+## Historical v0.5 matrix
 
 The consolidated v0.5 runner contains:
 
@@ -144,7 +220,7 @@ These measurements characterize bounded implementation behavior. They are not fo
 
 Earlier H755 runs established the scheduler/lifecycle and event/notification functional baselines before the complete 16-image signal timing matrix was consolidated. They are development evidence, not substitutes for a release qualification run.
 
-Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected GitHub Release qualification artifact produced from the hardware-qualified source SHA.
+Representative historical wake/switch values remain documented in [STATISTICS.md](STATISTICS.md). Release-specific signal-profile numbers belong to the selected retained qualification package produced from the hardware-qualified source SHA.
 
 ## What belongs on hardware
 
@@ -175,8 +251,10 @@ For 0.5.1:
 5. retain the generated qualification package outside the tracked source tree;
 6. if no tracked changes follow, promote/tag that exact SHA;
 7. if only release automation/documentation must change, apply those changes, run `scripts/check_release_qualification_diff.py` against the hardware-qualified SHA, require hosted/cross-build/documentation CI to remain green, and record both SHAs in the release tracker;
-8. align `main` and `develop`, create tag `0.5.1`, and let `.github/workflows/release.yml` publish the generated software artifacts;
-9. attach the retained physical qualification package and checksum to the GitHub Release.
+8. align `main` and `develop`, create tag `0.5.1`, and publish the generated software artifacts from that tag;
+9. preserve the physical qualification result and evidence-retention state accurately.
+
+The 0.5.1 release predates the standardized finalizer flow described above. During later cleanup, the original full run directory was no longer available and the temporary staged branch was found to contain only a truncated copy. The durable result and retention limitation are recorded in [QUALIFICATION_0_5_1.md](QUALIFICATION_0_5_1.md). No full raw-evidence archive is claimed for 0.5.1. Releases after 0.5.1 remain subject to the normal complete-evidence retention contract.
 
 The full physical run is required even though most 0.5.1 implementation work is POSIX-specific. In addition, 0.5.1 changes the shared public external-tick entry so functional case 12 (`hrt_tick_from_isr()` driven by TIM2) is directly relevant hardware evidence.
 

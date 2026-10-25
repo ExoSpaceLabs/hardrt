@@ -1,9 +1,16 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - '*.*.*'
+  workflow_call:
+    inputs:
+      tag:
+        description: "Non-v version tag created by main CI tagger"
+        required: true
+        type: string
+      release_sha:
+        description: "Qualified main merge commit SHA"
+        required: true
+        type: string
   pull_request:
     branches:
       - main
@@ -11,7 +18,12 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'scripts/extract_release_notes.py'
+      - 'scripts/package_stm32_qualification.sh'
+      - 'scripts/finalize_release.sh'
       - 'CMakeLists.txt'
+      - 'VERSION'
+      - '.github/workflows/tag-release.yml'
+      - 'scripts/check_release_qualification_diff.py'
       - 'cmake/**'
       - 'RELEASE_NOTES.md'
       - 'tests/installed_consumer/**'
@@ -22,18 +34,22 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded PR dry-runs may be cancelled; real release calls remain serialized.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  package-and-publish:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_sha || github.sha }}
 
       - name: Resolve release version
         id: version
@@ -41,67 +57,151 @@ jobs:
         run: |
           set -euo pipefail
 
-          project_version="$({ sed -nE 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt || true; } | head -n1)"
-          if [[ ! "$project_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not resolve a semantic project version from CMakeLists.txt"
+          version="$(tr -d '[:space:]' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid VERSION: $version" >&2
             exit 1
-          fi
+          }
+          python3 scripts/extract_release_notes.py "$version" RELEASE_NOTES.md >/dev/null
 
-          version="$project_version"
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            version="$GITHUB_REF_NAME"
-            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Release tags must use X.Y.Z without a v prefix: $version"
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            [[ "${{ inputs.tag }}" == "$version" ]] || {
+              echo "Release tag does not match VERSION" >&2
               exit 1
-            fi
-            if [[ "$project_version" != "$version" ]]; then
-              echo "Tag version $version does not match CMake project version $project_version"
-              exit 1
-            fi
+            }
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $version"
 
-      - name: Validate release tag and branch alignment
-        if: github.ref_type == 'tag'
+      - name: Verify tag, current main and qualified inputs
+        if: inputs.tag != ''
         shell: bash
         run: |
           set -euo pipefail
-
-          git fetch --force origin main develop
+          git fetch origin main --tags
+          release_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "refs/tags/${{ inputs.tag }}^{commit}")"
           main_sha="$(git rev-parse origin/main)"
-          develop_sha="$(git rev-parse origin/develop)"
-
-          if [[ "$GITHUB_SHA" != "$main_sha" ]]; then
-            echo "Release tag must point at the current main commit"
-            echo "tag=$GITHUB_SHA main=$main_sha"
+          [[ "$release_sha" == "${{ inputs.release_sha }}" ]]
+          [[ "$tag_sha" == "$release_sha" && "$main_sha" == "$release_sha" ]] || {
+            echo "Tag, checkout and current main must point to one merge commit" >&2
             exit 1
-          fi
+          }
+          # The physically qualified develop commit is the second parent of
+          # the authorized develop -> main merge; it has a different SHA.
+          qualified_sha="$(git rev-parse "$release_sha^2")"
+          python3 scripts/check_release_qualification_diff.py "$qualified_sha" "$release_sha"
 
-          if [[ "$main_sha" != "$develop_sha" ]]; then
-            echo "main and develop must be aligned before release publication"
-            echo "main=$main_sha develop=$develop_sha"
-            exit 1
-          fi
+  posix-native:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            uname_machine: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            uname_machine: aarch64
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Verify native architecture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(uname -m)" = "${{ matrix.uname_machine }}"
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ gcc-arm-none-eabi binutils
+          sudo apt-get install -y cmake ninja-build gcc g++ binutils
 
-      - name: Build POSIX package
+      - name: Build and execute hosted validation suite
+        shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build-posix -G Ninja \
+          cmake -S . -B build-posix-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DHARDRT_PORT=posix \
+            -DHARDRT_ENABLE_CPP=ON \
+            -DHARDRT_BUILD_TESTS=ON \
+            -DHARDRT_BUILD_EXAMPLES=OFF \
+            -DHARDRT_STRICT=ON \
+            -DHARDRT_SANITIZE=ON
+          cmake --build build-posix-tests --parallel
+          ctest -V --test-dir build-posix-tests --timeout 120 --output-on-failure
+          HARDRT_EXAMPLE_TIMEOUT=3s ./scripts/run-all-examples.sh
+
+      - name: Build installable POSIX package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build-posix-package -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DHARDRT_PORT=posix \
             -DHARDRT_ENABLE_CPP=ON \
             -DHARDRT_BUILD_TESTS=OFF \
             -DHARDRT_BUILD_EXAMPLES=OFF
-          cmake --build build-posix --parallel
+          cmake --build build-posix-package --parallel
 
-      - name: Build Cortex-M package
+          rm -rf install-posix build-installed-consumer
+          cmake --install build-posix-package --prefix "$PWD/install-posix"
+          cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/install-posix"
+          cmake --build build-installed-consumer --parallel
+
+      - name: Create architecture-qualified POSIX archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          mkdir -p packages
+          tar \
+            --sort=name \
+            --mtime="@${source_date_epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C install-posix \
+            -cf - . \
+            | gzip -n > "packages/hardrt-posix-linux-${{ matrix.arch }}-${version}.tar.gz"
+
+      - name: Retain POSIX architecture package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardrt-posix-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.version }}
+          path: packages/hardrt-posix-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.version }}.tar.gz
+          if-no-files-found: error
+
+  cortexm:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Install Cortex-M build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ gcc-arm-none-eabi binutils
+
+      - name: Build installable Cortex-M package
+        shell: bash
         run: |
           set -euxo pipefail
           cmake -S . -B build-cortexm -G Ninja \
@@ -112,77 +212,98 @@ jobs:
             -DHARDRT_BUILD_EXAMPLES=OFF \
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/arm-none-eabi.cmake
           cmake --build build-cortexm --parallel
-
-      - name: Install packages and validate POSIX consumer
-        run: |
-          set -euxo pipefail
-          rm -rf install-posix install-cortexm build-installed-consumer
-          cmake --install build-posix --prefix "$PWD/install-posix"
+          rm -rf install-cortexm
           cmake --install build-cortexm --prefix "$PWD/install-cortexm"
 
-          cmake -S tests/installed_consumer -B build-installed-consumer -G Ninja \
-            -DCMAKE_PREFIX_PATH="$PWD/install-posix"
-          cmake --build build-installed-consumer --parallel
-
-      - name: Create reproducible release archives
+      - name: Create Cortex-M archive
         shell: bash
         run: |
           set -euxo pipefail
-
-          version="${{ steps.version.outputs.version }}"
+          version="${{ needs.prepare.outputs.version }}"
           source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
-          rm -rf packages bundle
-          mkdir -p packages bundle/posix bundle/cortex_m
+          mkdir -p packages
+          tar \
+            --sort=name \
+            --mtime="@${source_date_epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C install-cortexm \
+            -cf - . \
+            | gzip -n > "packages/hardrt-cortexm-${version}.tar.gz"
 
-          cp -a install-posix/. bundle/posix/
-          cp -a install-cortexm/. bundle/cortex_m/
+      - name: Retain Cortex-M package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardrt-cortexm-${{ needs.prepare.outputs.version }}
+          path: packages/hardrt-cortexm-${{ needs.prepare.outputs.version }}.tar.gz
+          if-no-files-found: error
 
-          pack() {
-            local source_dir="$1"
-            local output="$2"
-            tar \
-              --sort=name \
-              --mtime="@${source_date_epoch}" \
-              --owner=0 \
-              --group=0 \
-              --numeric-owner \
-              -C "$source_dir" \
-              -cf - . | gzip -n > "$output"
-          }
+  assemble-release:
+    needs:
+      - prepare
+      - posix-native
+      - cortexm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
-          pack install-posix "packages/hardrt-posix-${version}.tar.gz"
-          pack install-cortexm "packages/hardrt-cortexm-${version}.tar.gz"
-          pack bundle "packages/hardrt-bundle-${version}.tar.gz"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Download architecture packages
+        uses: actions/download-artifact@v5
+        with:
+          pattern: hardrt-*
+          path: downloaded
+          merge-multiple: true
+
+      - name: Assemble release package set
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          rm -rf packages
+          mkdir -p packages
+          cp downloaded/*.tar.gz packages/
+
+          test -f "packages/hardrt-posix-linux-amd64-${version}.tar.gz"
+          test -f "packages/hardrt-posix-linux-arm64-${version}.tar.gz"
+          test -f "packages/hardrt-cortexm-${version}.tar.gz"
 
           (
             cd packages
             sha256sum hardrt-*.tar.gz > SHA256SUMS
+            sha256sum -c SHA256SUMS
           )
 
           python3 scripts/extract_release_notes.py "$version" RELEASE_NOTES.md > release-notes.md
           ls -la packages
           cat packages/SHA256SUMS
 
-      - name: Retain generated release artifacts
+      - name: Retain complete software release set
         uses: actions/upload-artifact@v4
         with:
-          name: hardrt-release-${{ steps.version.outputs.version }}-${{ github.run_id }}
+          name: hardrt-release-${{ needs.prepare.outputs.version }}-${{ github.run_id }}
           path: |
             packages/hardrt-*.tar.gz
             packages/SHA256SUMS
             release-notes.md
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
+      - name: Create draft GitHub Release
+        if: inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
           body_path: release-notes.md
+          draft: true
           files: |
-            packages/hardrt-posix-${{ steps.version.outputs.version }}.tar.gz
-            packages/hardrt-cortexm-${{ steps.version.outputs.version }}.tar.gz
-            packages/hardrt-bundle-${{ steps.version.outputs.version }}.tar.gz
+            packages/hardrt-posix-linux-amd64-${{ needs.prepare.outputs.version }}.tar.gz
+            packages/hardrt-posix-linux-arm64-${{ needs.prepare.outputs.version }}.tar.gz
+            packages/hardrt-cortexm-${{ needs.prepare.outputs.version }}.tar.gz
             packages/SHA256SUMS
           fail_on_unmatched_files: true

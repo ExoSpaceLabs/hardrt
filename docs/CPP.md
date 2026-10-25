@@ -132,11 +132,20 @@ The same non-overlap rule applies to application-owned stacks.
 
 ```cpp
 hardrt::Task::sleep(500);
+
+hrt_tick_t next_release = hardrt::System::tick_now();
+next_release += period_ticks;
+hrt_tick_t lateness = 0u;
+const hrt_delay_result_t result =
+    hardrt::Task::delay_until(next_release, &lateness);
+
 hardrt::Task::yield();
 hardrt::Task::delete_current();
 ```
 
 `Task::sleep(0)` forwards to the v0.5 C contract: it yields immediately without entering the sleep queue or waiting for a tick. Positive sub-tick values still round up to one tick.
+
+`Task::delay_until()` forwards directly to the stable-phase C periodic timing primitive. The caller keeps one nominal phase reference and advances it by the requested period; the returned `hrt_delay_result_t` distinguishes an on-time release from an observable missed target, with optional lateness in ticks. The wrapper does not add timers, allocation, or hidden per-tick bookkeeping.
 
 A dispatched task is internally `RUNNING`. A voluntary scheduling point returns it to `READY` as appropriate. A task that returns from its entry function, or calls `Task::delete_current()`, enters `EXITED`; its TCB slot remains occupied until later reclamation.
 
@@ -157,12 +166,13 @@ Available operations:
 
 ```cpp
 sem.take();
+sem.take_until(deadline);
 sem.try_take();
 sem.give();
 sem.give_from_isr(need_switch);
 ```
 
-`take()` is a blocking operation and requires a current RUNNING application task; invalid no-current/non-running calls return `-1` without consuming an available token. `try_take()` remains non-blocking. `give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.
+`take()` is the indefinite blocking operation. `take_until(deadline)` returns `hrt_wait_result_t` and uses the common absolute-tick finite-wait contract; a due deadline behaves like a try operation. `try_take()` remains non-blocking. `give_from_isr()` forwards to the C API and exposes the scheduler-aware wake/preemption decision through `need_switch`.
 
 ## Mutexes
 
@@ -180,7 +190,7 @@ void worker_with_lock(void *arg) {
 }
 ```
 
-The wrapper exposes `lock()`, `try_lock()`, and `unlock()`. The underlying mutex is non-recursive, owner-tracked, task-context-only, and has no timed lock, priority inheritance, or automatic owner-death recovery. A task must release its owned mutexes before returning or deleting itself.
+The wrapper exposes `lock()`, `lock_until(deadline)`, `try_lock()`, and `unlock()`. The timed form uses the common absolute-tick wait contract and preserves direct ownership handoff. Under fixed-priority policies, mutex contention applies bounded transitive priority inheritance. Timed expiry withdraws donation atomically. Global RR ignores priorities. Held mutexes are bounded by `HARDRT_MAX_MUTEXES_HELD` (default 8). See [MUTEX_PRIORITY_INHERITANCE.md](MUTEX_PRIORITY_INHERITANCE.md) for details. The mutex remains non-recursive, owner-tracked and task-context-only, with no automatic owner-death recovery.
 
 ## Queues with external storage
 
@@ -231,11 +241,12 @@ void consumer(void *arg) {
 All queue wrappers expose:
 
 - `send` and `recv`;
+- `send_until` and `recv_until`;
 - `try_send` and `try_recv`;
 - `try_send_from_isr` and `try_recv_from_isr`;
 - `native_handle`.
 
-`send()` and `recv()` are blocking operations and require a current RUNNING application task; invalid no-current/non-running calls return `-1` without changing queue contents. The `try_*` operations remain non-blocking.
+`send()` and `recv()` are indefinite blocking operations. `send_until()` and `recv_until()` retain one absolute deadline across retries, including the existing queue-barging case where a selected waiter loses the newly available item/slot before it resumes. The `try_*` operations remain non-blocking.
 
 The C queue implementation copies objects as raw bytes with `memcpy`. `QueueRef<T>`, `StaticQueue<T, Capacity>`, and therefore the `Queue<T, Capacity>` alias enforce `std::is_trivially_copyable<T>` at compile time. `StaticQueue` also rejects zero capacity and any capacity above the C API's `uint16_t` range. The CI compile-contract suite includes both accepted and expected-failure cases for these rules.
 
@@ -264,9 +275,11 @@ events.clear(0x01u);
 events.clear_from_isr(0x02u);
 events.wait_any(0x03u, matched, true);   // true = clear matched bits on exit
 events.wait_all(0x03u, matched, false);  // retain bits
+events.wait_any_until(0x03u, matched, deadline, true);
+events.wait_all_until(0x03u, matched, deadline, false);
 ```
 
-`wait_any()` and `wait_all()` preserve the C semantics documented in [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md), including the common post-set snapshot used when one update satisfies multiple waiters.
+`wait_any()` and `wait_all()` preserve the C semantics documented in [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md), including the common post-set snapshot used when one update satisfies multiple waiters. The `*_until()` variants return `hrt_wait_result_t` and use the same absolute deadline contract as the other IPC wrappers.
 
 `native_handle()` returns the underlying `hrt_event_t*` (or const pointer on a const wrapper) for integration with code that needs the C API directly.
 
@@ -287,7 +300,9 @@ hardrt::TaskNotification::notify_from_isr(
     task_id, 0x20u, hardrt::NotifyAction::overwrite, need_switch);
 
 hardrt::TaskNotification::wait(value, 0u, 0xFFu);
+hardrt::TaskNotification::wait_until(value, deadline, 0u, 0xFFu);
 const uint32_t count = hardrt::TaskNotification::take(false);
+hardrt::TaskNotification::take_until(value, deadline, false);
 ```
 
 `NotifyAction` maps directly to the four C producer actions:
@@ -299,7 +314,7 @@ const uint32_t count = hardrt::TaskNotification::take(false);
 
 `TaskNotification::notify()` defaults to `overwrite`. `notify_from_isr()` requires an explicit action and reports the scheduler decision through `need_switch`. `wait()` accepts clear-on-entry and clear-on-exit masks. `take(false)` decrements a counting notification by one; `take(true)` clears the count.
 
-The wrapper intentionally does not add timeout behavior, heap state, or hidden synchronization. See [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md) for the complete contract.
+The timed notification wrappers are direct calls into the common C timeout engine; they add no heap state, worker task, or separate timer model. `wait_until()` preserves ordinary pending-value semantics, while `take_until()` writes the pre-consumption count on success. See [EVENTS_NOTIFICATIONS.md](EVENTS_NOTIFICATIONS.md) for the complete contract.
 
 ## Allocation and ownership
 
