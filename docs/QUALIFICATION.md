@@ -6,38 +6,44 @@ HardRT separates development measurements from release qualification evidence wh
 
 A release candidate is qualified from `develop`, not from a temporary feature or release branch. All target-affecting source, build, version, package, and test changes must be merged into `develop` before physical qualification.
 
-The physically qualified `develop` SHA is the **hardware-qualified source SHA**. A normal reviewed `develop -> main` PR merge creates a **different release SHA**; this is acceptable only if its qualified build/test inputs are identical to the frozen hardware candidate. The automatic tagger uses the merged PR's second parent as the qualified candidate and compares the two trees. Both SHAs are recorded; the physical campaign is not repeated just because a merge commit exists.
+The physically qualified source SHA is the **hardware-qualified source SHA**.
+A reviewed promotion to `main` may create a different merge SHA, without
+changing its source tree. Retain the tested SHA and original physical test
+evidence, and independently verify that no build-affecting inputs changed
+after the hardware run. The standalone
+`scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>`
+is available for conservative source-equivalence checks; it is **not** a
+post-merge publication command.
 
-Before using that exception, run:
+Complete physical qualification **before** pushing the final version to
+`main`: root `VERSION`, target sources, build scripts and tests must be
+frozen for the board campaign. Do not claim a merge/tag SHA was tested on
+hardware unless it actually was.
 
-```bash
-python3 scripts/check_release_qualification_diff.py <qualified-sha> <release-sha>
-```
+## Automatic VERSION-driven release
 
-The conservative guard permits only `README.md`, `RELEASE_NOTES.md` and `docs/**` to differ. Every unknown file, CMake/toolchain/version input, linker/startup file, API/port implementation, workflow or test/qualification fixture change is **build-relevant by default** and forces requalification. This is a build-input equivalence policy, **not** a requirement that Git commits share a SHA.
+The only release identifier is root `VERSION` (non-`v` `X.Y.Z`). After the
+qualified version is merged to `main`, `.github/workflows/tag-release.yml`
+waits for successful **Linux**, **Signal stress** and **Documentation** push CI
+on the same current `main` SHA.
 
-The root `VERSION` and all target/build/test changes must be finalized on `develop` **before** physical qualification. At tag time, `main` must equal the tag SHA; `develop` may still point to the original qualified commit, which is expected to be the second parent of the release merge. Temporary branches are deleted by the operator only after release.
+The workflow then:
 
-## Tag-driven release staging and publication
+- validates the current `VERSION` and matching release-note section;
+- creates the immutable `X.Y.Z` tag only if it does not already exist and
+  the version is greater than existing version tags;
+- never moves existing tags; later maintenance commits with the same VERSION
+  do not generate a second release;
+- verifies an existing tag is an ancestor of current `main`;
+- invokes the reusable `.github/workflows/release.yml` for new releases,
+  which runs native Linux amd64/arm64 POSIX validation and installed-consumer
+  builds, Cortex-M packaging and SHA256 checksums;
+- automatically **publishes** a GitHub Release with all validated software
+  assets when those steps pass, not a draft;
+- automatically recovers a previously created draft by checking its software
+  assets and checksums and publishing it.
 
-Release tags use the non-v-prefixed `X.Y.Z` convention, derived from root `VERSION`. The `.github/workflows/tag-release.yml` workflow runs after successful `main` CI and requires an attested merged `develop -> main` PR, then creates the tag. Because a GitHub-token-created tag does not start a separate push workflow, the tagger invokes the reusable `.github/workflows/release.yml` software staging workflow directly.
-
-The workflow:
-
-- validates the `X.Y.Z` tag against the CMake project version;
-- requires the tag SHA to be the current `main` SHA;
-- verifies the tagged `main` merge has unchanged qualified build inputs compared with its second parent and that the root `VERSION` matches the non-v tag;
-- executes the hosted POSIX validation suite natively on Linux amd64;
-- executes the same hosted POSIX validation suite natively on Linux arm64;
-- builds and validates an installed POSIX package independently on each architecture;
-- builds the Cortex-M package;
-- creates reproducible architecture-qualified POSIX and Cortex-M archives;
-- generates one SHA-256 checksum manifest for the software assets;
-- extracts the matching version section from `RELEASE_NOTES.md`;
-- retains the generated package set as a GitHub Actions artifact;
-- creates a **draft** GitHub Release containing the validated software assets.
-
-The canonical software assets are:
+Software assets:
 
 ```text
 hardrt-posix-linux-amd64-X.Y.Z.tar.gz
@@ -46,11 +52,13 @@ hardrt-cortexm-X.Y.Z.tar.gz
 SHA256SUMS
 ```
 
-There is intentionally no combined bundle. A POSIX install tree contains compiled architecture-specific objects, so every published POSIX package identifies its Linux architecture explicitly.
+No post-merge command, manual draft approval, upload or `gh` installation is
+required for software publication. Hardware validation remains a *pre-merge*
+physical operation and CI does not fabricate hardware test evidence. The raw
+operator evidence is retained separately; it is not a GitHub Release
+publication gate. Optional local evidence archiving remains available below.
 
-Physical qualification evidence is generated outside CI by the hardware runner. `scripts/finalize_release.sh` validates the release/source relationship and packages/verifies complete retained physical evidence locally. It never mutates remote branches. Hosting-service publication and branch cleanup are separate operator actions. CI must never synthesize or reinterpret physical evidence.
-
-The full end-to-end sequence is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
+Full behavior is documented in [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ## Single STM32 runner
 
@@ -105,15 +113,11 @@ The `.tar.xz` contains the complete report and raw build/OpenOCD/GDB logs, keepi
 
 The hardware evidence records the hardware-qualified `develop` source SHA. The final GitHub tag normally points to a distinct reviewed merge commit on `main`; release records must preserve **both** SHAs and the qualified-input equivalence guard result. Changes to build-affecting inputs after the physical run invalidate that evidence.
 
-After the tag workflow has staged the draft release, finalize it with:
-
-```bash
-./scripts/finalize_release.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha>
-```
-
-The finalizer verifies the physical `.tar.xz` package and checksum locally and stops there. It does not require a hosting-service CLI or account authentication, and it never deletes or rewrites remote branches.
+**Optional local verification only:** run
+`./scripts/finalize_release.sh X.Y.Z validation/stm32/<UTC>_<short-sha>`
+to validate retained physical archive, checksums and tag ancestry. The
+GitHub Release has already been published automatically by CI. The finalizer
+does not require a hosting-service CLI and never edits branches or tags.
 
 ## Current 0.6 release-candidate matrix
 
