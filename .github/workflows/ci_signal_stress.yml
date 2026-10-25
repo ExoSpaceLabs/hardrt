@@ -46,7 +46,7 @@ jobs:
 
       - name: Run deterministic signal stress suite with isolation regression
         timeout-minutes: 3
-        # Repeated process restarts expose test-lifecycle contamination and
-        # POSIX scheduling races without rerunning individual cases in isolation.
-        run: ctest --test-dir build-signal-stress -R '^hardrt_tests
- --repeat until-fail:20 --timeout 120 --output-on-failure
+        # Repeated process restarts expose test-lifecycle contamination.
+        run: |
+          ctest --test-dir build-signal-stress -R '^hardrt_tests$' \
+            --repeat until-fail:20 --timeout 120 --output-on-failure
