@@ -8,10 +8,10 @@ After that, root `VERSION` and successful current-`main` CI drive the
 immutable tag, native amd64/arm64 and Cortex-M packages, checksums and the
 **published** GitHub Release, without a second CLI or manual publication step.
 
-Physical raw evidence remains retained off-repository, because GitHub-hosted
-runners cannot access files stored only on an operator's machine. Optional
-archive packaging is available below, but it is **not a release-publication
-dependency**. CI must not claim it physically repeated the board qualification.
+GitHub-hosted runners do not perform the physical board tests. The released
+qualification record contains the tested SHA, board/configuration, date and
+PASS totals; verbose run logs are disposable diagnostics. There is no raw-log
+retention, upload or archive-management requirement.
 
 ## 0.6 acceptance boundary
 
@@ -83,71 +83,31 @@ partially passing CI matrix. Because the uploaded raw hardware evidence is
 not present in the repository, automatic publication includes the software
 release assets, not an invented physical test archive.
 
-## 3. Optional local physical-evidence archival
+## 3. Regenerate hardware measurements on demand
 
-Package the selected passing hardware run locally:
+The release records the original test result, not a binary archive of every
+OpenOCD/GDB session. The canonical runner produces the full report and raw
+diagnostic files in an ignored working directory. They may be discarded
+after verifying and recording the final PASS/FAIL summary.
 
-```bash
-./scripts/package_stm32_qualification.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha>
-```
-
-The helper refuses partial, dirty, or failed reports. It requires the report to record:
-
-- clean tracked source;
-- the unfiltered full qualification mode;
-- Overall PASS;
-- a valid 40-character HardRT SHA available in the repository.
-
-It creates a deterministic archive under:
-
-```text
-validation/stm32/releases/X.Y.Z/
-```
-
-with exactly two publishable files:
-
-```text
-hardrt-stm32-qualification-X.Y.Z.tar.xz
-hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
-```
-
-The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and `PACKAGE_METADATA.txt` identifying the release version, qualified SHA, and source run directory.
-
-The local retention path is gitignored. The archive and checksum are retained evidence files, not tracked source files.
-
-## 4. Optional local evidence verification
-
-If the complete original local hardware run is retained, the operator may
-invoke the archival helper. This is **not** needed to publish a release:
+To reproduce the **procedure** for a selected release using an attached
+NUCLEO-H755ZI-Q and compatible STM32CubeH7 checkout:
 
 ```bash
-./scripts/finalize_release.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
+git switch --detach X.Y.Z
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The script verifies the existing immutable tag, its ancestry on current
-`main`, source equivalence and report completeness, then validates the
-generated archive and checksum. It never changes GitHub Releases, tags, or
-branches. Unlike the obsolete equality guard, it continues to work after
-`main` advances past the tagged release.
+The immutable version fixes repository build and test inputs; measured timing
+samples depend on the actual hardware and execution environment. A new run
+does not recreate the original measurement. Historical raw logs are not a
+required published or retained artifact.
 
-The historical `0.5.1` exception still validates its exact audited SHAs
-and reports missing complete raw evidence rather than fabricating it.
-
-Branch cleanup is deliberately **outside** the finalizer. Keep `main`,
-`develop`, tags and unique-commit branches; delete obsolete fully merged
-branches only after verifying their ancestry.
-
-## Existing local evidence and retries
-
-The finalizer does not overwrite an existing qualification package by default. Rebuilding the same local archive/checksum requires:
-
-```text
---force-package
-```
-
-Use that only when intentionally regenerating the retained evidence package. Release tags themselves are never moved or rewritten by the script.
+Existing `scripts/package_stm32_qualification.sh` and
+`scripts/finalize_release.sh` are optional diagnostic/archival utilities;
+neither is needed for release publication. Retaining those optional tools
+does not imply keeping their output. Branch cleanup is deliberately
+**outside** the finalizer and only removes fully merged references.
 
 ## Historical 0.5.1 finalization
 
@@ -159,7 +119,7 @@ The October 2026 cleanup audit established that `release/0.5.1` contains only a 
 
 No hosting-service release modification is required to retire the old `release/0.5.1` branch.
 
-## Canonical artifacts and retained evidence
+## Canonical published artifacts
 
 The release workflow still produces the canonical software packages:
 
@@ -172,11 +132,8 @@ SHA256SUMS
 
 Those software artifacts are validated by CI and are independent of the local finalizer.
 
-Physical qualification evidence is retained locally as:
-
-```text
-hardrt-stm32-qualification-X.Y.Z.tar.xz
-hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
-```
-
-The Git repository contains neither the unpacked hardware logs nor the generated qualification archive. Optional publication of operator-retained physical logs is independent of the automatic software-release publication and does not change the qualified-source contract.
+The physical qualification summary is recorded in versioned project
+documentation and release notes. Raw physical-test logs are not distributed or
+preserved as mandatory release assets; they can be regenerated with a fresh
+hardware run when investigating a particular version. Existing published
+historical assets remain immutable.

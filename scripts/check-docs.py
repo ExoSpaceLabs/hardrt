@@ -164,31 +164,22 @@ for pattern, description in stale_patterns.items():
     if re.search(pattern, combined, flags=re.IGNORECASE):
         fail(description)
 
+# Current release qualification publishes a summary, not a raw-log archive.
 validation = (ROOT / "validation/stm32/README.md").read_text(encoding="utf-8")
 if "52 benchmark metrics across 39 images" not in validation:
-    fail("validation/stm32/README.md does not require the 52-metric / 39-image release benchmark matrix")
+    fail("validation/stm32/README.md must document the full benchmark matrix")
 if "original 38 images" not in validation:
-    fail("validation/stm32/README.md does not preserve the historical 38-image baseline")
-if "do not commit generated qualification evidence" not in validation.lower():
-    fail("validation/stm32/README.md does not forbid committing generated qualification evidence")
-if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in validation:
-    fail("validation/stm32/README.md does not define the compressed physical qualification asset")
-if "scripts/package_stm32_qualification.sh" not in validation:
-    fail("validation/stm32/README.md does not document qualification packaging")
-if "scripts/finalize_release.sh" not in validation:
-    fail("validation/stm32/README.md does not document release finalization")
-if "validation/stm32/releases/X.Y.Z/" not in validation:
-    fail("validation/stm32/README.md does not preserve the runner's local X.Y.Z evidence-directory convention")
+    fail("validation/stm32/README.md must preserve the benchmark history")
+if "no archive, upload, or long-term raw-log" not in validation:
+    fail("validation/stm32/README.md must not require archived test logs")
+if "git switch --detach X.Y.Z" not in validation:
+    fail("STM32 instructions must explain rerunning a specific release")
 
 release_validation = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
-if "gitignored" not in release_validation.lower():
-    fail("release qualification retention guidance does not state that local evidence is gitignored")
-if "validation/stm32/releases/0.5.0/" not in release_validation:
-    fail("release qualification retention guidance does not document the local X.Y.Z directory convention")
-if "hardrt-stm32-qualification-X.Y.Z.tar.xz" not in release_validation:
-    fail("release qualification retention guidance does not define the tar.xz release evidence package")
-if "scripts/finalize_release.sh" not in release_validation:
-    fail("release qualification retention guidance does not document finalization")
+if "not a" not in release_validation or "retention" not in release_validation:
+    fail("qualification release directory must not be described as a required archive")
+if "git switch --detach X.Y.Z" not in release_validation:
+    fail("release evidence guidance must describe on-demand reruns")
 
 runner = (ROOT / "scripts/stm32_manual_test_full.sh").read_text(encoding="utf-8")
 if "BENCHMARK_TOTAL=52" not in runner or "FUNCTIONAL_TOTAL=16" not in runner:
@@ -207,8 +198,6 @@ if "tag `0.5.1`" not in qualification:
     fail("docs/QUALIFICATION.md does not state the exact 0.5.1 release-tag convention")
 if "default unfiltered STM32 qualification command" not in qualification:
     fail("docs/QUALIFICATION.md does not require a full unfiltered 0.5.1 hardware run")
-if "validation/stm32/releases/X.Y.Z/" not in qualification:
-    fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
 if "check_release_qualification_diff.py" not in qualification:
     fail("docs/QUALIFICATION.md does not define the post-qualification release-only diff guard")
 if "hardware-qualified source SHA" not in qualification:
@@ -216,43 +205,34 @@ if "hardware-qualified source SHA" not in qualification:
 for required in (
     "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
     "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
-    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
-    "scripts/finalize_release.sh",
-    "draft",
+    "## Qualification results and on-demand regeneration",
+    "git switch --detach X.Y.Z",
 ):
     if required not in qualification:
-        fail(f"docs/QUALIFICATION.md is missing standardized release contract: {required}")
+        fail(f"docs/QUALIFICATION.md is missing on-demand release qualification contract: {required}")
 
 manual = (ROOT / "docs/STM32_MANUAL_TESTS.md").read_text(encoding="utf-8")
-for required in (
-    "validation/stm32/releases/X.Y.Z/",
-    "scripts/package_stm32_qualification.sh",
-    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
-    "scripts/finalize_release.sh",
-):
+for required in ("git switch --detach X.Y.Z", "no long-term archive"):
     if required not in manual:
-        fail(f"STM32 manual documentation is missing release-evidence contract: {required}")
+        fail(f"STM32 manual documentation omits on-demand qualification policy: {required}")
 
 release_process = (ROOT / "docs/RELEASE_PROCESS.md").read_text(encoding="utf-8")
-for required in (
-    "native amd64",
-    "native arm64",
-    "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
-    "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
-    "hardrt-stm32-qualification-X.Y.Z.tar.xz",
-    "Branch cleanup is deliberately **outside** the finalizer",
-    "draft",
-):
+for required in ("native amd64", "native arm64",
+                 "hardrt-posix-linux-amd64-X.Y.Z.tar.gz",
+                 "hardrt-posix-linux-arm64-X.Y.Z.tar.gz",
+                 "Regenerate hardware measurements on demand"):
     if required not in release_process:
         fail(f"release process is missing standardized contract: {required}")
 if "hardrt-bundle" in release_process:
     fail("release process still references the removed combined bundle")
 
+for document in (qualification, manual, release_process, validation, release_validation):
+    if "available on request" in document.lower():
+        fail("release documentation must not promise archived diagnostic logs")
+
 # Catch contradictory operator instructions that previously survived the
 # generic Markdown/link and release helper smoke checks.
 release_evidence_guide = (ROOT / "validation/stm32/releases/README.md").read_text(encoding="utf-8")
-if "--cleanup-branches" in release_evidence_guide and "deprecated no-op" not in release_evidence_guide:
-    fail("release evidence guide implies finalizer automatically removes branches")
 if "promoted unchanged to `main`" in manual:
     fail("hardware guide incorrectly equates a qualified develop SHA with a required two-parent main promotion")
 cross = (ROOT / "docs/CROSSCOMPILE.md").read_text(encoding="utf-8")
@@ -261,8 +241,6 @@ if "timing collection, and evidence packaging" in cross:
 runner = (ROOT / "scripts/stm32_manual_test_full.sh").read_text(encoding="utf-8")
 if "manually copy/move this full run" in runner:
     fail("STM32 runner still directs operators to copy evidence instead of packaging it")
-if "scripts/package_stm32_qualification.sh" not in runner:
-    fail("STM32 runner does not identify the release evidence packaging helper")
 
 
 signal_readme = (ROOT / "examples/hardrt_h755_dwt_timing/README.md").read_text(encoding="utf-8")
