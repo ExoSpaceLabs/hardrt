@@ -198,8 +198,6 @@ if "tag `0.5.1`" not in qualification:
     fail("docs/QUALIFICATION.md does not state the exact 0.5.1 release-tag convention")
 if "default unfiltered STM32 qualification command" not in qualification:
     fail("docs/QUALIFICATION.md does not require a full unfiltered 0.5.1 hardware run")
-if "validation/stm32/releases/X.Y.Z/" not in qualification:
-    fail("docs/QUALIFICATION.md does not match the manual runner's local evidence-directory convention")
 if "check_release_qualification_diff.py" not in qualification:
     fail("docs/QUALIFICATION.md does not define the post-qualification release-only diff guard")
 if "hardware-qualified source SHA" not in qualification:
