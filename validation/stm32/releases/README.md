@@ -8,8 +8,7 @@ qualification summary instead.
 After a full physical release qualification on the versioned source, publish
 the tested SHA, board/configuration, date and PASS/FAIL totals. Generated raw
 logs and optional local archives may be discarded after the run has been
-verified. Do not commit them and do not promise they are "available on
-request".
+verified. Do not commit them or promise retrieval of historical diagnostics.
 
 When fresh measurements are needed, check out the relevant immutable tag in
 a clean worktree with a supported STM32CubeH7 checkout and connected board:
