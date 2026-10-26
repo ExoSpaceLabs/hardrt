@@ -25,47 +25,38 @@ Development shortcuts are available through the same entry point:
 
 A filtered run is useful during development but is **not** complete release evidence. Only the default unfiltered run qualifies a release candidate.
 
-## Release evidence handling
+## Release qualification and reruns
 
-A release candidate must already be on `develop`; do not qualify a temporary feature or release branch.
+The final candidate must already be integrated into `develop`; do not
+qualify a temporary feature branch. From a clean source and supported
+STM32CubeH7 checkout:
 
-For a release candidate:
+1. Run the **unfiltered** hardware qualification script.
+2. Confirm board probe PASS, 16/16 functional PASS, 52/52 benchmark
+   metrics PASS, and Overall PASS.
+3. Record the tested SHA, board/configuration, date and PASS/FAIL totals
+   in the release summary.
+4. Merge the qualified source and `VERSION` to `main`. Green CI
+   automatically tags, builds and **publishes** the software release.
 
-1. merge all target/build-affecting changes into `develop`;
-2. freeze the `develop` SHA after hosted/cross-build CI is green;
-3. run the unfiltered qualification command from that exact SHA with clean tracked HardRT source and a clean/pinned STM32CubeH7 checkout;
-4. require board probe PASS, every functional contract PASS, **52/52 benchmark metric PASS**, and Overall PASS;
-5. inspect the report and raw logs;
-6. package the selected evidence without adding it to Git:
+The runner writes `qualification.md` and GDB/OpenOCD/build/CSV diagnostics
+under a gitignored timestamped directory. These working files may be
+deleted after verifying the summary: **no archive, upload, or long-term raw-log
+retention is required**. Do not commit generated qualification evidence.
 
-   ```bash
-   ./scripts/package_stm32_qualification.sh X.Y.Z validation/stm32/<UTC>_<short-sha>
-   ```
+To regenerate measurements for a previously released version, use its
+immutable tag with the appropriate physical hardware and STM32CubeH7 setup:
 
-7. promote/tag the release according to `docs/QUALIFICATION.md`; release-automation/documentation-only follow-up changes are allowed only through the repository qualification-diff guard;
-8. let `.github/workflows/release.yml` create the draft release and software assets;
-9. run the hosting-neutral finalizer to verify the release/evidence relationship:
-
-   ```bash
-   ./scripts/finalize_release.sh \
-     X.Y.Z \
-     validation/stm32/<UTC>_<short-sha>
-   ```
-
-10. perform any hosting publication and temporary-branch cleanup manually after reviewing the release state.
-
-The package helper creates a deterministic `.tar.xz` archive plus a separate SHA-256 file under `validation/stm32/releases/X.Y.Z/`. Both timestamped runs and local release packages are gitignored deliberately. **Do not commit generated qualification evidence.**
-
-The canonical physical release assets are:
-
-```text
-hardrt-stm32-qualification-X.Y.Z.tar.xz
-hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
+```bash
+git switch --detach X.Y.Z
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The archive contains the original `qualification.md`, every raw build/OpenOCD/GDB log, and package metadata identifying the release and qualified source SHA. The repository deliberately does not contain hundreds of generated log files; publication of the archive is separate from local finalization.
-
-See [`docs/RELEASE_PROCESS.md`](../../docs/RELEASE_PROCESS.md) for the complete procedure.
+Re-running reproduces the test method, not the historical data: timing
+measurements may vary and the new results represent a new test run.
+Older packaging tools (`scripts/package_stm32_qualification.sh`,
+`scripts/finalize_release.sh`) remain optional diagnostics, not release
+requirements. See [release process](../../docs/RELEASE_PROCESS.md).
 
 ## Functional hardware matrix
 
@@ -118,7 +109,8 @@ The final image measures semaphore take/give, mutex lock/unlock and queue
 send/receive at 4, 16, 64, 256, 1024 bytes. Each result row is counted
 independently. Missing/incomplete results fail the full suite. The image
 enables its own diagnostic BASEPRI DWT profile without instrumenting normal
-kernel builds. The raw log and CSV are retained in qualification evidence.
+kernel builds. The raw log and CSV are generated for each run and may be
+removed once the report has been validated.
 
 ### Tick/sleeper scaling set: 18
 
