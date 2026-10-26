@@ -65,7 +65,7 @@ git switch --detach X.Y.Z
 
 The execution procedure is reproducible; cycle measurements may vary with
 board/environment. A rerun is **new test evidence**, not recovered logs
-from the historical run. No "available on request" claim should be made.
+from the historical run. Historical raw logs are not an offered artifact.
 
 `scripts/package_stm32_qualification.sh` and
 `scripts/finalize_release.sh` remain optional diagnostic helpers only.
