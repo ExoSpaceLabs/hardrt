@@ -82,7 +82,7 @@ The board/OpenOCD probe always runs first. Only the default unfiltered mode is a
 
 The release records the **tested commit SHA**, target board/configuration,
 test date and full PASS/FAIL totals. No long-term raw-log retention, upload,
-archive-management workflow or "available on request" promise is required.
+archive-management workflow or promised access to old logs is required.
 
 The runner automatically writes a per-run `qualification.md` and its
 temporary build/OpenOCD/GDB/CSV evidence under the gitignored
