@@ -43,74 +43,34 @@ and captures a separate SHA-keyed report/CSV under
 `validation/stm32/sync_benchmarks/`. Neither runner needs credentials or
 mutates remote branches.
 
-## Release branch and evidence handling
+## Release qualification: summarize, then discard
 
-The release candidate must already be merged into `develop`. Temporary feature/release branches are not qualification sources.
+Qualify the final source on real hardware **before** promoting it from
+`develop` to `main`. Record the tested commit SHA, board/configuration,
+date, 16/16 functional and 52/52 benchmark totals and overall PASS/FAIL.
+The canonical runner creates `qualification.md`, OpenOCD/GDB logs, CSV
+measurements and build output in the gitignored
+`validation/stm32/<UTC>_<short-sha>/` directory. These files are for
+diagnostics during that run; **no long-term archive or raw-log upload is
+required**. The release summary is enough for the public record.
 
-Development runs are written under:
-
-```text
-validation/stm32/<UTC>_<short-sha>/
-```
-
-For a release candidate, the selected passing package is retained locally under:
-
-```text
-validation/stm32/releases/X.Y.Z/
-```
-
-The local evidence directory mirrors the repository `X.Y.Z` release-tag convention.
-
-Both development and release-evidence directories are gitignored deliberately. **Do not commit generated qualification evidence after the board run.** Hundreds of raw logs belong in the release evidence archive, not in Git history.
-
-Qualify the final source on the physical board **before** promoting it to `main`. Record the tested source SHA in `qualification.md` and retain the raw logs locally. A later merge commit has a different SHA from the directly tested source; do not describe it as the physical test commit. The standalone `check_release_qualification_diff.py` helper remains available to review build-input changes after a hardware run, but is not a second publication action.
-
-Once the qualified source and root `VERSION` are on `main`, green Linux, Signal stress and Documentation CI automatically creates the immutable tag, builds architecture-specific software assets and **publishes** the release. No manual draft approval, evidence attachment, or local finalizer is required to publish. CI does not fabricate or upload the operator's physical logs.
-
-## Package the physical evidence
-
-After a full passing run, package the selected run directory with:
+To repeat qualification for a released version, check out its immutable
+version tag in a clean worktree, provide the physical STM32H755 target and
+matching STM32CubeH7 setup, and execute:
 
 ```bash
-./scripts/package_stm32_qualification.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha>
+git switch --detach X.Y.Z
+./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The packaging helper rejects dirty, filtered, failed, incomplete, or partially executed reports. It requires:
+The execution procedure is reproducible; cycle measurements may vary with
+board/environment. A rerun is **new test evidence**, not recovered logs
+from the historical run. No "available on request" claim should be made.
 
-- clean tracked HardRT source;
-- unfiltered functional + benchmark mode;
-- board/OpenOCD probe PASS;
-- every reported functional contract passed, with zero failures and zero not-run cases;
-- every reported benchmark passed, with zero failures and zero not-run cases;
-- Overall PASS;
-- completed `scripts/stm32_manual_test_full.sh` report;
-- a valid HardRT qualification SHA present in the repository.
-
-It creates:
-
-```text
-validation/stm32/releases/X.Y.Z/
-  hardrt-stm32-qualification-X.Y.Z.tar.xz
-  hardrt-stm32-qualification-X.Y.Z.tar.xz.sha256
-```
-
-The `.tar.xz` contains the complete `qualification.md`, all raw build/OpenOCD/GDB logs, and package metadata identifying the release version, source run, and hardware-qualified SHA. Packaging is deterministic for the same evidence tree and qualified commit.
-
-The unpacked evidence directory and generated archive remain untracked.
-
-## Optional local evidence verification
-
-Release publication is already automatic. For additional local verification, run:
-
-```bash
-./scripts/finalize_release.sh \
-  X.Y.Z \
-  validation/stm32/<UTC>_<short-sha>
-```
-
-The optional finalizer verifies the immutable release tag is on `main` history, the qualified source ancestry and build-input equivalence, and the retained physical evidence archive/checksum. It never publishes releases, uploads assets or deletes branches. All release publication occurs automatically in GitHub Actions, independently of this local archival helper.
+`scripts/package_stm32_qualification.sh` and
+`scripts/finalize_release.sh` remain optional diagnostic helpers only.
+Once the qualified source and root `VERSION` reach `main`, GitHub Actions
+automatically tags, packages and publishes the software release.
 
 The canonical future software assets are architecture-qualified:
 
@@ -181,9 +141,10 @@ uncontended mutex lock/unlock, queue send/receive at 4/16/64/256/1024 bytes).
 It passes only when the firmware reports PASS, all 14 metric IDs and sizes
 are present and every row contains the configured number of valid samples.
 Each row is an independent PASS/FAIL case in the complete qualification report.
-Raw `sync_benchmark_gdb.log` and `sync_benchmark_metrics.csv` are retained
-inside the canonical release evidence archive. Failure of the diagnostic
-image fails all 14 metrics rather than silently skipping them.
+The runner generates `sync_benchmark_gdb.log` and
+`sync_benchmark_metrics.csv` for validation during each run; permanent
+retention is unnecessary. Failure of the diagnostic image fails all 14
+metrics rather than silently skipping them.
 
 ### Established latency and switch benchmarks
 
