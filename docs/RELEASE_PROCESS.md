@@ -100,8 +100,8 @@ git switch --detach X.Y.Z
 
 The immutable version fixes repository build and test inputs; measured timing
 samples depend on the actual hardware and execution environment. A new run
-does not recreate the original measurement. No "available on request"
-statement is made about historical logs.
+does not recreate the original measurement. Historical raw logs are not a
+required published or retained artifact.
 
 Existing `scripts/package_stm32_qualification.sh` and
 `scripts/finalize_release.sh` are optional diagnostic/archival utilities;
