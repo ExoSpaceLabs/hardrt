@@ -35,11 +35,17 @@ commands
   set $exact_result = *(unsigned int*)($base + 40)
   set $exact_late = *(unsigned int*)($base + 44)
   set $tick = *(unsigned int*)($base + 48)
+  set $lat_count = *(unsigned int*)($base + 52)
+  set $lat_min = *(unsigned int*)($base + 56)
+  set $lat_avg = *(unsigned int*)($base + 60)
+  set $lat_max = *(unsigned int*)($base + 64)
 
   printf "pass=%u error=%u irq_count=%u release_count=%u low_counter=%u\n", $pass,$error,$irq,$releases,$low
   printf "phase=%u expected_last=%u observed_last=%u final_tick=%u\n", $phase,$expected,$observed,$tick
   printf "miss_result=%u miss_lateness=%u exact_result=%u exact_lateness=%u\n", $miss_result,$miss_late,$exact_result,$exact_late
-  if $pass == 1 && $error == 0 && $releases == 16 && $expected == $observed && $miss_result == 1 && $miss_late == 3 && $exact_result == 0 && $exact_late == 0
+  printf "periodic_tick_to_task=%u / %u / %u cycles (min/avg/max); samples=%u\n", $lat_min,$lat_avg,$lat_max,$lat_count
+  printf "NOTE: TIM2 ISR software tick marker -> periodic task continuation, not hardware event-to-ISR latency or WCET.\n"
+  if $pass == 1 && $error == 0 && $releases == 16 && $expected == $observed && $miss_result == 1 && $miss_late == 3 && $exact_result == 0 && $exact_late == 0 && $lat_count == 16 && $lat_min <= $lat_avg && $lat_avg <= $lat_max
     printf "RESULT: PASS\n"
   else
     printf "RESULT: FAIL (error=%u)\n", $error
