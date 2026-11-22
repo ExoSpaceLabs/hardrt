@@ -154,6 +154,8 @@ metrics rather than silently skipping them.
 4. `scheduler_decision` / PendSV decomposition
 5. `yield_switch` / same-priority task-to-task `hrt_yield()` handoff
 6. `ready_selection` / isolated READY candidate selection, using a diagnostic-only scheduler hook profile
+7. `sem_task_handoff` / task-context semaphore wake and higher-priority continuation
+8. `mutex_pi_handoff` / contended priority-inheritance mutex direct handoff and waiter continuation
 
 `event_to_task` is the historical semaphore-backed composite ISR-to-task benchmark. Its name predates the v0.5 event-flags API and is retained unchanged for historical comparison.
 
