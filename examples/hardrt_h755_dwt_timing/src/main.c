@@ -174,6 +174,15 @@ static void timing_finish(void) {
     g_timing_result.count = g_timing_stats.count;
     g_timing_result.sum_lo = (uint32_t)sum;
     g_timing_result.sum_hi = (uint32_t)(sum >> 32u);
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+    /* A silent omission would otherwise make this optional extension appear
+       qualified solely because the older scheduler counter completed. */
+    if (g_irq_tail_to_pendsv_stats.count != g_timing_stats.count ||
+        g_irq_tail_to_pendsv_stats.min > g_irq_tail_to_pendsv_stats.avg ||
+        g_irq_tail_to_pendsv_stats.avg > g_irq_tail_to_pendsv_stats.max) {
+        g_example_error = 92u;
+    }
+#endif
     g_timing_result.error = g_example_error;
 
 #if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
