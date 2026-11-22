@@ -682,6 +682,7 @@ run_benchmarks() {
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
   timing_case ready_to_task "DWT ready_to_task timing"
   timing_case scheduler_decision "DWT scheduler_decision timing"
+  timing_case yield_switch "DWT same-priority yield-to-peer latency"
 
   signal_timing_case event_isr_to_task 1
   signal_timing_case notify_isr_to_task 1
