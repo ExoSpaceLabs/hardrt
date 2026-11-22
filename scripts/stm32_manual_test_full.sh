@@ -33,7 +33,7 @@ Usage:
 Modes:
   no --only            Run ALL available tests: every functional hardware validation AND every hardware benchmark.
   --only functional    Run only functional hardware validation.
-  --only benchmark     Run all hardware benchmark cases (38 historical images plus one 14-metric synchronization image).
+  --only benchmark     Run all hardware benchmark cases (39 v0.6 images plus four v0.7 timing images).
 
 The board probe is a prerequisite and is always run.
 
@@ -477,7 +477,7 @@ tick_benchmark_case() {
 
 # The baseline synchronization image contains 14 independently verified metrics
 # but only one build/flash. Record each metric separately so partial output or
-# malformed GDB records can never pass the release 52-case qualification gate.
+# malformed GDB records can never pass the active 56-metric qualification gate.
 sync_benchmark_case() {
   local prefix=timing_sync_benchmark
   local elf="$ROOT_DIR/examples/hardrt_h755_sync_benchmark/build-cortex_m/hardrt_h755_sync_benchmark.elf"
