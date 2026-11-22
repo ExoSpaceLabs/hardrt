@@ -16,7 +16,7 @@ ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
 FUNCTIONAL_TOTAL=16
-BENCHMARK_TOTAL=52
+BENCHMARK_TOTAL=56
 
 NAMES=()
 STATUSES=()
@@ -684,6 +684,8 @@ run_benchmarks() {
   timing_case scheduler_decision "DWT scheduler_decision timing"
   timing_case yield_switch "DWT same-priority yield-to-peer latency"
   timing_case ready_selection "DWT isolated READY-selection latency"
+  timing_case sem_task_handoff "DWT semaphore task-to-task handoff"
+  timing_case mutex_pi_handoff "DWT contended mutex PI handoff"
 
   signal_timing_case event_isr_to_task 1
   signal_timing_case notify_isr_to_task 1
