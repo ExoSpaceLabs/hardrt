@@ -5,6 +5,7 @@
 #include "hardrt_event.h"
 #include "hardrt_notify.h"
 #include "hardrt_sem.h"
+#include "hardrt_mutex.h"
 #include "stm32h7xx.h"
 #include "timing_shared.h"
 
@@ -103,6 +104,13 @@ static volatile int g_notify_target = -1;
 static volatile uint32_t g_yield_start_cycles = 0u;
 static volatile uint32_t g_yield_armed = 0u;
 static volatile uint32_t g_yield_warmed = 0u;
+/* Task-context semaphore and contended-mutex handoff scenarios. */
+static hrt_sem_t g_handoff_gate;
+static hrt_mutex_t g_handoff_mutex;
+static volatile uint32_t g_handoff_start = 0u;
+static volatile uint32_t g_handoff_armed = 0u;
+static volatile uint32_t g_handoff_warmed = 0u;
+static int g_handoff_high_id = -1;
 
 #define STACK_WORDS 1024
 #define SIGNAL_WAITER_STACK_WORDS 384
@@ -467,6 +475,61 @@ static void yield_target_task(void *arg) {
     }
 }
 
+static void handoff_high_task(void *arg) {
+    (void)arg;
+    for (;;) {
+        if (hrt_sem_take(&g_handoff_gate) != 0) example_fail(93u);
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+        if (!g_handoff_mutex.locked) example_fail(94u);
+        if (hrt_mutex_lock(&g_handoff_mutex) != 0) example_fail(95u);
+        if (g_handoff_mutex.owner != g_handoff_high_id) example_fail(96u);
+#endif
+        if (g_handoff_armed == 0u) example_fail(97u);
+        const uint32_t stop = cycles_now();
+        g_handoff_armed = 0u;
+        if (g_handoff_warmed != 0u) {
+            hrt_timing_stats_record(&g_timing_stats, stop - g_handoff_start);
+        } else {
+            g_handoff_warmed = 1u;
+        }
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+        if (hrt_mutex_unlock(&g_handoff_mutex) != 0) example_fail(98u);
+#endif
+        if (g_timing_stats.count >= g_timing_target_samples) timing_finish();
+    }
+}
+
+static void handoff_low_task(void *arg) {
+    (void)arg;
+    for (;;) {
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+        if (hrt_mutex_lock(&g_handoff_mutex) != 0) example_fail(99u);
+#endif
+        /* The higher-priority task wakes and, for mutex, blocks on owner. */
+        if (hrt_sem_give(&g_handoff_gate) != 0) example_fail(100u);
+        if (g_handoff_armed != 0u) example_fail(101u);
+        g_handoff_start = cycles_now();
+        g_handoff_armed = 1u;
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+        if (hrt_mutex_unlock(&g_handoff_mutex) != 0) example_fail(102u);
+#else
+        /* For sem, start must be recorded BEFORE giving, rather than after.
+           This path uses its own source timing sequence below. */
+        example_fail(103u);
+#endif
+    }
+}
+
+static void semaphore_handoff_low_task(void *arg) {
+    (void)arg;
+    for (;;) {
+        g_handoff_start = cycles_now();
+        g_handoff_armed = 1u;
+        if (hrt_sem_give(&g_handoff_gate) != 0) example_fail(104u);
+        if (g_handoff_armed != 0u) example_fail(105u);
+    }
+}
+
 static hrt_event_bits_t event_scan_mask(uint32_t waiter_index) {
 #if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_SCAN_NONE
     (void)waiter_index;
@@ -553,6 +616,8 @@ int main(void) {
     stats_init(&g_pendsv_to_task_stats);
     stats_init(&g_irq_tail_to_pendsv_stats);
     hrt_sem_init(&g_event_sem, 0);
+    hrt_sem_init(&g_handoff_gate, 0);
+    hrt_mutex_init(&g_handoff_mutex);
     hrt_event_init(&g_signal_event);
 
     const hrt_config_t cfg = {
@@ -560,7 +625,9 @@ int main(void) {
         .policy = HRT_SCHED_PRIORITY,
         .default_slice = 0,
         .core_hz = SystemCoreClock,
-#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH || \
+    HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SEM_TASK_HANDOFF || \
+    HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
         /* No periodic tick: exclude intentional timer interference from the
            baseline yield-to-peer handoff sample. */
         .tick_src = HRT_TICK_EXTERNAL
@@ -574,7 +641,20 @@ int main(void) {
     const hrt_task_attr_t latency_attr = { .priority = HRT_PRIO0, .timeslice = 0 };
     const hrt_task_attr_t starter_attr = { .priority = HRT_PRIO1, .timeslice = 0 };
 
-#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SEM_TASK_HANDOFF || \
+    HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+    g_handoff_high_id = hrt_create_task(handoff_high_task, 0,
+                                        g_latency_stack, STACK_WORDS,
+                                        &latency_attr);
+    if (g_handoff_high_id < 0) example_fail(106u);
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_MUTEX_PI_HANDOFF
+    if (hrt_create_task(handoff_low_task, 0, g_starter_stack,
+                        STACK_WORDS, &starter_attr) < 0) example_fail(107u);
+#else
+    if (hrt_create_task(semaphore_handoff_low_task, 0, g_starter_stack,
+                        STACK_WORDS, &starter_attr) < 0) example_fail(108u);
+#endif
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH
     if (hrt_create_task(yield_source_task, 0, g_latency_stack,
                         STACK_WORDS, &latency_attr) < 0) example_fail(86u);
     if (hrt_create_task(yield_target_task, 0, g_starter_stack,
