@@ -138,6 +138,23 @@ if (( BENCHMARK_TOTAL >= 52 )); then
   fi
 fi
 
+# The v0.7 expansion cannot be accepted based solely on the old 14-row
+# sync benchmark: all new image-level timing records must be present.
+if (( BENCHMARK_TOTAL >= 56 )); then
+  [[ -s "$RUN_DIR/timing_metrics.csv" ]] || {
+    echo "Missing generated machine-readable timing_metrics.csv" >&2; exit 1;
+  }
+  for case in yield_switch ready_selection sem_task_handoff mutex_pi_handoff; do
+    file="$RAW_DIR/timing_${case}_gdb.log"
+    [[ -s "$file" ]] && grep -Fqx 'RESULT: PASS' "$file" || {
+      echo "Missing or failing v0.7 timing image: $case" >&2; exit 1;
+    }
+    grep -Fq ",${case}," "$RUN_DIR/timing_metrics.csv" || {
+      echo "Missing v0.7 timing CSV metric: $case" >&2; exit 1;
+    }
+  done
+fi
+
 require_report_line "- Functional contracts passed: **$FUNCTIONAL_TOTAL / $FUNCTIONAL_TOTAL**"
 require_report_line '- Functional contracts failed: **0**'
 require_report_line '- Functional contracts not run: **0**'
