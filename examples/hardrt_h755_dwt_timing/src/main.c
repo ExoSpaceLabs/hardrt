@@ -99,6 +99,7 @@ static volatile uint32_t g_signal_wake_count = 0;
 static volatile int g_notify_target = -1;
 static volatile uint32_t g_yield_start_cycles = 0u;
 static volatile uint32_t g_yield_armed = 0u;
+static volatile uint32_t g_yield_warmed = 0u;
 
 #define STACK_WORDS 1024
 #define SIGNAL_WAITER_STACK_WORDS 384
@@ -445,7 +446,13 @@ static void yield_target_task(void *arg) {
         if (g_yield_armed == 0u) example_fail(91u);
         const uint32_t end = cycles_now();
         g_yield_armed = 0u;
-        hrt_timing_stats_record(&g_timing_stats, end - g_yield_start_cycles);
+        if (g_yield_warmed != 0u) {
+            hrt_timing_stats_record(&g_timing_stats, end - g_yield_start_cycles);
+        } else {
+            /* First entry includes the peer's initial task trampoline.
+               Exclude it from steady-state yield timing. */
+            g_yield_warmed = 1u;
+        }
         hrt_yield();
     }
 }
