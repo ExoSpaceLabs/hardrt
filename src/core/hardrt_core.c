@@ -8,6 +8,7 @@
 #include "hardrt_time.h"
 #include "hardrt_port_int.h"
 #include "hardrt_deadline.h"
+#include "hardrt_timing.h"
 
 #ifndef HARDRT_STALL_ON_ERROR
 #define HARDRT_STALL_ON_ERROR 0
@@ -1294,7 +1295,9 @@ uintptr_t hrt__schedule(const uintptr_t old_sp) {
         hrt__prepare_current_for_reschedule();
     }
 
+    HRT_TIMING_READY_PICK_BEGIN();
     const int next_id = hrt__pick_next_ready();
+    HRT_TIMING_READY_PICK_END();
 #if HARDRT_DEBUG == 1
     dbg_id_save = g_current;
     dbg_sp_save = (uint32_t)old_sp;
