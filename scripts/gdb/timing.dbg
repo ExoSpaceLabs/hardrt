@@ -140,7 +140,7 @@ commands
                       else
                         if $case == 12
                           printf "case=yield_switch\n"
-                          printf "metric=hrt_yield entry -> same-priority peer task continuation\n"
+                          printf "metric=pre-hrt_yield DWT timestamp -> same-priority peer task continuation\n"
                           printf "NOTE: includes public yield, PendSV, scheduler, context restore and exception return; no periodic tick is configured.\n"
                           printf "HardRT timing profile=none\n"
                         else
