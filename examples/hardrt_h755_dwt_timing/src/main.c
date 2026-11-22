@@ -81,6 +81,9 @@ volatile uint32_t g_pendsv_save_cycles = 0;
 volatile uint32_t g_pendsv_scheduler_cycles = 0;
 volatile uint32_t g_pendsv_restore_cycles = 0;
 volatile uint32_t g_pendsv_software_cycles = 0;
+/* Private scheduler profile writes these values around READY selection. */
+volatile uint32_t g_ready_pick_start_cycles = 0u;
+volatile uint32_t g_ready_pick_cycles = 0u;
 
 static volatile hrt_timing_stats_t g_pendsv_save_stats;
 static volatile hrt_timing_stats_t g_pendsv_restore_stats;
@@ -301,7 +304,8 @@ void TIM2_IRQHandler(void) {
     int should_switch = 0;
     (void)hrt_sem_give_from_isr(&g_event_sem, &should_switch);
     (void)should_switch;
-#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION || \
+      HRT_TIMING_CASE_ID == HRT_TIMING_CASE_READY_SELECTION
     g_pendsv_sample_ready = 0u;
     g_pendsv_measure_armed = 1u;
     int should_switch = 0;
@@ -399,11 +403,16 @@ static void latency_task(void *arg) {
             const uint32_t end = cycles_now();
             hrt_timing_stats_record(&g_timing_stats, end - g_timing_start_cycles);
         }
-#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION || \
+      HRT_TIMING_CASE_ID == HRT_TIMING_CASE_READY_SELECTION
         if (g_pendsv_sample_ready != 0u) {
             const uint32_t task_end = cycles_now();
             g_pendsv_sample_ready = 0u;
 
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_READY_SELECTION
+            /* Timed only around ready_pop()/READY candidate selection. */
+            hrt_timing_stats_record(&g_timing_stats, g_ready_pick_cycles);
+#else
             hrt_timing_stats_record(&g_pendsv_save_stats, g_pendsv_save_cycles);
             hrt_timing_stats_record(&g_timing_stats, g_pendsv_scheduler_cycles);
             hrt_timing_stats_record(&g_pendsv_restore_stats, g_pendsv_restore_cycles);
@@ -412,6 +421,7 @@ static void latency_task(void *arg) {
                                     task_end - g_pendsv_entry_cycles);
             hrt_timing_stats_record(&g_irq_tail_to_pendsv_stats,
                                     g_pendsv_entry_cycles - g_pendsv_irq_tail_cycles);
+#endif
         }
 #endif
 
