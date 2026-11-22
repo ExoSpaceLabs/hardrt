@@ -40,6 +40,7 @@ commands
   set $lat_avg = *(unsigned int*)($base + 60)
   set $lat_max = *(unsigned int*)($base + 64)
 
+  printf "periodic_core_hz=%u\n", (unsigned int)SystemCoreClock
   printf "pass=%u error=%u irq_count=%u release_count=%u low_counter=%u\n", $pass,$error,$irq,$releases,$low
   printf "phase=%u expected_last=%u observed_last=%u final_tick=%u\n", $phase,$expected,$observed,$tick
   printf "miss_result=%u miss_lateness=%u exact_result=%u exact_lateness=%u\n", $miss_result,$miss_late,$exact_result,$exact_late
