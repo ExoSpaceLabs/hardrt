@@ -27,6 +27,7 @@ Cases:
   ready_to_task       Waiter marked READY -> task continuation.
   scheduler_decision  Diagnostic PendSV scheduler/context-switch breakdown.
   yield_switch        Same-priority hrt_yield() -> peer task continuation.
+  ready_selection    Isolated READY candidate selection (diagnostic kernel hooks).
 
   event_isr_to_task   hrt_event_set_from_isr path plus dispatch to one waiter.
   notify_isr_to_task  hrt_task_notify_from_isr path plus dispatch to one waiter.
@@ -83,6 +84,10 @@ case "$CASE" in
     fi
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_CFG_MAX_TASKS=$SIGNAL_TASK_CAPACITY")
+    ;;
+  ready_selection)
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=scheduler")
+    HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_HOOK_HEADER=$APP_DIR/inc/hardrt_timing_scheduler_hooks.h")
     ;;
   sem_isr_ready)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=ipc")
