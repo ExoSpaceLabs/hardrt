@@ -146,9 +146,10 @@ if (( BENCHMARK_TOTAL >= 56 )); then
   }
   for case in yield_switch ready_selection sem_task_handoff mutex_pi_handoff; do
     file="$RAW_DIR/timing_${case}_gdb.log"
-    [[ -s "$file" ]] && grep -Fqx 'RESULT: PASS' "$file" || {
-      echo "Missing or failing v0.7 timing image: $case" >&2; exit 1;
-    }
+    if [[ ! -s "$file" ]] || ! grep -Fqx 'RESULT: PASS' "$file"; then
+      echo "Missing or failing v0.7 timing image: $case" >&2
+      exit 1
+    fi
     grep -Fq ",${case}," "$RUN_DIR/timing_metrics.csv" || {
       echo "Missing v0.7 timing CSV metric: $case" >&2; exit 1;
     }
