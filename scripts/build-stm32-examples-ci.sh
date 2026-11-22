@@ -121,6 +121,7 @@ build_app hardrt_h755_sync_benchmark "$ROOT_DIR/examples/hardrt_h755_sync_benchm
   -DHARDRT_BENCH_SAMPLES=8
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_yield_switch "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=yield_switch -DHARDRT_TIMING_TARGET_SAMPLES=8
 
 # Signal profiling cases use direct DWT timestamps and an uninstrumented kernel.
 # Compile the latency and O(1) notification paths against the ordinary config,
