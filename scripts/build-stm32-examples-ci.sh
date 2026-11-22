@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bash -n "$ROOT_DIR/scripts/stm32_manual_test_full.sh"
 bash -n "$ROOT_DIR/scripts/stm32_sync_benchmark.sh" "$ROOT_DIR/scripts/test_stm32_sync_parser.sh"
 bash "$ROOT_DIR/scripts/test_stm32_sync_parser.sh"
+python3 "$ROOT_DIR/scripts/summarize_stm32_timing.py" --self-test
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 GENERATOR="${GENERATOR:-Ninja}"
 JOBS="${JOBS:-$(nproc)}"
