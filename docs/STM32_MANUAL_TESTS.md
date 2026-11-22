@@ -153,6 +153,7 @@ metrics rather than silently skipping them.
 3. `ready_to_task`
 4. `scheduler_decision` / PendSV decomposition
 5. `yield_switch` / same-priority task-to-task `hrt_yield()` handoff
+6. `ready_selection` / isolated READY candidate selection, using a diagnostic-only scheduler hook profile
 
 `event_to_task` is the historical semaphore-backed composite ISR-to-task benchmark. Its name predates the v0.5 event-flags API and is retained unchanged for historical comparison.
 
