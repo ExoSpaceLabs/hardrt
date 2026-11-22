@@ -144,7 +144,14 @@ commands
                           printf "NOTE: includes public yield, PendSV, scheduler, context restore and exception return; no periodic tick is configured.\n"
                           printf "HardRT timing profile=none\n"
                         else
-                          printf "case=UNKNOWN (%u)\n", $case
+                          if $case == 13
+                            printf "case=ready_selection\n"
+                            printf "metric=inside hrt__schedule: READY candidate selection only\n"
+                            printf "NOTE: private scheduler-profile DWT hooks alter execution timing and are not production WCET.\n"
+                            printf "HardRT timing profile=scheduler\n"
+                          else
+                            printf "case=UNKNOWN (%u)\n", $case
+                          end
                         end
                       end
                     end
