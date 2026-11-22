@@ -98,13 +98,32 @@ jobs:
           awk -v target=8 -v csv="$run_dir/raw/sync_benchmark_metrics.csv" \
             -f scripts/parse_stm32_sync_benchmark.awk \
             "$run_dir/raw/sync_benchmark_gdb.log"
+
+          # Synthetic v0.7 diagnostic fixtures verify the expanded release
+          # gate without pretending that GitHub CI executed physical hardware.
+          for case in yield_switch ready_selection sem_task_handoff mutex_pi_handoff; do
+            profile=none
+            if [[ "$case" == ready_selection ]]; then profile=scheduler; fi
+            {
+              echo "case=$case"
+              echo 'SystemCoreClock=64000000 Hz'
+              echo "HardRT timing profile=$profile"
+              echo 'count=8'
+              echo 'min=100 cycles, avg=120 cycles (sum/count=120), max=140 cycles'
+              echo 'RESULT: PASS'
+            } > "$run_dir/raw/timing_${case}_gdb.log"
+          done
+          python3 scripts/summarize_stm32_timing.py --self-test
+          python3 scripts/summarize_stm32_timing.py \
+            --run-dir "$run_dir" --output "$run_dir/timing_metrics.csv" \
+            --source-sha "$GITHUB_SHA" --samples 8 --mode benchmark
           cat > "$run_dir/qualification.md" <<EOF
           # HardRT STM32H755 Hardware Qualification Report
 
           - HardRT SHA: \`$GITHUB_SHA\`
           - HardRT tracked source state: **clean**
           - Functional contracts: **16**
-          - Hardware benchmarks: **52**
+          - Hardware benchmarks: **56**
           - Selected mode: **all tests (functional + benchmark)**
 
           ## Qualification verdict
@@ -113,7 +132,7 @@ jobs:
           - Functional contracts passed: **16 / 16**
           - Functional contracts failed: **0**
           - Functional contracts not run: **0**
-          - Benchmarks passed: **52 / 52**
+          - Benchmarks passed: **56 / 56**
           - Benchmarks failed: **0**
           - Benchmarks not run: **0**
           - Overall: **PASS**
@@ -149,6 +168,16 @@ jobs:
             exit 1
           fi
 
+
+          # A missing v0.7 image cannot be masked by the older 52-case data.
+          missing_v07="$RUNNER_TEMP/qualification-run-missing-v07"
+          cp -a "$run_dir" "$missing_v07"
+          rm "$missing_v07/raw/timing_mutex_pi_handoff_gdb.log"
+          if bash scripts/package_stm32_qualification.sh \
+            0.0.0 "$missing_v07" --output-dir "$RUNNER_TEMP/missing-v07-package"; then
+            echo "Missing v0.7 timing image unexpectedly packaged successfully"
+            exit 1
+          fi
 
           missing_run="$RUNNER_TEMP/qualification-run-missing-sync"
           cp -a "$run_dir" "$missing_run"
