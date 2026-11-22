@@ -124,8 +124,9 @@ The application owns an external tick source. It must not begin routing periodic
 
 ## Hardware benchmark suite: 56 metrics / 43 images
 
-Benchmark mode runs **43 build/flash images** producing **52 mandatory
-benchmark metrics**. The previously qualified 38-image set remains unchanged:
+Benchmark mode runs **43 build/flash images** producing **56 mandatory
+benchmark metrics**. The 39-image v0.6 matrix remains historical. The v0.7 runner
+adds four DWT images, preserving the earlier 38 independent measurements:
 
 - 4 established scheduler/semaphore latency and switch measurements;
 - 16 v0.5 event/notification signal measurements;
