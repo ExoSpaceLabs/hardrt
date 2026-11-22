@@ -12,6 +12,8 @@ set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS
     scheduler_decision
     yield_switch
     ready_selection
+    sem_task_handoff
+    mutex_pi_handoff
     event_isr_to_task
     notify_isr_to_task
     event_scan_none
@@ -49,6 +51,10 @@ elseif(HARDRT_TIMING_CASE STREQUAL "yield_switch")
     set(HARDRT_TIMING_CASE_ID 12)
 elseif(HARDRT_TIMING_CASE STREQUAL "ready_selection")
     set(HARDRT_TIMING_CASE_ID 13)
+elseif(HARDRT_TIMING_CASE STREQUAL "sem_task_handoff")
+    set(HARDRT_TIMING_CASE_ID 14)
+elseif(HARDRT_TIMING_CASE STREQUAL "mutex_pi_handoff")
+    set(HARDRT_TIMING_CASE_ID 15)
 elseif(HARDRT_TIMING_CASE STREQUAL "event_isr_to_task")
     set(HARDRT_TIMING_CASE_ID 5)
 elseif(HARDRT_TIMING_CASE STREQUAL "notify_isr_to_task")
