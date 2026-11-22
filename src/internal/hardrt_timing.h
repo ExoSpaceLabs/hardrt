@@ -24,4 +24,14 @@
 #define HRT_TIMING_ISR_IPC_EXIT() ((void)0)
 #endif
 
+/* Scheduler READY-selection hooks are private; in production they disappear
+ * entirely. The instrumented benchmark is not a production WCET claim. */
+#ifndef HRT_TIMING_READY_PICK_BEGIN
+#define HRT_TIMING_READY_PICK_BEGIN() ((void)0)
+#endif
+
+#ifndef HRT_TIMING_READY_PICK_END
+#define HRT_TIMING_READY_PICK_END() ((void)0)
+#endif
+
 #endif /* HARDRT_TIMING_INTERNAL_H */
