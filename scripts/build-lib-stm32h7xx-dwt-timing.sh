@@ -26,6 +26,7 @@ Cases:
   sem_isr_ready       hrt_sem_give_from_isr entry -> waiter marked READY.
   ready_to_task       Waiter marked READY -> task continuation.
   scheduler_decision  Diagnostic PendSV scheduler/context-switch breakdown.
+  yield_switch        Same-priority hrt_yield() -> peer task continuation.
 
   event_isr_to_task   hrt_event_set_from_isr path plus dispatch to one waiter.
   notify_isr_to_task  hrt_task_notify_from_isr path plus dispatch to one waiter.
@@ -67,7 +68,7 @@ done
 
 HARD_RT_ARGS=()
 case "$CASE" in
-  event_to_task|scheduler_decision|event_isr_to_task|notify_isr_to_task|notify_isr_no_wake|notify_isr_wake)
+  event_to_task|scheduler_decision|yield_switch|event_isr_to_task|notify_isr_to_task|notify_isr_no_wake|notify_isr_wake)
     HARD_RT_ARGS+=(--hardrt-cmake-arg "-DHARDRT_TIMING_PROFILE=none")
     ;;
   event_scan_none|event_scan_one|event_scan_all)
