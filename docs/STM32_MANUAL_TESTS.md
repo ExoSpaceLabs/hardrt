@@ -152,6 +152,7 @@ metrics rather than silently skipping them.
 2. `sem_isr_ready`
 3. `ready_to_task`
 4. `scheduler_decision` / PendSV decomposition
+5. `yield_switch` / same-priority task-to-task `hrt_yield()` handoff
 
 `event_to_task` is the historical semaphore-backed composite ISR-to-task benchmark. Its name predates the v0.5 event-flags API and is retained unchanged for historical comparison.
 
@@ -163,11 +164,21 @@ scheduler_decision
 pendsv_restore
 pendsv_software
 pendsv_to_task
+irq_tail_to_pendsv
 derived_software_other_avg
 derived_return_and_api_avg
 ```
 
 These are engineering measurements, not WCET proofs.
+
+The new `irq_tail_to_pendsv` metric begins at the last timestamp in the TIM2
+handler after the semaphore wake request and ends at diagnostic PendSV entry.
+It includes the remainder of the ISR, exception return and interrupt
+interference; it does **not** isolate architectural ISR exit or hardware
+interrupt assertion-to-entry time. The `yield_switch` case runs two
+same-priority peers with the external-tick configuration and does not start
+TIM2, measuring the public yield-to-peer continuation path with DWT.
+
 
 ### v0.5 event/notification profiling: 16 images
 
