@@ -174,6 +174,12 @@ derived_return_and_api_avg
 
 These are engineering measurements, not WCET proofs.
 
+The single qualification runner now regenerates `timing_metrics.csv` from its
+raw GDB/benchmark output, stamped with the tested source SHA, measured clock
+and sample counts. The exporter rejects malformed PASS records and is self-
+tested in the STM32 cross-build CI. Historical raw logs need not be committed.
+
+
 The new `irq_tail_to_pendsv` metric begins at the last timestamp in the TIM2
 handler after the semaphore wake request and ends at diagnostic PendSV entry.
 It includes the remainder of the ISR, exception return and interrupt
