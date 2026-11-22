@@ -122,6 +122,8 @@ build_app hardrt_h755_sync_benchmark "$ROOT_DIR/examples/hardrt_h755_sync_benchm
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_yield_switch "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=yield_switch -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_sem_task_handoff "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=sem_task_handoff -DHARDRT_TIMING_TARGET_SAMPLES=8
+build_app hardrt_h755_dwt_mutex_pi_handoff "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=mutex_pi_handoff -DHARDRT_TIMING_TARGET_SAMPLES=8
 SCHED_BUILD="$ROOT_DIR/build-cortex_m-timing-scheduler-ci"
 SCHED_INSTALL="$ROOT_DIR/install-cortexm-timing-scheduler-ci"
 configure_timing_library "$SCHED_BUILD" "$SCHED_INSTALL" \
