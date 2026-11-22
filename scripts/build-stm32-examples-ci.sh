@@ -76,12 +76,12 @@ build_app() {
 }
 
 configure_timing_library() {
-  local build_dir="$1" install_dir="$2" hook_header="$3"
+  local build_dir="$1" install_dir="$2" hook_header="$3" profile="${4:-ipc}"
   rm -rf "$build_dir" "$install_dir"
   cmake -S "$ROOT_DIR" -B "$build_dir" -G "$GENERATOR" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DHARDRT_PORT=cortex_m \
     -DHARDRT_BUILD_TESTS=OFF -DHARDRT_BUILD_EXAMPLES=OFF -DHARDRT_ENABLE_CPP=OFF \
-    -DHARDRT_TIMING_PROFILE=ipc -DHARDRT_TIMING_HOOK_HEADER="$hook_header" \
+    -DHARDRT_TIMING_PROFILE="$profile" -DHARDRT_TIMING_HOOK_HEADER="$hook_header" \
     -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
   cmake --build "$build_dir" --parallel "$JOBS"
   cmake --install "$build_dir" --prefix "$install_dir"
@@ -122,6 +122,11 @@ build_app hardrt_h755_sync_benchmark "$ROOT_DIR/examples/hardrt_h755_sync_benchm
 build_app hardrt_h755_dwt_event_to_task "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=event_to_task -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_scheduler_decision "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=scheduler_decision -DHARDRT_TIMING_TARGET_SAMPLES=8
 build_app hardrt_h755_dwt_yield_switch "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$BASE_INSTALL" -DHARDRT_TIMING_CASE=yield_switch -DHARDRT_TIMING_TARGET_SAMPLES=8
+SCHED_BUILD="$ROOT_DIR/build-cortex_m-timing-scheduler-ci"
+SCHED_INSTALL="$ROOT_DIR/install-cortexm-timing-scheduler-ci"
+configure_timing_library "$SCHED_BUILD" "$SCHED_INSTALL" \
+  "$ROOT_DIR/examples/hardrt_h755_dwt_timing/inc/hardrt_timing_scheduler_hooks.h" scheduler
+build_app hardrt_h755_dwt_ready_selection "$ROOT_DIR/examples/hardrt_h755_dwt_timing" "$SCHED_INSTALL" -DHARDRT_TIMING_CASE=ready_selection -DHARDRT_TIMING_TARGET_SAMPLES=8
 
 # Signal profiling cases use direct DWT timestamps and an uninstrumented kernel.
 # Compile the latency and O(1) notification paths against the ordinary config,
