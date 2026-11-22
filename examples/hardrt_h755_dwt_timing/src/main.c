@@ -46,6 +46,11 @@ typedef struct {
     uint32_t signal_waiters;
     uint32_t expected_wakes_per_sample;
     uint32_t observed_wakes;
+
+    /* v0.7 diagnostic extension, appended without shifting existing fields. */
+    uint32_t irq_tail_to_pendsv_min;
+    uint32_t irq_tail_to_pendsv_avg;
+    uint32_t irq_tail_to_pendsv_max;
 } hrt_timing_result_t;
 
 _Static_assert(offsetof(hrt_timing_result_t, case_id) == 0u, "timing result ABI");
@@ -54,7 +59,9 @@ _Static_assert(offsetof(hrt_timing_result_t, sum_lo) == 40u, "timing result ABI"
 _Static_assert(offsetof(hrt_timing_result_t, error) == 48u, "timing result ABI");
 _Static_assert(offsetof(hrt_timing_result_t, pendsv_save_min) == 52u, "timing breakdown ABI");
 _Static_assert(offsetof(hrt_timing_result_t, signal_waiters) == 100u, "signal timing ABI");
-_Static_assert(sizeof(hrt_timing_result_t) == 112u, "signal timing ABI");
+_Static_assert(offsetof(hrt_timing_result_t, irq_tail_to_pendsv_min) == 112u,
+               "irq-to-PendSV timing ABI");
+_Static_assert(sizeof(hrt_timing_result_t) == 124u, "v0.7 timing ABI");
 
 volatile hrt_timing_stats_t g_timing_stats;
 volatile uint32_t g_timing_start_cycles = 0;
@@ -69,6 +76,7 @@ volatile uint32_t g_example_error = 0;
 volatile uint32_t g_pendsv_measure_armed = 0;
 volatile uint32_t g_pendsv_sample_ready = 0;
 volatile uint32_t g_pendsv_entry_cycles = 0;
+volatile uint32_t g_pendsv_irq_tail_cycles = 0;
 volatile uint32_t g_pendsv_save_cycles = 0;
 volatile uint32_t g_pendsv_scheduler_cycles = 0;
 volatile uint32_t g_pendsv_restore_cycles = 0;
@@ -78,6 +86,7 @@ static volatile hrt_timing_stats_t g_pendsv_save_stats;
 static volatile hrt_timing_stats_t g_pendsv_restore_stats;
 static volatile hrt_timing_stats_t g_pendsv_software_stats;
 static volatile hrt_timing_stats_t g_pendsv_to_task_stats;
+static volatile hrt_timing_stats_t g_irq_tail_to_pendsv_stats;
 
 static volatile uint32_t tim2_psc_dbg = 0;
 static volatile uint32_t tim2_arr_dbg = 0;
@@ -88,6 +97,8 @@ static hrt_event_t g_signal_event;
 static volatile uint32_t g_latency_armed = 0;
 static volatile uint32_t g_signal_wake_count = 0;
 static volatile int g_notify_target = -1;
+static volatile uint32_t g_yield_start_cycles = 0u;
+static volatile uint32_t g_yield_armed = 0u;
 
 #define STACK_WORDS 1024
 #define SIGNAL_WAITER_STACK_WORDS 384
@@ -203,6 +214,16 @@ static void timing_finish(void) {
     g_timing_result.observed_wakes = 0u;
 #endif
 
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_SCHEDULER_DECISION
+    g_timing_result.irq_tail_to_pendsv_min = g_irq_tail_to_pendsv_stats.min;
+    g_timing_result.irq_tail_to_pendsv_avg = g_irq_tail_to_pendsv_stats.avg;
+    g_timing_result.irq_tail_to_pendsv_max = g_irq_tail_to_pendsv_stats.max;
+#else
+    g_timing_result.irq_tail_to_pendsv_min = 0u;
+    g_timing_result.irq_tail_to_pendsv_avg = 0u;
+    g_timing_result.irq_tail_to_pendsv_max = 0u;
+#endif
+
     timing_target_reached(&g_timing_result);
 }
 
@@ -276,6 +297,9 @@ void TIM2_IRQHandler(void) {
     int should_switch = 0;
     (void)hrt_sem_give_from_isr(&g_event_sem, &should_switch);
     (void)should_switch;
+    /* Last software timestamp in TIM2 before exception return. This is NOT
+       an ISR-exit marker or a hardware event-to-ISR entry measurement. */
+    g_pendsv_irq_tail_cycles = cycles_now();
 #elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_ISR_TO_TASK
     g_timing_start_cycles = cycles_now();
     g_latency_armed = 1u;
@@ -376,6 +400,8 @@ static void latency_task(void *arg) {
             hrt_timing_stats_record(&g_pendsv_software_stats, g_pendsv_software_cycles);
             hrt_timing_stats_record(&g_pendsv_to_task_stats,
                                     task_end - g_pendsv_entry_cycles);
+            hrt_timing_stats_record(&g_irq_tail_to_pendsv_stats,
+                                    g_pendsv_entry_cycles - g_pendsv_irq_tail_cycles);
         }
 #endif
 
@@ -387,6 +413,31 @@ static void latency_task(void *arg) {
         /* One-shot re-arm leaves a full timer period for this task to block. */
         tim2_arm_one_shot();
 #endif
+    }
+}
+
+/* Measures a true task-to-task handoff, not an isolated PendSV duration.
+   Both peers run at the same priority and explicit yield rotates FIFO order.
+   No SysTick/TIM2 interrupt is configured in this image. */
+static void yield_source_task(void *arg) {
+    (void)arg;
+    for (;;) {
+        if (g_timing_stats.count >= g_timing_target_samples) timing_finish();
+        g_yield_start_cycles = cycles_now();
+        g_yield_armed = 1u;
+        hrt_yield();
+        if (g_yield_armed != 0u) example_fail(90u);
+    }
+}
+
+static void yield_target_task(void *arg) {
+    (void)arg;
+    for (;;) {
+        if (g_yield_armed == 0u) example_fail(91u);
+        const uint32_t end = cycles_now();
+        g_yield_armed = 0u;
+        hrt_timing_stats_record(&g_timing_stats, end - g_yield_start_cycles);
+        hrt_yield();
     }
 }
 
@@ -474,6 +525,7 @@ int main(void) {
     stats_init(&g_pendsv_restore_stats);
     stats_init(&g_pendsv_software_stats);
     stats_init(&g_pendsv_to_task_stats);
+    stats_init(&g_irq_tail_to_pendsv_stats);
     hrt_sem_init(&g_event_sem, 0);
     hrt_event_init(&g_signal_event);
 
@@ -482,7 +534,13 @@ int main(void) {
         .policy = HRT_SCHED_PRIORITY,
         .default_slice = 0,
         .core_hz = SystemCoreClock,
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH
+        /* No periodic tick: exclude intentional timer interference from the
+           baseline yield-to-peer handoff sample. */
+        .tick_src = HRT_TICK_EXTERNAL
+#else
         .tick_src = HRT_TICK_SYSTICK
+#endif
     };
 
     if (hrt_init(&cfg) != 0) example_fail(1u);
@@ -490,7 +548,12 @@ int main(void) {
     const hrt_task_attr_t latency_attr = { .priority = HRT_PRIO0, .timeslice = 0 };
     const hrt_task_attr_t starter_attr = { .priority = HRT_PRIO1, .timeslice = 0 };
 
-#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_SCAN_NONE || \
+#if HRT_TIMING_CASE_ID == HRT_TIMING_CASE_YIELD_SWITCH
+    if (hrt_create_task(yield_source_task, 0, g_latency_stack,
+                        STACK_WORDS, &latency_attr) < 0) example_fail(86u);
+    if (hrt_create_task(yield_target_task, 0, g_starter_stack,
+                        STACK_WORDS, &latency_attr) < 0) example_fail(87u);
+#elif HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_SCAN_NONE || \
     HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_SCAN_ONE || \
     HRT_TIMING_CASE_ID == HRT_TIMING_CASE_EVENT_SCAN_ALL
     for (uint32_t i = 0u; i < HRT_TIMING_SIGNAL_WAITERS; ++i) {
