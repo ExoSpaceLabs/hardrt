@@ -57,6 +57,7 @@ commands
   # +100 signal_waiters
   # +104 expected_wakes_per_sample
   # +108 observed_wakes
+  # +112/+116/+120  TIM2 ISR last software marker -> PendSV entry min/avg/max
   set $base = (unsigned int)$r0
   set $case = *(unsigned int*)($base + 0)
   set $event_hz = *(unsigned int*)($base + 4)
@@ -137,7 +138,33 @@ commands
                         printf "metric=hrt_task_notify_from_isr entry -> return; blocked notification waiter becomes READY\n"
                         printf "HardRT timing profile=none\n"
                       else
-                        printf "case=UNKNOWN (%u)\n", $case
+                        if $case == 12
+                          printf "case=yield_switch\n"
+                          printf "metric=pre-hrt_yield DWT timestamp -> same-priority peer task continuation\n"
+                          printf "NOTE: includes public yield, PendSV, scheduler, context restore and exception return; no periodic tick is configured.\n"
+                          printf "HardRT timing profile=none\n"
+                        else
+                          if $case == 13
+                            printf "case=ready_selection\n"
+                            printf "metric=inside hrt__schedule: READY candidate selection only\n"
+                            printf "NOTE: private scheduler-profile DWT hooks alter execution timing and are not production WCET.\n"
+                            printf "HardRT timing profile=scheduler\n"
+                          else
+                            if $case == 14
+                              printf "case=sem_task_handoff\n"
+                              printf "metric=task-context sem_give pre-call -> higher-priority sem_take continuation\n"
+                              printf "HardRT timing profile=none, first sample excluded\n"
+                            else
+                              if $case == 15
+                                printf "case=mutex_pi_handoff\n"
+                                printf "metric=contended mutex_unlock pre-call -> direct-handoff waiter continuation\n"
+                                printf "HardRT timing profile=none, first sample excluded\n"
+                              else
+                                printf "case=UNKNOWN (%u)\n", $case
+                              end
+                            end
+                          end
+                        end
                       end
                     end
                   end
@@ -150,7 +177,7 @@ commands
     end
   end
 
-  if $case >= 5
+  if $case >= 5 && $case <= 11
     printf "signal_waiters=%u expected_wakes_per_sample=%u observed_wakes=%u\n", $waiters, $expected_wakes, $observed_wakes
   end
 
@@ -184,6 +211,11 @@ commands
     printf "pendsv_restore=%u / %u / %u cycles (min/avg/max)\n", $restore_min, $restore_avg, $restore_max
     printf "pendsv_software=%u / %u / %u cycles (min/avg/max)\n", $software_min, $software_avg, $software_max
     printf "pendsv_to_task=%u / %u / %u cycles (min/avg/max)\n", $task_min, $task_avg, $task_max
+    set $irq_min = *(unsigned int*)($base + 112)
+    set $irq_avg = *(unsigned int*)($base + 116)
+    set $irq_max = *(unsigned int*)($base + 120)
+    printf "irq_tail_to_pendsv=%u / %u / %u cycles (min/avg/max)\n", $irq_min, $irq_avg, $irq_max
+    printf "NOTE: irq_tail_to_pendsv begins at the last TIM2 ISR software timestamp, not at hardware ISR exit or event assertion.\n"
     printf "derived_software_other_avg=%u cycles\n", $software_avg - $save_avg - $avg - $restore_avg
     printf "derived_return_and_api_avg=%u cycles\n", $task_avg - $software_avg
     printf "NOTE: derived values are engineering decompositions of separately instrumented segments, not WCET bounds.\n"

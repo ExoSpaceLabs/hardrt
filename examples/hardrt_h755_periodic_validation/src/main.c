@@ -12,6 +12,10 @@
 #define RELEASE_SAMPLES 16u
 #define INTENTIONAL_LATENESS 3u
 
+#define DEMCR      (*(volatile uint32_t *)0xE000EDFCu)
+#define DWT_CTRL   (*(volatile uint32_t *)0xE0001000u)
+#define DWT_CYCCNT (*(volatile uint32_t *)0xE0001004u)
+
 typedef struct {
     uint32_t passed;
     uint32_t error;
@@ -26,9 +30,17 @@ typedef struct {
     uint32_t exact_result;
     uint32_t exact_lateness;
     uint32_t final_tick;
+    /* v0.7 addendum: TIM2 software tick marker to task continuation.
+       This is a response-latency diagnostic, not a WCET bound. */
+    uint32_t release_latency_count;
+    uint32_t release_latency_min;
+    uint32_t release_latency_avg;
+    uint32_t release_latency_max;
 } hrt_periodic_validation_result_t;
 
-_Static_assert(sizeof(hrt_periodic_validation_result_t) == 52u,
+_Static_assert(offsetof(hrt_periodic_validation_result_t, release_latency_count) == 52u,
+               "periodic validation extension ABI");
+_Static_assert(sizeof(hrt_periodic_validation_result_t) == 68u,
                "periodic validation result ABI");
 
 static uint32_t stack_periodic[STACK_WORDS] __attribute__((aligned(8)));
@@ -39,6 +51,11 @@ volatile uint32_t g_periodic_error = 0u;
 volatile uint32_t g_periodic_irq_count = 0u;
 volatile uint32_t g_periodic_release_count = 0u;
 volatile uint32_t g_periodic_low_counter = 0u;
+static volatile uint32_t g_periodic_tick_start_cycle = 0u;
+static uint32_t g_release_latency_count = 0u;
+static uint32_t g_release_latency_min = UINT32_MAX;
+static uint32_t g_release_latency_max = 0u;
+static uint64_t g_release_latency_sum = 0u;
 
 extern void SystemInit(void);
 extern uint32_t SystemCoreClock;
@@ -74,6 +91,12 @@ static void validation_stop(uint32_t error,
     g_validation_result.exact_result = (uint32_t)exact_result;
     g_validation_result.exact_lateness = exact_lateness;
     g_validation_result.final_tick = hrt_tick_now();
+    g_validation_result.release_latency_count = g_release_latency_count;
+    g_validation_result.release_latency_min = g_release_latency_count
+                                                  ? g_release_latency_min : 0u;
+    g_validation_result.release_latency_avg = g_release_latency_count
+                                                  ? (uint32_t)(g_release_latency_sum / g_release_latency_count) : 0u;
+    g_validation_result.release_latency_max = g_release_latency_max;
     periodic_validation_emit(&g_validation_result);
 }
 
@@ -123,6 +146,9 @@ void TIM2_IRQHandler(void)
     if ((TIM2->SR & TIM_SR_UIF) == 0u) return;
     TIM2->SR &= ~TIM_SR_UIF;
     g_periodic_irq_count++;
+    /* Marks the software servicing of the external tick, before the
+       kernel's sleeper-expiry/READY processing. */
+    g_periodic_tick_start_cycle = DWT_CYCCNT;
     hrt_tick_from_isr();
 }
 
@@ -158,6 +184,7 @@ static void periodic_task(void *arg)
         hrt_tick_t lateness = UINT32_MAX;
         const hrt_delay_result_t result =
             hrt_delay_until(next_release, &lateness);
+        const uint32_t task_resume_cycle = DWT_CYCCNT;
         const hrt_tick_t observed = hrt_tick_now();
 
         if (result != HRT_DELAY_OK) {
@@ -176,10 +203,27 @@ static void periodic_task(void *arg)
                             HRT_DELAY_INVALID_CONTEXT, 0u);
         }
 
+        /* The task resumed during the expected release tick. This DWT
+           metric includes the tail of TIM2, scheduling and task resume. */
+        const uint32_t release_latency =
+            task_resume_cycle - g_periodic_tick_start_cycle;
+        if (release_latency < g_release_latency_min)
+            g_release_latency_min = release_latency;
+        if (release_latency > g_release_latency_max)
+            g_release_latency_max = release_latency;
+        g_release_latency_sum += release_latency;
+        g_release_latency_count++;
+
         observed_last = observed;
         g_periodic_release_count++;
     }
 
+    if (g_release_latency_count != RELEASE_SAMPLES ||
+        g_release_latency_min > g_release_latency_max) {
+        validation_stop(512u, phase, next_release, observed_last,
+                        HRT_DELAY_INVALID_CONTEXT, 0u,
+                        HRT_DELAY_INVALID_CONTEXT, 0u);
+    }
     if (g_periodic_release_count != RELEASE_SAMPLES) {
         validation_stop(505u, phase, next_release, observed_last,
                         HRT_DELAY_INVALID_CONTEXT, 0u,
@@ -252,6 +296,14 @@ int main(void)
 {
     SystemInit();
     hold_cm4();
+    DEMCR |= (1u << 24);
+    DWT_CYCCNT = 0u;
+    DWT_CTRL |= 1u;
+    if ((DWT_CTRL & 1u) == 0u) {
+        validation_stop(513u, 0u, 0u, 0u,
+                        HRT_DELAY_INVALID_CONTEXT, 0u,
+                        HRT_DELAY_INVALID_CONTEXT, 0u);
+    }
 
     const hrt_config_t cfg = {
         .tick_hz = EXTERNAL_TICK_HZ,

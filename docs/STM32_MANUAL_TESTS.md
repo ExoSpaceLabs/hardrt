@@ -35,7 +35,7 @@ automatically within its benchmark suite. During development, just the same
   /home/dev/STM32Cube/Repository/STM32CubeH7 --samples 10000
 ```
 
-The canonical suite includes **52 required benchmark metrics across 39 firmware
+The canonical suite includes **56 required benchmark metrics across 43 firmware
 images**: the historical 38 measurements/images plus the new 14 synchronized
 metrics in one additional build/flash image. The standalone command is a
 **development shortcut only**. It uses the same opt-in instrumented library
@@ -47,7 +47,7 @@ mutates remote branches.
 
 Qualify the final source on real hardware **before** promoting it from
 `develop` to `main`. Record the tested commit SHA, board/configuration,
-date, 16/16 functional and 52/52 benchmark totals and overall PASS/FAIL.
+date, 16/16 functional and 56/56 benchmark totals and overall PASS/FAIL.
 The canonical runner creates `qualification.md`, OpenOCD/GDB logs, CSV
 measurements and build output in the gitignored
 `validation/stm32/<UTC>_<short-sha>/` directory. These files are for
@@ -122,10 +122,11 @@ Timing measurements are deliberately not counted as functional contracts.
 
 The application owns an external tick source. It must not begin routing periodic interrupts into HardRT before scheduler execution has started. The H755 validator configures TIM2 before scheduler start but enables the timer from the first dispatched application task.
 
-## Hardware benchmark suite: 52 metrics / 39 images
+## Hardware benchmark suite: 56 metrics / 43 images
 
-Benchmark mode runs **39 build/flash images** producing **52 mandatory
-benchmark metrics**. The previously qualified 38-image set remains unchanged:
+Benchmark mode runs **43 build/flash images** producing **56 mandatory
+benchmark metrics**. The 39-image v0.6 matrix remains historical. The v0.7 runner
+adds four DWT images, preserving the earlier 38 independent measurements:
 
 - 4 established scheduler/semaphore latency and switch measurements;
 - 16 v0.5 event/notification signal measurements;
@@ -152,6 +153,10 @@ metrics rather than silently skipping them.
 2. `sem_isr_ready`
 3. `ready_to_task`
 4. `scheduler_decision` / PendSV decomposition
+5. `yield_switch` / same-priority task-to-task `hrt_yield()` handoff
+6. `ready_selection` / isolated READY candidate selection, using a diagnostic-only scheduler hook profile
+7. `sem_task_handoff` / task-context semaphore wake and higher-priority continuation
+8. `mutex_pi_handoff` / contended priority-inheritance mutex direct handoff and waiter continuation
 
 `event_to_task` is the historical semaphore-backed composite ISR-to-task benchmark. Its name predates the v0.5 event-flags API and is retained unchanged for historical comparison.
 
@@ -163,11 +168,29 @@ scheduler_decision
 pendsv_restore
 pendsv_software
 pendsv_to_task
+irq_tail_to_pendsv
 derived_software_other_avg
 derived_return_and_api_avg
 ```
 
 These are engineering measurements, not WCET proofs.
+
+The single qualification runner now regenerates `timing_metrics.csv` from its
+raw GDB/benchmark output, stamped with the tested source SHA, measured clock
+and sample counts. The exporter rejects malformed PASS records and is self-
+tested in the STM32 cross-build CI. Historical raw logs need not be committed.
+
+
+The new `irq_tail_to_pendsv` metric begins at the last timestamp in the TIM2
+handler after the semaphore wake request and ends at diagnostic PendSV entry.
+It includes the remainder of the ISR, exception return and interrupt
+interference; it does **not** isolate architectural ISR exit or hardware
+interrupt assertion-to-entry time. The `yield_switch` case runs two
+same-priority peers with the external-tick configuration and does not start
+TIM2, measuring the public yield-to-peer continuation path with DWT.
+The first task-to-peer handoff is discarded as warm-up because it includes
+first-dispatch/trampoline startup costs.
+
 
 ### v0.5 event/notification profiling: 16 images
 
@@ -214,7 +237,7 @@ The runner records:
 - STM32CubeH7 SHA/state
 - board probe result
 - functional `N/16 PASS`, failure and not-run counts
-- benchmark `N/52 PASS`, failure and not-run counts
+- benchmark `N/56 PASS`, failure and not-run counts
 - established timing min/avg/max
 - event/notification ISR and event-scan timing min/avg/max
 - signal waiter count and expected/observed wake fan-out

@@ -16,7 +16,7 @@ ONLY_MODE=""
 CLEANED_BUILD_DIRS=()
 
 FUNCTIONAL_TOTAL=16
-BENCHMARK_TOTAL=52
+BENCHMARK_TOTAL=56
 
 NAMES=()
 STATUSES=()
@@ -33,7 +33,7 @@ Usage:
 Modes:
   no --only            Run ALL available tests: every functional hardware validation AND every hardware benchmark.
   --only functional    Run only functional hardware validation.
-  --only benchmark     Run all hardware benchmark cases (38 historical images plus one 14-metric synchronization image).
+  --only benchmark     Run all hardware benchmark cases (39 v0.6 images plus four v0.7 timing images).
 
 The board probe is a prerequisite and is always run.
 
@@ -91,7 +91,7 @@ for n in "$TIMING_SAMPLES" "$OBSERVE_SECONDS" "$DEBUG_TIMEOUT"; do
 done
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing command: $1" >&2; exit 2; }; }
-for c in git cmake make openocd arm-none-eabi-gcc timeout tee grep sed awk; do need "$c"; done
+for c in git cmake make openocd arm-none-eabi-gcc timeout tee grep sed awk python3; do need "$c"; done
 if command -v gdb-multiarch >/dev/null 2>&1; then GDB_BIN=gdb-multiarch
 elif command -v arm-none-eabi-gdb >/dev/null 2>&1; then GDB_BIN=arm-none-eabi-gdb
 else echo "Install gdb-multiarch or arm-none-eabi-gdb" >&2; exit 2
@@ -477,7 +477,7 @@ tick_benchmark_case() {
 
 # The baseline synchronization image contains 14 independently verified metrics
 # but only one build/flash. Record each metric separately so partial output or
-# malformed GDB records can never pass the release 52-case qualification gate.
+# malformed GDB records can never pass the active 56-metric qualification gate.
 sync_benchmark_case() {
   local prefix=timing_sync_benchmark
   local elf="$ROOT_DIR/examples/hardrt_h755_sync_benchmark/build-cortex_m/hardrt_h755_sync_benchmark.elf"
@@ -682,6 +682,10 @@ run_benchmarks() {
   timing_case sem_isr_ready "DWT sem_isr_ready timing"
   timing_case ready_to_task "DWT ready_to_task timing"
   timing_case scheduler_decision "DWT scheduler_decision timing"
+  timing_case yield_switch "DWT same-priority yield-to-peer latency"
+  timing_case ready_selection "DWT isolated READY-selection latency"
+  timing_case sem_task_handoff "DWT semaphore task-to-task handoff"
+  timing_case mutex_pi_handoff "DWT contended mutex PI handoff"
 
   signal_timing_case event_isr_to_task 1
   signal_timing_case notify_isr_to_task 1
@@ -757,7 +761,17 @@ else
   (( BENCHMARK_NOT_RUN < 0 )) && BENCHMARK_NOT_RUN=0
 fi
 
-RUN_FAIL=$((PROBE_FAIL + FUNCTIONAL_FAIL + BENCHMARK_FAIL))
+# Generate a reproducible, machine-readable CSV for this exact source SHA.
+# It is an on-demand derivative of the local run, not tracked historical data.
+TIMING_CSV="$RUN_DIR/timing_metrics.csv"
+EXPORT_FAILED=0
+if ! python3 "$ROOT_DIR/scripts/summarize_stm32_timing.py" \
+     --run-dir "$RUN_DIR" --output "$TIMING_CSV" \
+     --source-sha "$SHA" --samples "$TIMING_SAMPLES" \
+     --mode "${ONLY_MODE:-all}"; then
+  EXPORT_FAILED=1
+fi
+RUN_FAIL=$((PROBE_FAIL + FUNCTIONAL_FAIL + BENCHMARK_FAIL + EXPORT_FAILED))
 
 {
   echo "## Test results"; echo
@@ -770,6 +784,19 @@ RUN_FAIL=$((PROBE_FAIL + FUNCTIONAL_FAIL + BENCHMARK_FAIL))
 } >> "$REPORT"
 
 append_switch_breakdown_report
+
+{
+  echo
+  echo "## Reproducible timing data"
+  echo
+  if (( EXPORT_FAILED == 0 )); then
+    echo "- Machine-readable observed DWT measurements: \`timing_metrics.csv\`"
+    echo "- Regeneration source: this run's local \`raw/\` GDB/CSV outputs"
+    echo "- Results are measured configuration-specific evidence, **not WCET bounds**."
+  else
+    echo "- Timing CSV generation: **FAIL** (malformed or missing records)."
+  fi
+} >> "$REPORT"
 
 {
   echo; echo "## Qualification verdict"; echo
@@ -872,6 +899,7 @@ esac
 
 echo "Overall    : $OVERALL"
 echo "Report     : $REPORT"
+echo "Timing CSV : $TIMING_CSV"
 echo "Raw logs   : $RAW"
 if [[ -z "$ONLY_MODE" ]]; then
   echo "Release evidence: retain this full run; package it with:"

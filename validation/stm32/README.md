@@ -6,7 +6,7 @@ Use one manual entry point for physical-board validation:
 ./scripts/stm32_manual_test_full.sh /path/to/STM32CubeH7 --clean-builds
 ```
 
-The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **52 benchmark metrics across 39 images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
+The script runs the current NUCLEO-H755ZI-Q / CM7 qualification matrix: **16 functional contracts** plus **56 benchmark metrics across 43 images**. The published v0.5.x evidence remains the historical 13-functional-contract matrix. It owns build, flash, OpenOCD/GDB collection, result parsing, evidence capture, and the final PASS/FAIL summary.
 
 Development runs are written under:
 
@@ -32,7 +32,7 @@ qualify a temporary feature branch. From a clean source and supported
 STM32CubeH7 checkout:
 
 1. Run the **unfiltered** hardware qualification script.
-2. Confirm board probe PASS, 16/16 functional PASS, 52/52 benchmark
+2. Confirm board probe PASS, 16/16 functional PASS, 56/56 benchmark
    metrics PASS, and Overall PASS.
 3. Record the tested SHA, board/configuration, date and PASS/FAIL totals
    in the release summary.
@@ -79,10 +79,17 @@ The board/OpenOCD probe is a prerequisite and is reported separately.
 15. bounded mutex priority-inheritance contract (transitive donation through two mutexes, fixed-priority execution ordering, direct FIFO handoff)
 16. BASEPRI critical-section contract
 
+The v0.6.0 publication remains historically qualified at 52/52 metrics
+across 39 images. The in-development v0.7 matrix adds four dedicated DWT
+images (yield, READY selection, semaphore handoff, mutex PI handoff), bringing
+the active runner to 56/56 metrics across 43 images. No historical release
+record is retroactively changed. The runner creates the local
+`timing_metrics.csv` summary on demand; no raw archive retention is required.
+
 ## Hardware benchmark matrix
 
-The benchmark suite contains **39 independently built/flashed images** and
-**52 mandatory metric results**. The original 38 images are preserved:
+The benchmark suite contains **43 independently built/flashed images** and
+**56 mandatory metric results**. The original 38 images are preserved:
 
 ### Historical scheduler/semaphore set: 4
 
