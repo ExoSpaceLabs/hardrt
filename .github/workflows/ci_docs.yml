@@ -190,8 +190,8 @@ jobs:
 
           legacy_run="$RUNNER_TEMP/qualification-run-old-matrix"
           cp -a "$run_dir" "$legacy_run"
-          sed -i 's/Hardware benchmarks: \*\*52\*\*/Hardware benchmarks: **38**/' "$legacy_run/qualification.md"
-          sed -i 's/Benchmarks passed: \*\*52 \/ 52\*\*/Benchmarks passed: **38 \/ 38**/' "$legacy_run/qualification.md"
+          sed -i 's/Hardware benchmarks: \*\*56\*\*/Hardware benchmarks: **38**/' "$legacy_run/qualification.md"
+          sed -i 's/Benchmarks passed: \*\*56 \/ 56\*\*/Benchmarks passed: **38 \/ 38**/' "$legacy_run/qualification.md"
           if bash scripts/package_stm32_qualification.sh \
             0.0.0 "$legacy_run" --output-dir "$RUNNER_TEMP/legacy-package"; then
             echo "Obsolete 38-metric release evidence unexpectedly packaged successfully"
