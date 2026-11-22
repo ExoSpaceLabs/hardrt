@@ -150,7 +150,19 @@ commands
                             printf "NOTE: private scheduler-profile DWT hooks alter execution timing and are not production WCET.\n"
                             printf "HardRT timing profile=scheduler\n"
                           else
-                            printf "case=UNKNOWN (%u)\n", $case
+                            if $case == 14
+                              printf "case=sem_task_handoff\n"
+                              printf "metric=task-context sem_give pre-call -> higher-priority sem_take continuation\n"
+                              printf "HardRT timing profile=none, first sample excluded\n"
+                            else
+                              if $case == 15
+                                printf "case=mutex_pi_handoff\n"
+                                printf "metric=contended mutex_unlock pre-call -> direct-handoff waiter continuation\n"
+                                printf "HardRT timing profile=none, first sample excluded\n"
+                              else
+                                printf "case=UNKNOWN (%u)\n", $case
+                              end
+                            end
                           end
                         end
                       end
