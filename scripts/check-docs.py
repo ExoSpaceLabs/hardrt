@@ -166,7 +166,7 @@ for pattern, description in stale_patterns.items():
 
 # Current release qualification publishes a summary, not a raw-log archive.
 validation = (ROOT / "validation/stm32/README.md").read_text(encoding="utf-8")
-if "52 benchmark metrics across 39 images" not in validation:
+if "56 benchmark metrics across 43 images" not in validation:
     fail("validation/stm32/README.md must document the full benchmark matrix")
 if "original 38 images" not in validation:
     fail("validation/stm32/README.md must preserve the benchmark history")
@@ -182,8 +182,8 @@ if "git switch --detach X.Y.Z" not in release_validation:
     fail("release evidence guidance must describe on-demand reruns")
 
 runner = (ROOT / "scripts/stm32_manual_test_full.sh").read_text(encoding="utf-8")
-if "BENCHMARK_TOTAL=52" not in runner or "FUNCTIONAL_TOTAL=16" not in runner:
-    fail("physical qualification runner totals are not 16 functional + 52 benchmark metrics")
+if "BENCHMARK_TOTAL=56" not in runner or "FUNCTIONAL_TOTAL=16" not in runner:
+    fail("physical qualification runner totals are not 16 functional + 56 benchmark metrics")
 if "sync_benchmark_case" not in runner or "parse_stm32_sync_benchmark.awk" not in runner:
     fail("physical qualification runner does not execute the 14-metric DWT synchronization image")
 package = (ROOT / "scripts/package_stm32_qualification.sh").read_text(encoding="utf-8")
