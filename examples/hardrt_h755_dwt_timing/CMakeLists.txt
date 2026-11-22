@@ -10,6 +10,7 @@ set_property(CACHE HARDRT_TIMING_CASE PROPERTY STRINGS
     sem_isr_ready
     ready_to_task
     scheduler_decision
+    yield_switch
     event_isr_to_task
     notify_isr_to_task
     event_scan_none
@@ -43,6 +44,8 @@ elseif(HARDRT_TIMING_CASE STREQUAL "ready_to_task")
     set(HARDRT_TIMING_CASE_ID 3)
 elseif(HARDRT_TIMING_CASE STREQUAL "scheduler_decision")
     set(HARDRT_TIMING_CASE_ID 4)
+elseif(HARDRT_TIMING_CASE STREQUAL "yield_switch")
+    set(HARDRT_TIMING_CASE_ID 12)
 elseif(HARDRT_TIMING_CASE STREQUAL "event_isr_to_task")
     set(HARDRT_TIMING_CASE_ID 5)
 elseif(HARDRT_TIMING_CASE STREQUAL "notify_isr_to_task")
