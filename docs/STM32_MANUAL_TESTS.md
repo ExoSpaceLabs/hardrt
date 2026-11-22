@@ -178,6 +178,8 @@ interference; it does **not** isolate architectural ISR exit or hardware
 interrupt assertion-to-entry time. The `yield_switch` case runs two
 same-priority peers with the external-tick configuration and does not start
 TIM2, measuring the public yield-to-peer continuation path with DWT.
+The first task-to-peer handoff is discarded as warm-up because it includes
+first-dispatch/trampoline startup costs.
 
 
 ### v0.5 event/notification profiling: 16 images
